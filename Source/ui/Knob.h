@@ -83,6 +83,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
     void timerCallback() override;

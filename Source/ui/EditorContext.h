@@ -64,6 +64,7 @@ public:
     juce::File lastFolder;
 
 private:
+    VoxaVersaProcessor::NeuralStatus lastNeuralStatus = VoxaVersaProcessor::NeuralStatus::Unavailable;
     std::optional<RenderTarget> pending;
     int pendingTicks = 0;
     bool sawRendering = false;

@@ -373,4 +373,27 @@ bool NumberBox::keyPressed (const juce::KeyPress& k)
     return false;
 }
 
+std::unique_ptr<juce::AccessibilityHandler> NumberBox::createAccessibilityHandler()
+{
+    struct ValueInterface : public juce::AccessibilityRangedNumericValueInterface
+    {
+        explicit ValueInterface (NumberBox& b) : box (b) {}
+
+        bool isReadOnly() const override        { return box.overrideValue.has_value(); }
+        double getCurrentValue() const override { return box.overrideValue ? *box.overrideValue : box.value; }
+        void setValue (double v) override       { box.setValue (v, true); }
+
+        AccessibleValueRange getRange() const override
+        {
+            const auto& r = box.param.getNormalisableRange();
+            return { { (double) r.start, (double) r.end }, 1.0 };
+        }
+
+        NumberBox& box;
+    };
+
+    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::slider, juce::AccessibilityActions(),
+                                                         juce::AccessibilityHandler::Interfaces { std::make_unique<ValueInterface> (*this) });
+}
+
 } // namespace voxa::ui

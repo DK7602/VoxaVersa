@@ -7,6 +7,7 @@ EditorContext::EditorContext (VoxaVersaProcessor& p)
     : processor (p), state (p.getState()), undo (p.getUndoManager())
 {
     lastFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    lastNeuralStatus = p.getNeuralStatus();
 }
 
 float EditorContext::getValue (const char* paramId) const
@@ -60,6 +61,18 @@ void EditorContext::invalidateRender (RenderTarget target)
 
 void EditorContext::tick()
 {
+    // surface AI engine state changes (e.g. a model failed to load)
+    const auto status = processor.getNeuralStatus();
+    if (status != lastNeuralStatus)
+    {
+        using NS = VoxaVersaProcessor::NeuralStatus;
+        if (status == NS::Error)
+            toast ("AI voice engine: " + processor.getNeuralStatusMessage(), ToastKind::Error);
+        else if (status == NS::Active)
+            toast ("AI voice engine active: " + processor.getNeuralStatusMessage(), ToastKind::Success);
+        lastNeuralStatus = status;
+    }
+
     if (! pending.has_value())
         return;
 
