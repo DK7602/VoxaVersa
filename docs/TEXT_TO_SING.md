@@ -38,8 +38,8 @@ live singer will sing (melisma marks and breaths do not count), so the UI can sh
 
 ### Pronunciation
 
-1. The [CMU Pronouncing Dictionary](THIRD_PARTY.md) (126k words, embedded, loaded once on first
-   use, ~100 ms) gives the pronunciation and lexical stress.
+1. The [CMU Pronouncing Dictionary](THIRD_PARTY.md) (126k words, embedded, decompressed once on first
+   use, ~20 ms) gives the pronunciation and lexical stress.
 2. Words it lacks are handled by contraction rules (`'s 'll 're 've 'd n't`), g-dropping
    (`nothin'`), elongation collapsing, suffix stripping (`-ing -ed -s -er -ly -ness ...` on a known
    stem), compound splitting (`moonlightdancer`) and finally the NRL letter-to-sound rules.

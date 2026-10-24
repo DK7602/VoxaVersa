@@ -13,7 +13,13 @@ public:
     void runTest() override
     {
         beginTest ("Embedded dictionary loads");
-        expect (g2p::dictionarySize() > 120000, "CMU dictionary should have ~126k words");
+        {
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            const int words = g2p::dictionarySize();
+            logMessage ("dictionary: " + juce::String (words) + " words, first access "
+                        + juce::String (juce::Time::getMillisecondCounterHiRes() - start, 1) + " ms");
+            expect (words > 120000, "CMU dictionary should have ~126k words");
+        }
 
         beginTest ("G2P of dictionary words");
         expectPronunciation ("hello", "HH AH0 L OW1");
