@@ -75,7 +75,7 @@ struct VoiceProfile
 
     bool isFactory = true;
 
-    // User voice packs (see docs/VOICE_PACKS.md)
+    // User voice packs (see docs/NEURAL_ENGINE.md)
     juce::File packDirectory;
     juce::File avatarImage;
     juce::File neuralModelFile;         // RVC-compatible ONNX generator
