@@ -29,6 +29,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     /** Animations, meters and polling (called by the editor's timer). */
     void tick (float dt);
@@ -55,6 +56,7 @@ private:
     float backgroundScale = 0.0f;
     juce::uint32 lastScaleChange = 0;
     bool refreshPending = false;
+    juce::uint32 lastWheelTime = 0;
 
     juce::Image orbImage, wordmarkImage;
     juce::Rectangle<int> libraryBounds { 18, 583, 1500, 204 }, libraryExpandedBounds { 18, 100, 1500, 687 };

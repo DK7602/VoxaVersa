@@ -59,6 +59,15 @@ void MainView::mouseDown (const juce::MouseEvent&)
     ctx.undo.beginNewTransaction();
 }
 
+void MainView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&)
+{
+    // a burst of wheel events (e.g. scrolling a knob) forms one undoable gesture
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastWheelTime > 600)
+        ctx.undo.beginNewTransaction();
+    lastWheelTime = now;
+}
+
 void MainView::noteScaleChanged()
 {
     lastScaleChange = juce::Time::getMillisecondCounter();
