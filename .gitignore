@@ -1,0 +1,9 @@
+build/
+build-*/
+cmake-build-*/
+.vscode/
+.idea/
+*.user
+.DS_Store
+Resources/fonts/*.zip
+__pycache__/
