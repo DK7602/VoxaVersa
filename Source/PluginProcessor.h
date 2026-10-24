@@ -72,6 +72,8 @@ public:
     std::atomic<int> detectedScale { 0 };
     std::atomic<float> autoLevelGainDb { 0.0f };
     std::atomic<int> sourceGenderEstimate { 0 };   // 0 unknown, 1 male, 2 female
+    std::atomic<double> hostBpm { 0.0 };           // 0 when the host provides no tempo
+    std::atomic<bool> hostIsPlaying { false };
 
     int getCurrentLatencySamples() const noexcept { return getLatencySamples(); }
     double getCurrentSampleRate() const noexcept  { return currentSampleRate; }
