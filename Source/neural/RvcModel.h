@@ -12,6 +12,7 @@ namespace streaming
 {
     inline constexpr int blockFrames = 40;                // new audio per chunk: 0.4 s
     inline constexpr int tailFrames = 9;                  // crossfade + SOLA search + resampler margin
+    inline constexpr int generatorContextFrames = 20;     // left context the generator gets (the encoder gets more)
     inline constexpr double crossfadeSeconds = 0.06;
     inline constexpr double searchSeconds = 0.0125;       // SOLA search (>= one period of an 80 Hz voice)
     inline constexpr double headroomSeconds = 0.2;        // inference time budget per chunk
@@ -65,12 +66,13 @@ struct NeuralVoiceModel::Impl
     bool initialise (const ModelConfig&, juce::String& error);
 
     /** The core of the pipeline. `audio16k` holds numFrames * 160 + dsp::encoderRightPad16k samples at
-        16 kHz, `f0Frames` the target pitch of each 10 ms frame. On success ws.audio holds
-        numFrames * hopSize samples at the model rate, time-aligned with the input.
+        16 kHz, `f0Frames` the target pitch of each of the numFrames 10 ms frames. The content encoder sees
+        all frames, the generator only frames [generatorSkip, numFrames). On success ws.audio holds
+        (numFrames - generatorSkip) * hopSize samples at the model rate, starting at frame generatorSkip.
         `firstFrame` is the absolute index of the first frame (keeps the noise consistent across
         overlapping segments); `offline` releases ONNX Runtime's arena memory after big runs. */
     bool runFrames (const float* audio16k, int numFrames, const float* f0Frames, int64_t firstFrame,
-                    Workspace& ws, bool offline, juce::String& error) const;
+                    Workspace& ws, bool offline, juce::String& error, int generatorSkip = 0) const;
 
     bool convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
@@ -80,6 +82,8 @@ struct NeuralVoiceModel::Impl
     int getStreamContextFrames() const noexcept;
     /** Frames processed per real-time chunk (context + tail + new audio, even). */
     int getStreamChunkFrames() const noexcept;
+    /** Leading frames of each real-time chunk that only the content encoder sees. */
+    int getStreamGeneratorSkip() const noexcept;
 
     //==============================================================================
     ModelConfig config;

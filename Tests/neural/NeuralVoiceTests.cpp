@@ -143,7 +143,7 @@ namespace
     }
 
     juce::String packJson (const juce::File& generator, const juce::File& encoder, int sampleRate,
-                           const juce::String& encoderId = "dummy")
+                           const juce::String& encoderId = "dummy", int streamContextMs = 0)
     {
         auto* model = new juce::DynamicObject();
         model->setProperty ("file", generator.getFullPathName());
@@ -151,6 +151,8 @@ namespace
         if (encoder != juce::File())
             model->setProperty ("encoderFile", encoder.getFullPathName());
         model->setProperty ("sampleRate", sampleRate);
+        if (streamContextMs > 0)
+            model->setProperty ("streamContextMs", streamContextMs);
 
         auto* root = new juce::DynamicObject();
         root->setProperty ("name", "Test voice");
@@ -689,15 +691,30 @@ private:
             }
         }
 
-        beginTest ("Streaming output matches the offline conversion after the latency");
+        // default context (300 ms) and a long one (1 s, most of it seen by the content encoder only)
+        juce::String error;
+        auto longContext = loadTempPack (packJson (modelsDir.getChildFile ("generator_40k.onnx"),
+                                                   modelsDir.getChildFile ("encoder_768.onnx"), 40000, "dummy", 1000), error);
+        expect (longContext != nullptr, error);
+
+        if (longContext != nullptr)
+            expect (longContext->getImpl().getStreamGeneratorSkip() > 0);
+
+        for (auto& model : { mainModel, longContext })
         {
+            if (model == nullptr)
+                continue;
+
+            beginTest ("Streaming output matches the offline conversion after the latency (context "
+                       + juce::String (model->getImpl().getStreamContextFrames() * 10) + " ms)");
+
             const double rate = 48000.0;
             const int block = 512;
             const auto input = makeBurstInput (rate, 3.6);
 
             NeuralVoiceStream stream;
             stream.prepare (rate, block);
-            stream.setModel (mainModel);
+            stream.setModel (model);
             const int latency = stream.getLatencySamples();
 
             double cpuSeconds = 0.0;
@@ -714,8 +731,7 @@ private:
             for (size_t i = 0; i < f0.size(); ++i)
                 f0[i] = targetPitchAt (((double) i + 0.5) / 100.0);
 
-            juce::String error;
-            expect (mainModel->convert (in, rate, f0, 100.0, reference, nullptr, error), error);
+            expect (model->convert (in, rate, f0, 100.0, reference, nullptr, error), error);
 
             std::vector<float> aligned (input.size());
             std::copy_n (out.begin() + latency, aligned.size(), aligned.begin());

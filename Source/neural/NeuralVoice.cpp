@@ -469,7 +469,9 @@ private:
 
         juce::String error;
 
-        if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error))
+        const int generatorSkip = m.getStreamGeneratorSkip();
+
+        if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip))
         {
             if (! reportedError)
             {
@@ -483,7 +485,7 @@ private:
         if (! toHost.isPrepared() || toHost.getInputRate() != m.sampleRate)
             toHost.prepare (m.sampleRate, hostRate);
 
-        toHost.process (workspace.audio.data(), segmentStart * m.hopSize, (int) workspace.audio.size(),
+        toHost.process (workspace.audio.data(), (segmentStart + generatorSkip) * m.hopSize, (int) workspace.audio.size(),
                         chunkOutput.data(), regionStart, regionLength);
         return true;
     }

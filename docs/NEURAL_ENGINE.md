@@ -73,8 +73,9 @@ Contents
   absolute sample position, and reads already-converted output from a third ring. It never allocates,
   locks or waits (one exception: see *offline bounces* below).
 * A worker thread converts **chunks of 0.4 s of new audio** with **0.3 s of left context**
-  (`streamContextMs`) plus a 90 ms tail, i.e. one fixed-size inference of 0.8 s per chunk (fixed shapes
-  let ONNX Runtime reuse its memory plan).
+  (`streamContextMs`) plus a 90 ms tail: the content encoder sees all 0.8 s, the (much more expensive)
+  generator only the last 0.69 s (chunk + tail + 200 ms of its own context), as in RVC's real-time mode.
+  Every chunk has the same shape, so ONNX Runtime reuses its memory plan.
 * Consecutive chunks are joined with **SOLA**: the start of the new chunk is searched within 12.5 ms
   (≥ one period of an 80 Hz voice) for the best match with the previous chunk's tail, then crossfaded over
   60 ms with gains normalised for the signals' correlation (aligned → amplitude-complementary,
@@ -121,13 +122,15 @@ latency = chunk (0.4 s) + crossfade (60 ms) + SOLA search / 2 (6.25 ms) + resamp
 This is typical for RVC-style real-time conversion; the AI engine is meant for tracking/monitoring with
 latency compensation and for rendering, not for zero-latency live monitoring (the DSP engine covers that).
 
-**CPU budget.** Every 0.4 s the worker runs the encoder and generator on 0.8 s of audio and must finish
-within the 200 ms headroom, i.e. the inference must run at ≥ 4× real time. When a model is loaded it is
-timed on this computer; `NeuralVoiceModel::getDescription()` then ends with "real-time load NN%" (time per
-chunk relative to the 200 ms budget) or "too slow for real time on this computer". As a rough guide, a
-full-size RVC v2 model (ContentVec 768 + 40 kHz generator) needs a recent desktop-class CPU with 4+ cores
-for real-time use; on slower machines use a GPU accelerator (below) or offline rendering, which has no
-time limit. ONNX Runtime uses one shared thread pool for all plugin instances (`min(4, physical cores / 2)`
+**CPU budget.** Every 0.4 s the worker runs the encoder on 0.8 s and the generator on 0.69 s of audio
+and must finish within the 200 ms headroom. When a model is loaded it is timed on this computer;
+`NeuralVoiceModel::getDescription()` then ends with "real-time load NN%" (time per chunk relative to the
+200 ms budget) or "too slow for real time on this computer". For reference, the community
+`vec-768-layer-12.onnx` ContentVec encoder alone takes about 80 ms per chunk with 2 threads on a 2.1 GHz
+Xeon cloud VM (≈ 0.08× real time offline); the RVC generator adds to that, so a full-size RVC v2 model
+needs a recent desktop-class CPU with 4+ cores for real-time use. On slower machines use a GPU
+accelerator (below) or offline rendering, which has no time limit. A longer `streamContextMs` mainly
+costs encoder time. ONNX Runtime uses one shared thread pool for all plugin instances (`min(4, physical cores / 2)`
 threads by default, without busy-waiting) so the DAW's own threads are not starved.
 
 ---

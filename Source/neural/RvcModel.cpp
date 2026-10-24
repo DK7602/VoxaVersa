@@ -194,6 +194,11 @@ int NeuralVoiceModel::Impl::getStreamChunkFrames() const noexcept
     return streaming::blockFrames + roundUpToEven (streaming::tailFrames + getStreamContextFrames());
 }
 
+int NeuralVoiceModel::Impl::getStreamGeneratorSkip() const noexcept
+{
+    return juce::jmax (0, getStreamChunkFrames() - (streaming::blockFrames + streaming::tailFrames + streaming::generatorContextFrames));
+}
+
 bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& error)
 {
     config = c;
@@ -502,7 +507,7 @@ bool NeuralVoiceModel::Impl::warmUp (juce::String& error)
     {
         const auto start = juce::Time::getMillisecondCounterHiRes();
 
-        if (! runFrames (audio.data(), chunkFrames, f0.data(), 0, ws, false, error))
+        if (! runFrames (audio.data(), chunkFrames, f0.data(), 0, ws, false, error, getStreamGeneratorSkip()))
         {
             error = "test run failed: " + error;
             return false;
@@ -522,9 +527,11 @@ double NeuralVoiceModel::Impl::getRealTimeLoad() const noexcept
 
 //==============================================================================
 bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, const float* f0Frames, int64_t firstFrame,
-                                        Workspace& ws, bool offline, juce::String& error) const
+                                        Workspace& ws, bool offline, juce::String& error, int generatorSkip) const
 {
     jassert (numFrames > 0 && numFrames % 2 == 0);
+    jassert (generatorSkip >= 0 && generatorSkip < numFrames);
+    generatorSkip = juce::jlimit (0, numFrames - 1, generatorSkip);
     const auto numSamples = (size_t) (numFrames * dsp::samplesPerFrame16k + dsp::encoderRightPad16k);
     const auto n = (int64_t) numSamples;
 
@@ -561,7 +568,9 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
         }
     }
 
-    //=== Features: [1,T,C] or [1,C,T] -> [1, numFrames, C] (each 20 ms frame repeated twice) ==========
+    //=== Features: [1,T,C] or [1,C,T] -> [1, frames, C] (each 20 ms frame repeated twice) ==============
+    // The generator only gets frames [generatorSkip, numFrames): the content features need a long left
+    // context, the (much more expensive) generator only a short one.
     const auto& shape = ws.encoderOut.shape;
     int64_t numEncoderFrames = 0, channels = 0;
     bool channelMajor = false;
@@ -605,12 +614,13 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
     }
 
     const auto c = (size_t) channels;
-    const auto frames = (size_t) numFrames;
+    const auto skip = (size_t) generatorSkip;
+    const auto frames = (size_t) (numFrames - generatorSkip);
     ws.phone.resize (frames * c);
 
     for (size_t i = 0; i < frames; ++i)
     {
-        const auto t = (size_t) juce::jmin ((int64_t) (i / 2), numEncoderFrames - 1);
+        const auto t = (size_t) juce::jmin ((int64_t) ((i + skip) / 2), numEncoderFrames - 1);
         auto* dest = ws.phone.data() + i * c;
 
         if (channelMajor)
@@ -627,9 +637,9 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
     //=== Generator ============================================================
     std::array<InputTensor, 6> inputs {};
     size_t numInputs = 0;
-    const auto frameCount = (int64_t) numFrames;
+    const auto frameCount = (int64_t) frames;
     const int64_t lengthValue64 = frameCount, speaker64 = config.speakerId;
-    const int32_t lengthValue32 = numFrames, speaker32 = config.speakerId;
+    const int32_t lengthValue32 = (int32_t) frames, speaker32 = config.speakerId;
 
     setFloatTensor (inputs[numInputs++], gen.phone, gen.phoneType, ws.phone.data(), ws.phone.size(), ws.phoneHalf,
                     { 1, frameCount, channels });
@@ -645,7 +655,8 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
 
         for (size_t i = 0; i < frames; ++i)
         {
-            const float f = f0Frames != nullptr && f0Frames[i] > 0.0f && std::isfinite (f0Frames[i]) ? f0Frames[i] : 0.0f;
+            const float f0 = f0Frames != nullptr ? f0Frames[i + skip] : 0.0f;
+            const float f = f0 > 0.0f && std::isfinite (f0) ? f0 : 0.0f;
             ws.pitchf[i] = f;
             ws.pitch[i] = dsp::coarsePitch (f);
             ws.pitch32[i] = (int32_t) ws.pitch[i];
@@ -665,7 +676,7 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
 
         for (size_t ch = 0; ch < noiseCh; ++ch)
             for (size_t i = 0; i < frames; ++i)
-                ws.noise[ch * frames + i] = config.noiseScale * dsp::gaussianNoise (firstFrame + (int64_t) i, (int) ch);
+                ws.noise[ch * frames + i] = config.noiseScale * dsp::gaussianNoise (firstFrame + (int64_t) (i + skip), (int) ch);
 
         setFloatTensor (inputs[numInputs++], gen.noise, gen.noiseType, ws.noise.data(), ws.noise.size(), ws.noiseHalf,
                         { 1, (int64_t) noiseCh, frameCount });
