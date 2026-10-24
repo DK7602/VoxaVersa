@@ -77,14 +77,16 @@ void GlassPanel::paintGlassCard (juce::Graphics& g, juce::Rectangle<float> area,
     juce::Path outline;
     outline.addRoundedRectangle (area, corner);
 
-    // outer glow + shadow
+    // soft shadow + outer glow (layered strokes / gradients: much cheaper than blurring images)
+    juce::DropShadow (juce::Colour (0xff06103a).withAlpha (0.30f), 18, { 0, 8 }).drawForRectangle (g, area.toNearestInt());
+
+    for (int i = 5; i >= 1; --i)
     {
-        juce::Path shadow;
-        shadow.addRoundedRectangle (area.translated (0.0f, 7.0f), corner);
-        drawGlow (g, shadow, juce::Colour (0xff06103a).withAlpha (0.35f), 16);
+        g.setColour (Palette::glow.withAlpha (0.035f + 0.022f * (float) (5 - i)));
+        g.strokePath (outline, juce::PathStrokeType ((float) i * 4.0f));
     }
-    drawGlow (g, outline, Palette::glow.withAlpha (0.55f), 10);
-    drawGlow (g, outline, juce::Colours::white.withAlpha (0.35f), 3);
+    g.setColour (juce::Colours::white.withAlpha (0.22f));
+    g.strokePath (outline, juce::PathStrokeType (3.0f));
 
     g.saveState();
     g.reduceClipRegion (outline);
