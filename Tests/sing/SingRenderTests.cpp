@@ -214,6 +214,41 @@ public:
             expect (engine.render (request).errorMessage.isNotEmpty());
         }
 
+        beginTest ("Robustness: long lyrics, extreme tempi, junk text");
+        {
+            juce::String longLyrics;
+            while (longLyrics.length() < 1950)
+                longLyrics << "I keep on running through the night, chasing every falling light\n";
+
+            struct Case { juce::String lyrics; double bpm; const char* voice; };
+            const Case cases[] = {
+                { longLyrics, 120.0, "female-pop" },
+                { longLyrics.substring (0, 400), 300.0, "male-rap" },
+                { "so slow and low", 30.0, "male-jazz" },
+                { juce::String::fromUTF8 ("\xe2\x80\x9cWow!!\xe2\x80\x9d \xe2\x80\x94 caf\xc3\xa9 na\xc3\xafve 123456789 $$$ %%% ___ --- [br][br] \xe6\x97\xa5\xe6\x9c\xac"), 120.0, "female-rock" },
+            };
+
+            SingEngine engine;
+            for (const auto& c : cases)
+            {
+                SingRequest request;
+                request.lyrics = c.lyrics;
+                request.bpm = c.bpm;
+                request.voice = findVoice (c.voice);
+                const auto result = engine.render (request);
+                expect (result.ok() && allFinite (result.audio), result.errorMessage);
+
+                int sung = 0;
+                for (const auto& n : result.notes)
+                    sung += n.syllable != "_" ? 1 : 0;
+                expectEquals (sung, SingEngine::countSyllables (c.lyrics));
+            }
+
+            SingRequest onlyMarks;
+            onlyMarks.lyrics = "_ _ [br] -- !!";
+            expect (engine.render (onlyMarks).errorMessage.isNotEmpty());
+        }
+
         beginTest ("Other sample rates");
         {
             for (double sr : { 22050.0, 44100.0, 96000.0 })

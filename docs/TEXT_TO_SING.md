@@ -182,10 +182,12 @@ Be honest with users about what this is:
   voice has a neural model installed, VoxaVersa runs the guide through that model, which replaces
   the timbre with the trained voice's and is what makes the result sound human. Voices without a
   model only get the DSP voice chain, so they will still sound synthetic.
-- **Intelligibility** was measured with an off-the-shelf speech recogniser (Whisper base.en) on
-  four-line test songs: about 87 % of the words are recognised across eight factory voices
-  (≈ 95 % for rap and whisper, ≈ 75–85 % for soprano and pop voices). Typical confusions are
-  nasals vs. liquids (*night* → *light*) and weak voiced plosives at phrase starts.
+- **Intelligibility** was measured with off-the-shelf speech recognisers on two four-line test
+  songs sung by 14 factory voices (auto melodies): Whisper small.en recognises about 98 % of the
+  words (every take ≥ 95 %, the soprano included); the weaker base.en model about 90 %, mostly
+  because it hallucinates on long sustained notes. Remaining confusions are nasals vs. liquids
+  (*night* → *light*) and the odd voiced plosive at a phrase start (*dancing* → *then sing*).
+  A live-singer run of "Hello my friend, how are you" is recognised word for word.
 - **High notes:** above roughly A5 the harmonics are too far apart to define the vowel (true for
   real sopranos too), and formant tuning makes all vowels drift towards "ah".
 - **English only.** Other languages are read with English rules. Names and invented words go
