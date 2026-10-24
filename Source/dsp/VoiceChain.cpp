@@ -38,6 +38,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     constexpr float maxHz = 1300.0f;
 
     detector.prepare (sr, minHz, maxHz);
+    genderEstimator.prepare (sr);
     mapper.prepare (sr, detector.getHopSize());
     analyzer.prepare (sr, minHz, maxHz);
 
@@ -92,6 +93,7 @@ void VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
 void VoiceChain::reset()
 {
     detector.reset();
+    genderEstimator.reset();
     mapper.reset();
     timeline.reset();
     analyzer.reset();
@@ -153,8 +155,15 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     //==========================================================================
     // 1. Analysis
     const juce::int64 start = blockStart;
+    if (! s.pitch.sourceIsSynth)
+    {
+        genderEstimator.process (in, n);
+        mapper.setSourceGenderEstimate ((int) genderEstimator.getGender());
+    }
     detector.process (in, n, [&] (int i, const PitchDetector::Frame& f)
     {
+        if (f.voiced)
+            genderEstimator.addPitch (f.frequencyHz);
         const juce::int64 t = start + i + 1 - timeOffset;
         timeline.push (mapper.process (f, t, s.pitch));
     });

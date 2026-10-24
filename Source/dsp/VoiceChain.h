@@ -2,6 +2,7 @@
 
 #include "PitchDetector.h"
 #include "PitchMapper.h"
+#include "VoiceGenderEstimator.h"
 #include "Psola.h"
 #include "VocalFx.h"
 #include "../Parameters.h"
@@ -94,6 +95,7 @@ private:
     Quality quality = Quality::Balanced;
 
     PitchDetector detector;
+    VoiceGenderEstimator genderEstimator;
     PitchMapper mapper;
     PitchTimeline timeline;
     PsolaAnalyzer analyzer;

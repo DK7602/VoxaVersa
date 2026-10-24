@@ -26,6 +26,9 @@ void PitchMapper::reset()
     sourceWeight = 0.0f;
     genderEstimate = 0;
     registerOctaves = 0;
+    registerLocked = false;
+    lockedCentre = -1000;
+    lockedSource = -1;
     keyDetector.reset();
     keyKnown = false;
     keyUpdateCounter = 0;
@@ -61,6 +64,37 @@ float PitchMapper::harmonyShift (const PitchFrame& f, HarmonyInterval interval, 
     const int note = music::harmonyNote (base, interval, keyRoot, scale);
     const float target = (float) note + (f.melodyMidi - (float) base) + f.expression + f.globalOffset;
     return juce::jlimit (-36.0f, 36.0f, target - f.srcMidi);
+}
+
+void PitchMapper::updateRegister (const Settings& s) noexcept
+{
+    const int centre = s.traits.centreMidi();
+    const int source = s.sourceGender != 0 ? s.sourceGender : genderEstimate;
+
+    // Once the input voice is known the octave is locked, so phrases never jump between registers.
+    // It is re-evaluated only for a new target voice or a different source gender.
+    if (registerLocked && centre == lockedCentre && source == lockedSource)
+        return;
+
+    // Male -> female moves up an octave, female -> male down; same-gender pairs stay put.
+    int k = 0;
+    if (source == 1 && s.traits.gender == VoiceGender::Female) k = 1;
+    if (source == 2 && s.traits.gender == VoiceGender::Male)   k = -1;
+
+    // Keep the performance inside the target voice's register (with a little headroom).
+    if (sourceWeight > 0.5f)
+    {
+        while (k > -2 && sourceMedian + 12.0f * (float) k > (float) s.traits.rangeHighMidi + 3.0f) --k;
+        while (k < 2 && sourceMedian + 12.0f * (float) k < (float) s.traits.rangeLowMidi - 3.0f) ++k;
+    }
+    registerOctaves = k;
+
+    if (sourceWeight > 1.5f && (source != 0 || s.traits.gender == VoiceGender::Neutral))
+    {
+        registerLocked = true;
+        lockedCentre = centre;
+        lockedSource = source;
+    }
 }
 
 PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 time, const Settings& s) noexcept
@@ -100,12 +134,6 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         sourceMedian = sourceWeight <= 0.0f ? src : sourceMedian + (src - sourceMedian) * a;
         sourceWeight += hopSec * w;
 
-        if (sourceWeight > 0.5f)
-        {
-            if (genderEstimate != 1 && sourceMedian < 53.0f)      genderEstimate = 1;   // below ~175 Hz
-            else if (genderEstimate != 2 && sourceMedian > 56.0f) genderEstimate = 2;   // above ~208 Hz
-        }
-
         keyDetector.addPitch (src, w * hopSec);
         if (++keyUpdateCounter >= 64)
         {
@@ -122,12 +150,7 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     if (onset)
     {
         if (! s.pitchPreserve && ! s.sourceIsSynth && sourceWeight > 0.3f)
-        {
-            const float desired = ((float) s.traits.centreMidi() - sourceMedian) / 12.0f;
-            const int candidate = juce::jlimit (-2, 2, (int) std::lround (desired));
-            if (candidate != registerOctaves && std::abs (desired - (float) registerOctaves) > 0.65f)
-                registerOctaves = candidate;
-        }
+            updateRegister (s);
         noteTime = 0.0f;
         vibDepthRamp = 0.0f;
     }

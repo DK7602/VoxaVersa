@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "core/AudioUtils.h"
 #include "dsp/VoiceChain.h"
+#include "dsp/VoiceGenderEstimator.h"
 #include "neural/NeuralVoice.h"
 
 namespace voxa
@@ -17,6 +18,7 @@ namespace
         juce::AudioBuffer<float> playback;   // mono, at the processor sample rate
         juce::String name;
         juce::File file;
+        int gender = 0;   // 0 unknown, 1 male, 2 female (analysed once on load)
 
         void resampleTo (double rate)
         {
@@ -580,6 +582,7 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         }
 
         // 2. Source selection
+        bool usingSample = false;
         if (singMode)
         {
             juce::FloatVectorOperations::clear (mono, n);
@@ -626,6 +629,7 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             const float* src = sampleClip->playback.getReadPointer (0);
             const int len = sampleClip->playback.getNumSamples();
             auto idx = (juce::int64) d.samplePos.load();
+            usingSample = true;
             for (int i = 0; i < n; ++i, ++idx)
                 mono[i] = idx < len ? src[idx] : 0.0f;
             d.samplePos.store ((double) idx);
@@ -643,6 +647,8 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         auto settings = buildChainSettings (p, traits, effectiveBpm, d.currentMidiNote(), singMode);
         if (singMode && takeIsNeural && ! useMidiSource)
             settings.useNeural = false;
+        if (usingSample && settings.pitch.sourceGender == 0)
+            settings.pitch.sourceGender = sampleClip->gender;
         d.chain.process (mono, wetL, wetR, n, settings);
 
         // 4. Dry alignment, mix, output gain, power
@@ -993,6 +999,8 @@ bool VoxaVersaProcessor::loadSample (const juce::File& file, juce::String& error
     clip->originalRate = reader->sampleRate;
     clip->name = file.getFileNameWithoutExtension();
     clip->file = file;
+    clip->gender = (int) dsp::VoiceGenderEstimator::analyse (clip->original.getReadPointer (0), clip->original.getNumSamples(),
+                                                             clip->originalRate);
     clip->resampleTo (currentSampleRate);
 
     samplePlaying.store (false);
@@ -1080,12 +1088,14 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     juce::AudioBuffer<float> source;
     juce::String name;
     bool sourceIsSynth = false, sourceIsNeural = false;
+    int sourceGender = 0;
     {
         const juce::SpinLock::ScopedLockType lock (impl->clipLock);
         if (target == RenderTarget::Sample && impl->sample != nullptr)
         {
             source = impl->sample->playback;
             name = impl->sample->name;
+            sourceGender = impl->sample->gender;
         }
         else if (target == RenderTarget::SingTake && impl->take != nullptr)
         {
@@ -1112,6 +1122,8 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
 
     const double bpm = hostBpm.load() > 0.0 ? hostBpm.load() : (double) ParamCache::v (impl->params.singTempo);
     auto settings = buildChainSettings (impl->params, traits, bpm, -1, sourceIsSynth);
+    if (settings.pitch.sourceGender == 0)
+        settings.pitch.sourceGender = sourceGender;   // whole-file analysis beats the live estimate
     const auto model = (! sourceIsNeural && settings.useNeural) ? impl->currentModel : nullptr;
     settings.useNeural = false;
 

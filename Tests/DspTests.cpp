@@ -1,6 +1,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "dsp/PitchDetector.h"
 #include "dsp/VoiceChain.h"
+#include "dsp/VoiceGenderEstimator.h"
 #include "voices/VoiceLibrary.h"
 #include "TestSignals.h"
 
@@ -352,7 +353,75 @@ public:
     }
 };
 
+class GenderEstimatorTests : public juce::UnitTest
+{
+public:
+    GenderEstimatorTests() : juce::UnitTest ("Voice gender estimator", "DSP") {}
+
+    /** Glottal pulses through five formants scaled by `tract` (1 = adult male). */
+    static std::vector<float> makeTractVoice (double sr, int n, float f0, float tract, bool vibrato)
+    {
+        std::vector<float> out ((size_t) n);
+        // Typical sung-vowel formants of an adult male (F3 + F4 ~ 6800 Hz, as measured on real singers).
+        const double formants[5] = { 550.0, 1500.0, 2900.0, 3850.0, 4700.0 };
+        const double gains[5] = { 1.0, 0.6, 0.35, 0.25, 0.15 };
+        dsp::Biquad f[5];
+        for (int k = 0; k < 5; ++k)
+            f[k].c = dsp::BiquadCoeffs::bandPass (sr, formants[k] * tract, 8.0 + k * 2.0);
+        double phase = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double hz = f0 * (vibrato ? 1.0 + 0.02 * std::sin (i * 2.0 * juce::MathConstants<double>::pi * 5.5 / sr) : 1.0);
+            phase += hz / sr;
+            if (phase >= 1.0) phase -= 1.0;
+            const float g = phase < 0.4 ? (float) (0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * phase / 0.4))
+                                        : (phase < 0.55 ? (float) std::cos (juce::MathConstants<double>::halfPi * (phase - 0.4) / 0.15) : 0.0f);
+            float y = 0.0f;
+            for (int k = 0; k < 5; ++k)
+                y += (float) gains[k] * f[k].process (g - 0.3f);
+            out[(size_t) i] = 0.3f * y;
+        }
+        return out;
+    }
+
+    void runTest() override
+    {
+        const double sr = 48000.0;
+        using G = dsp::VoiceGenderEstimator::Gender;
+
+        beginTest ("Male and female vocal tracts at typical pitches");
+        {
+            auto male = makeTractVoice (sr, (int) (sr * 4), 130.0f, 1.0f, true);
+            auto female = makeTractVoice (sr, (int) (sr * 4), 240.0f, 1.1f, true);
+            float sm = 0.0f, sf = 0.0f;
+            const auto gm = dsp::VoiceGenderEstimator::analyse (male.data(), (int) male.size(), sr, &sm);
+            const auto gf = dsp::VoiceGenderEstimator::analyse (female.data(), (int) female.size(), sr, &sf);
+            expect (gm == G::Male, "male score " + juce::String (sm));
+            expect (gf == G::Female, "female score " + juce::String (sf));
+        }
+
+        beginTest ("Vocal-tract length outweighs a misleading pitch");
+        {
+            // A man singing high (240 Hz) and a woman singing low (200 Hz).
+            auto highMale = makeTractVoice (sr, (int) (sr * 4), 240.0f, 0.98f, true);
+            auto lowFemale = makeTractVoice (sr, (int) (sr * 4), 200.0f, 1.12f, true);
+            float sm = 0.0f, sf = 0.0f;
+            const auto gm = dsp::VoiceGenderEstimator::analyse (highMale.data(), (int) highMale.size(), sr, &sm);
+            const auto gf = dsp::VoiceGenderEstimator::analyse (lowFemale.data(), (int) lowFemale.size(), sr, &sf);
+            expect (gm == G::Male, "high male score " + juce::String (sm));
+            expect (gf == G::Female, "low female score " + juce::String (sf));
+        }
+
+        beginTest ("Silence stays unknown");
+        {
+            std::vector<float> silence ((size_t) sr * 2, 0.0f);
+            expect (dsp::VoiceGenderEstimator::analyse (silence.data(), (int) silence.size(), sr) == G::Unknown);
+        }
+    }
+};
+
 static PitchDetectorTests pitchDetectorTests;
+static GenderEstimatorTests genderEstimatorTests;
 static VoiceChainTests voiceChainTests;
 
 } // namespace voxa

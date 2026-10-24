@@ -14,6 +14,7 @@ endif()
 
 option(VOXAVERSA_BUILD_SINGER "Also build the 'VoxaVersa Singer' instrument variant" ON)
 option(VOXAVERSA_BUILD_TESTS  "Build the unit test runner" ON)
+option(VOXAVERSA_BUILD_TOOLS  "Build developer tools (offline render CLI)" OFF)
 set(VOXAVERSA_AAX_SDK_PATH "" CACHE PATH "Path to the Avid AAX SDK (enables the AAX format)")
 
 # ---------------------------------------------------------------------------------------------
@@ -145,6 +146,20 @@ if(VOXAVERSA_BUILD_SINGER)
     voxa_configure_target(VoxaVersaSinger)
 endif()
 
+# Console targets compile the plug-in sources without a plug-in wrapper.
+function(voxa_configure_console_target target)
+    voxa_configure_target(${target})
+    target_compile_definitions(${target} PRIVATE
+        VOXAVERSA_TESTS=1
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JucePlugin_Name="VoxaVersa"
+        JucePlugin_IsSynth=0
+        JucePlugin_WantsMidiInput=1
+        JucePlugin_ProducesMidiOutput=0
+        JucePlugin_IsMidiEffect=0
+        JucePlugin_EditorRequiresKeyboardFocus=1)
+endfunction()
+
 # ---------------------------------------------------------------------------------------------
 # Unit tests (JUCE UnitTest framework, no external dependencies)
 # ---------------------------------------------------------------------------------------------
@@ -156,16 +171,16 @@ if(VOXAVERSA_BUILD_TESTS)
 
     juce_add_console_app(VoxaVersaTests PRODUCT_NAME "VoxaVersaTests")
     target_sources(VoxaVersaTests PRIVATE ${VOXA_TEST_SOURCES})
-    voxa_configure_target(VoxaVersaTests)
+    voxa_configure_console_target(VoxaVersaTests)
     target_include_directories(VoxaVersaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Tests)
-    target_compile_definitions(VoxaVersaTests PRIVATE
-        VOXAVERSA_TESTS=1
-        JUCE_MODAL_LOOPS_PERMITTED=1
-        JucePlugin_Name="VoxaVersa"
-        JucePlugin_IsSynth=0
-        JucePlugin_WantsMidiInput=1
-        JucePlugin_ProducesMidiOutput=0
-        JucePlugin_IsMidiEffect=0
-        JucePlugin_EditorRequiresKeyboardFocus=1)
     add_test(NAME VoxaVersaTests COMMAND VoxaVersaTests)
+endif()
+
+# ---------------------------------------------------------------------------------------------
+# Developer tools
+# ---------------------------------------------------------------------------------------------
+if(VOXAVERSA_BUILD_TOOLS)
+    juce_add_console_app(VoxaVersaRender PRODUCT_NAME "VoxaVersaRender")
+    target_sources(VoxaVersaRender PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools/render/RenderMain.cpp)
+    voxa_configure_console_target(VoxaVersaRender)
 endif()

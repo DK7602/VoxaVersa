@@ -50,6 +50,8 @@ public:
     int getDetectedKeyRoot() const noexcept     { return keyKnown ? keyDetector.getKeyRoot() : -1; }
     ScaleType getDetectedScale() const noexcept { return keyDetector.getScale(); }
     int getSourceGenderEstimate() const noexcept { return genderEstimate; }   // 0 unknown, 1 male, 2 female
+    /** Gender of the input voice from VoiceGenderEstimator (0 unknown, 1 male, 2 female). */
+    void setSourceGenderEstimate (int g) noexcept { genderEstimate = g; }
     float getSourceMedianMidi() const noexcept  { return sourceMedian; }
     int getRegisterOctaves() const noexcept     { return registerOctaves; }
 
@@ -57,6 +59,8 @@ public:
     float getSourceFormantBaseline (int sourceGenderSetting) const noexcept;
 
 private:
+    void updateRegister (const Settings&) noexcept;
+
     double sr = 48000.0;
     float hopSec = 0.004f;
 
@@ -77,6 +81,8 @@ private:
     float sourceWeight = 0.0f;
     int genderEstimate = 0;
     int registerOctaves = 0;
+    bool registerLocked = false;
+    int lockedCentre = -1000, lockedSource = -1;
     KeyDetector keyDetector;
     bool keyKnown = false;
     int keyUpdateCounter = 0;
