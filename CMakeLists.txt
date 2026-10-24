@@ -168,3 +168,9 @@ if(VOXAVERSA_BUILD_TESTS)
         JucePlugin_EditorRequiresKeyboardFocus=1)
     add_test(NAME VoxaVersaTests COMMAND VoxaVersaTests)
 endif()
+
+# ---------------------------------------------------------------------------------------------
+# Optional: copy ONNX Runtime (AI voice engine) next to the built binaries.
+# Opt-in with -DVOXAVERSA_ONNXRUNTIME_DIR=<extracted ONNX Runtime release>; see the file for details.
+# ---------------------------------------------------------------------------------------------
+include(cmake/BundleOnnxRuntime.cmake)
