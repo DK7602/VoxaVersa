@@ -76,7 +76,7 @@ void LevelMeter::tick (float dt)
     }
 
     if (changed)
-        repaint();
+        repaint (bars[0].getUnion (bars[1]).expanded (4.0f).getSmallestIntegerContainer());
 }
 
 void LevelMeter::resized()
@@ -143,10 +143,12 @@ void LevelMeter::paint (juce::Graphics& g)
     // scale
     const auto f = font (15.0f);
     const auto& bar = bars[0];
-    for (int db : { 0, -6, -12, -24, -48 })
+    static const juce::StringArray labels { "0", "-6", "-12", "-24", "-48" };
+    static constexpr float levels[] = { 0.0f, -6.0f, -12.0f, -24.0f, -48.0f };
+    for (int i = 0; i < labels.size(); ++i)
     {
-        const float y = bar.getY() + dbToPosition ((float) db) * bar.getHeight();
-        drawText (g, juce::String (db), { scaleArea.getX() + 6.0f, y - 9.0f, scaleArea.getWidth() - 6.0f, 18.0f }, f,
+        const float y = bar.getY() + dbToPosition (levels[i]) * bar.getHeight();
+        drawText (g, labels[i], { scaleArea.getX() + 6.0f, y - 9.0f, scaleArea.getWidth() - 6.0f, 18.0f }, f,
                   Palette::textSoft, juce::Justification::centredLeft);
     }
 }

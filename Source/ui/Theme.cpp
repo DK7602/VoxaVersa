@@ -3,6 +3,7 @@
 #include "../core/MusicTheory.h"
 
 #include <cmath>
+#include <map>
 #include <vector>
 
 namespace voxa::ui
@@ -40,6 +41,7 @@ namespace
         }
 
         juce::Typeface::Ptr regular, medium, semibold, title;
+        std::map<int, juce::Font> cache;   // fonts are reused: constructing one allocates
 
         JUCE_DECLARE_SINGLETON_INLINE (FontSet, false)
     };
@@ -52,10 +54,18 @@ juce::Typeface::Ptr getTypeface (Weight weight)
 
 juce::Font font (float height, Weight weight)
 {
-    if (auto tf = getTypeface (weight))
-        return juce::Font (juce::FontOptions (tf).withHeight (height));
+    auto* set = FontSet::getInstance();
+    const int key = juce::roundToInt (height * 16.0f) * 8 + (int) weight;
 
-    return juce::Font (juce::FontOptions (height));
+    if (auto it = set->cache.find (key); it != set->cache.end())
+        return it->second;
+
+    auto tf = set->get (weight);
+    auto f = tf != nullptr ? juce::Font (juce::FontOptions (tf).withHeight (height))
+                           : juce::Font (juce::FontOptions (height));
+    if (set->cache.size() < 512)
+        set->cache.emplace (key, f);
+    return f;
 }
 
 //==============================================================================

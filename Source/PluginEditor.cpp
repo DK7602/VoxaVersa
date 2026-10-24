@@ -178,6 +178,9 @@ void VoxaVersaEditor::paint (juce::Graphics& g)
 
 void VoxaVersaEditor::resized()
 {
+    if (getWidth() <= 0 || getHeight() <= 0 || view == nullptr)
+        return;
+
     const float scale = (float) getWidth() / (float) ui::MainView::designWidth;
     view->setTransform (juce::AffineTransform::scale (scale));
     view->setBounds (0, 0, ui::MainView::designWidth, ui::MainView::designHeight);
