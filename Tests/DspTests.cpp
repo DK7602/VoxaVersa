@@ -255,6 +255,28 @@ public:
             expect (diff > energy * 0.01, "stereo spread expected");
         }
 
+        beginTest ("CPU budget with every voice and effect enabled");
+        {
+            dsp::VoiceChain chain;
+            chain.prepare (sr, 256, Quality::HighQuality);
+            auto s = neutralSettings (voice);
+            s.harmonyOn = true;
+            s.harmonyInterval[2] = HarmonyInterval::OctaveDown;
+            s.doublerOn = true;
+            s.pitch.tuneOn = true;
+            s.pitch.pitchSemis = 3.0f;
+            s.gender = 0.5f;
+            s.breath = 0.3f; s.rasp = 0.3f; s.saturation = 0.3f;
+            s.deEsser = 0.5f; s.compressor = 0.5f; s.delayMix = 0.3f; s.reverbMix = 0.3f;
+            auto in = makeVoice (sr, (int) (sr * 10.0), [] (int i) { return 220.0f + 30.0f * std::sin ((float) i * 0.0001f); });
+            const auto t0 = juce::Time::getMillisecondCounterHiRes();
+            run (chain, in, s, 256);
+            const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+            const double load = ms / 10000.0 * 100.0;
+            logMessage ("Full chain CPU: " + juce::String (load, 2) + "% of one core (10 s of audio in " + juce::String (ms, 1) + " ms)");
+            expect (load < 50.0, "chain too slow: " + juce::String (load) + "%");
+        }
+
         beginTest ("Every factory voice processes cleanly with full FX");
         {
             dsp::VoiceChain chain;

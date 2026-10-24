@@ -1,0 +1,93 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+            generator: Ninja
+            artefacts: "VST3 LV2 Standalone"
+          - name: macOS
+            os: macos-14
+            generator: Ninja
+            artefacts: "VST3 AU Standalone"
+          - name: Windows
+            os: windows-2022
+            generator: "Visual Studio 17 2022"
+            artefacts: "VST3 Standalone"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev ladspa-sdk libcurl4-openssl-dev \
+            libfreetype6-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev xvfb
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Cache JUCE download
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-8.0.9-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ./build/VoxaVersaTests_artefacts/Release/VoxaVersaTests
+
+      - name: Test (macOS)
+        if: runner.os == 'macOS'
+        run: ./build/VoxaVersaTests_artefacts/Release/VoxaVersaTests
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ./build/VoxaVersaTests_artefacts/Release/VoxaVersaTests.exe
+
+      - name: Collect artefacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          for format in ${{ matrix.artefacts }}; do
+            for plugin in VoxaVersa VoxaVersaSinger; do
+              src="build/${plugin}_artefacts/Release/${format}"
+              if [ -d "$src" ]; then
+                mkdir -p "dist/${format}"
+                cp -R "$src"/* "dist/${format}/"
+              fi
+            done
+          done
+          ls -R dist | head -50
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxaVersa-${{ matrix.name }}
+          path: dist
+          if-no-files-found: error
