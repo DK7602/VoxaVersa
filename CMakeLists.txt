@@ -184,3 +184,9 @@ if(VOXAVERSA_BUILD_TOOLS)
     target_sources(VoxaVersaRender PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools/render/RenderMain.cpp)
     voxa_configure_console_target(VoxaVersaRender)
 endif()
+
+# ---------------------------------------------------------------------------------------------
+# Optional: copy ONNX Runtime (AI voice engine) next to the built binaries.
+# Opt-in with -DVOXAVERSA_ONNXRUNTIME_DIR=<extracted ONNX Runtime release>; see the file for details.
+# ---------------------------------------------------------------------------------------------
+include(cmake/BundleOnnxRuntime.cmake)
