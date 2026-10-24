@@ -51,8 +51,8 @@ struct VoxaVersaEditor::Snapshot
         for (int i = 0; i < n; ++i)
         {
             const double t = time + (double) i / sr;
-            const double syll = (0.3 + 0.7 * std::pow (std::abs (std::sin (juce::MathConstants<double>::twoPi * 1.3 * t)), 0.7))
-                              * (0.6 + 0.4 * std::sin (juce::MathConstants<double>::twoPi * 0.37 * t));
+            const double syll = (0.45 + 0.55 * std::pow (std::abs (std::sin (juce::MathConstants<double>::twoPi * 1.3 * t)), 0.7))
+                              * (0.82 + 0.18 * std::sin (juce::MathConstants<double>::twoPi * 0.37 * t));
             // harmonic series via the Chebyshev recurrence sin(k x) = 2 cos(x) sin((k-1) x) - sin((k-2) x)
             const double phi = juce::MathConstants<double>::twoPi * 220.0 * t;
             const double c2 = 2.0 * std::cos (phi);
