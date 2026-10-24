@@ -26,7 +26,9 @@ namespace
       VOXAVERSA_SNAPSHOT_GRID=1            open the voice grid
       VOXAVERSA_SNAPSHOT_DELAY=<ms>        delay before capturing (default 1500)
       VOXAVERSA_SNAPSHOT_DEMO=0            do not feed the demo signal into the scopes / meters
-      VOXAVERSA_AVATAR_SHEET=<file.png>    render every voice portrait into a contact sheet and quit */
+      VOXAVERSA_SNAPSHOT_SIZE=<width>      editor width for the capture (default 1536)
+      VOXAVERSA_AVATAR_SHEET=<file.png>    render every voice portrait into a contact sheet and quit
+      VOXAVERSA_DEMO=1                     only animate the UI with the demo signal (UI tests / profiling) */
 struct VoxaVersaEditor::Snapshot
 {
     juce::File output, avatarSheet;

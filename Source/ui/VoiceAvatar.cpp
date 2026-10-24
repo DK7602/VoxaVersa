@@ -101,8 +101,8 @@ namespace
     const std::map<Hair, const char*>& maleHairShapes()
     {
         static const std::map<Hair, const char*> t {
-            { Hair::Short, "M 66.5 25.5 C 67 17 59.5 10.5 48.5 10.5 C 37 10.5 28 16.5 26.6 27.5 C 25.9 33.5 26.6 39 28.8 44.5 C 33 44 37 42 40.5 39 C 43 37 45.5 37.5 47.5 40 L 49.6 45.6 L 51.6 45.2 C 51.4 39.4 52.6 33.6 55.2 29.6 C 58.2 26.8 62.4 26 66.5 25.5 Z" },
-            { Hair::Quiff, "M 67.5 24.5 C 71.5 19 69 8.5 55 7 C 42 6 30 12 27 24.5 C 25.8 32 26.4 39 28.8 44.5 C 33 44 37 42 40.5 39 C 43 37 45.5 37.5 47.5 40 L 49.6 45.6 L 51.6 45.2 C 51.4 39.4 52.6 33.6 55.2 29.6 C 58.4 26.6 62.8 25.6 67.5 24.5 Z" },
+            { Hair::Short, "M 66.8 26.2 C 68.6 23.4 68.2 20 66.2 17.8 C 66.9 15.8 65.6 13.6 63.4 13.2 C 62.2 10.9 59.4 9.9 56.8 10.6 C 54.4 8.9 50.6 8.7 47.8 9.7 C 44.6 8.9 40.6 9.9 38.2 12 C 34.8 12.2 31.9 14.2 30.6 17.2 C 28.2 19.2 27 22.6 27.3 26 C 26 29.2 26.2 33.4 27.4 36.8 C 27.4 39.6 28 42.4 28.8 44.5 C 33 44 37 42 40.5 39 C 43 37 45.5 37.5 47.5 40 L 49.6 45.6 L 51.6 45.2 C 51.4 39.4 52.6 33.6 55.2 29.6 C 57.6 27.6 60.8 27.8 62.8 27 C 64.2 27.8 65.6 27.4 66.8 26.2 Z" },
+            { Hair::Quiff, "M 68.2 25 C 71.8 22.4 72.4 17.6 70 14.2 C 70.4 11 67.6 7.8 63.8 7.6 C 61.4 5.2 57 4.6 53.6 6 C 50 4.8 45.4 5.6 42.6 8 C 38.6 7.8 34.6 10 32.6 13.4 C 29.6 15.4 27.6 19.4 27.6 23.6 C 26 27.4 26.2 32.6 27.6 36.8 C 27.6 39.6 28.1 42.4 28.8 44.5 C 33 44 37 42 40.5 39 C 43 37 45.5 37.5 47.5 40 L 49.6 45.6 L 51.6 45.2 C 51.4 39.4 52.6 33.6 55.2 29.6 C 58 27 62.4 26.4 65 26.6 C 66.2 26.4 67.4 25.8 68.2 25 Z" },
             { Hair::Fringe, "M 68 31.5 C 69.5 22 63 10 49 10 C 37 10 28 16 26.6 27.5 C 25.9 33.5 26.6 39 28.8 44.5 C 33 44 37 42 40.5 39 C 43 37 45.5 37.5 47.5 40 L 49.6 45.6 L 51.6 45.2 C 51.6 39.5 53 34.5 56 31.5 C 60 29.5 64 31 68 31.5 Z" },
             { Hair::Slick, "M 66 24 C 65 16.5 58 11.5 48.5 11.5 C 38 11.5 29.5 16 27.4 26 C 26.4 32 27 38 29 42.5 C 33 43 36 42 39 40 C 42 38 45 38 47.5 40.5 L 49.6 45.6 L 51.6 45.2 C 51.6 38 53 32 56 28 C 59 25.6 62.4 24.6 66 24 Z" },
             { Hair::Afro, "M 67 27 C 72 20 70 7 58 3.5 C 46 0 30 2.5 22 12 C 15 21 16 34 21 43 C 24.5 48.5 30 50 35 47 C 39 44.5 43 42 47 41.5 L 50 45.5 L 52 45 C 52.5 38 54.5 32.5 58 29.5 C 61 28 64 27.6 67 27 Z" },
@@ -182,10 +182,31 @@ namespace
             : g (gr), voice (v), recipe (recipeFor (v)), a (v.accentA), b (v.accentB),
               rng ((juce::int64) v.id.hashCode64())
         {
-            lit = a.interpolatedWith (juce::Colour (0xffd2dcf2), 0.45f).withMultipliedBrightness (0.88f);
-            dark = juce::Colour (0xff080d24).interpolatedWith (a, 0.14f);
-            hairDark = juce::Colour (0xff04061a).interpolatedWith (a, 0.22f);
-            hairLit = a.interpolatedWith (b, 0.35f).withMultipliedBrightness (0.62f);
+            const auto h = (juce::uint64) v.id.hashCode64();
+            setPerson ((int) (h % 7), (int) ((h >> 8) % 6), recipe.figure == Figure::Female);
+        }
+
+        /** Skin tone and natural hair colour, lit by the voice's accent colours. */
+        void setPerson (int skinIndex, int hairIndex, bool female)
+        {
+            static const juce::uint32 skins[] = { 0xfff3d1bb, 0xffe8b896, 0xffd09a72, 0xffb27a55, 0xff8d5a3b, 0xff6a412b, 0xff4d2f20 };
+            static const juce::uint32 hairs[] = { 0xff17110f, 0xff2e1d14, 0xff533520, 0xff7a3b1f, 0xffc39a55, 0xffd8cdbd };
+
+            // darker skin tones get darker hair more often; platinum / blonde mostly for lighter tones
+            if (skinIndex >= 4 && hairIndex >= 3)
+                hairIndex = (hairIndex + skinIndex) % 3;
+            if (! female && hairIndex == 5)
+                hairIndex = 1;
+            if ((recipe.hair == Hair::Curly || recipe.hair == Hair::Afro || recipe.hair == Hair::Dreads) && hairIndex >= 4)
+                hairIndex = hairIndex - 3;
+
+            const juce::Colour skin (skins[juce::jlimit (0, 6, skinIndex)]);
+            const juce::Colour hairColour (hairs[juce::jlimit (0, 5, hairIndex)]);
+
+            lit = skin.interpolatedWith (b, 0.12f).withMultipliedBrightness (0.96f);
+            dark = skin.darker (1.6f).interpolatedWith (juce::Colour (0xff0a1030), 0.55f);
+            hairLit = hairColour.brighter (0.35f).interpolatedWith (b, 0.18f);
+            hairDark = hairColour.darker (0.8f).interpolatedWith (juce::Colour (0xff05081a), 0.35f);
         }
 
         juce::ColourGradient rimGradient (float alpha) const
@@ -218,7 +239,7 @@ namespace
             g.reduceClipRegion (body);
 
             // key light on the face
-            g.setGradientFill (juce::ColourGradient (b.interpolatedWith (juce::Colours::white, 0.3f).withAlpha (0.42f * brightness), 66.0f, 40.0f,
+            g.setGradientFill (juce::ColourGradient (b.interpolatedWith (juce::Colours::white, 0.3f).withAlpha (0.3f * brightness), 66.0f, 40.0f,
                                                      b.withAlpha (0.0f), 47.0f, 40.0f, true));
             g.fillRect (juce::Rectangle<float> (30.0f, 14.0f, 50.0f, 56.0f));
 
@@ -728,6 +749,7 @@ namespace
                 g.saveState();
                 g.addTransform (juce::AffineTransform::scale (m.s).translated (m.x, m.y));
                 recipe.hair = m.female ? Hair::Curly : Hair::Short;
+                setPerson ((int) (&m - members) * 3 % 7, (int) (&m - members) % 4, m.female);
                 person (m.female, m.bright);
                 g.restoreState();
             }

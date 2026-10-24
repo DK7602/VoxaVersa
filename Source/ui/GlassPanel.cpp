@@ -7,7 +7,7 @@ GlassPanel::GlassPanel (const juce::String& t, std::optional<Icon> icon)
     : title (t), titleIcon (icon)
 {
     setTitle (t);
-    setFocusContainerType (FocusContainerType::keyboardFocusContainer);
+    setFocusContainerType (FocusContainerType::focusContainer);
 }
 
 void GlassPanel::paintStatic (juce::Graphics& g, juce::Rectangle<float> area)

@@ -277,7 +277,7 @@ void TabButton::paintButton (juce::Graphics& g, bool hover, bool)
     const auto f = font (fontHeight, Weight::Title);
 
     drawText (g, getButtonText(), r.withTrimmedBottom (4.0f), f,
-              on ? juce::Colours::white : (hover ? Palette::textSoft : Palette::textDim));
+              on ? juce::Colours::white : (hover ? Palette::text : Palette::textSoft.withAlpha (0.72f)));
 
     if (on)
     {

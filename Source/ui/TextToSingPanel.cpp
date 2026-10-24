@@ -610,8 +610,11 @@ void TextToSingPanel::showMenu()
     m.addItem (6, "Render Take to WAV", ready && ! ctx.isAnyRenderPending());
     m.addItem (7, "Open Export Folder");
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuButton), [this] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuButton), [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         switch (r)
         {
             case 1:

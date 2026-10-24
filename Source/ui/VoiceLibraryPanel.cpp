@@ -681,8 +681,11 @@ void VoiceLibraryPanel::showCardMenu (int index)
         m.addItem (5, "Show Voice Pack Folder");
     }
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, v, index] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, v, index, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         switch (r)
         {
             case 1: selectVoice (index); break;
@@ -717,8 +720,11 @@ void VoiceLibraryPanel::showStylesMenu()
     for (int i = 0; i < styles.size(); ++i)
         m.addItem (100 + i, styles[i], true, styles[i] == filter.style);
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&stylesButton).withMinimumNumColumns (3).withMaximumNumColumns (3), [this, styles] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&stylesButton).withMinimumNumColumns (3).withMaximumNumColumns (3), [this, styles, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (r == 1)
             filter.style = {};
         else if (r >= 100)
@@ -738,8 +744,11 @@ void VoiceLibraryPanel::showGenresMenu()
     for (int i = 0; i < genres.size(); ++i)
         m.addItem (100 + i, genres[i], true, genres[i] == filter.genre);
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&genresButton).withMinimumNumColumns (2).withMaximumNumColumns (2), [this, genres] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&genresButton).withMinimumNumColumns (2).withMaximumNumColumns (2), [this, genres, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (r == 1)
             filter.genre = {};
         else if (r >= 100)

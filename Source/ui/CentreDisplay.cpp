@@ -106,8 +106,8 @@ void CentreDisplay::updateReadouts()
         engineText = newEngine;
         engineSub = newEngineSub;
         engineLit = lit;
-        for (auto& p : pills)
-            p.dirty = true;
+        for (auto& pill : pills)
+            pill.dirty = true;
         repaint (leftPill.getUnion (leftPill2).expanded (8.0f).toNearestInt());
         repaint (rightPill.getUnion (rightPill2).expanded (8.0f).toNearestInt());
     }

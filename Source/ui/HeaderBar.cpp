@@ -231,8 +231,11 @@ void HeaderBar::showABMenu()
     m.addSectionHeader ("A/B Compare");
     m.addItem (1, aActive ? "Copy A to B" : "Copy B to A");
     m.addItem (2, aActive ? "Switch to B" : "Switch to A");
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&slotA), [this] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&slotA), [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         auto& presets = ctx.processor.getPresetManager();
         if (r == 1)
         {
@@ -282,8 +285,11 @@ void HeaderBar::showPresetMenu()
     menu.addItem (10004, "Open Presets Folder");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (presetName.get()).withMinimumWidth (220),
-                        [this] (int result)
+                        [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int result)
     {
+        if (safeThis == nullptr)
+            return;
+
         auto& presetManager = ctx.processor.getPresetManager();
         if (result > 0 && result <= (int) presetManager.getPresets().size())
         {
@@ -320,8 +326,11 @@ void HeaderBar::savePresetDialog()
         te->selectAll();
     }
 
-    dialog->enterModalState (true, juce::ModalCallbackFunction::create ([this] (int result)
+    dialog->enterModalState (true, juce::ModalCallbackFunction::create ([this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int result)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (dialog == nullptr)
             return;
 
@@ -359,8 +368,11 @@ void HeaderBar::confirmDeletePreset()
                        .withButton ("Cancel")
                        .withAssociatedComponent (getDialogParent());
 
-    juce::AlertWindow::showAsync (options, [this, index, name] (int result)
+    juce::AlertWindow::showAsync (options, [this, index, name, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int result)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (result != 1)
             return;
         if (ctx.processor.getPresetManager().deleteUserPreset (index))
@@ -476,8 +488,11 @@ void HeaderBar::showSettingsMenu()
     menu.addSeparator();
     menu.addItem (about, "About VoxaVersa...");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&gearButton).withMinimumWidth (240), [this] (int r)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&gearButton).withMinimumWidth (240), [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (r >= sizeBase && r < sizeBase + (int) std::size (widths))
         {
             if (onUiSizeChosen)

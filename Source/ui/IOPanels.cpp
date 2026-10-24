@@ -307,8 +307,11 @@ void InputPanel::showSourceMenu()
         m.addItem (6, "Reveal Last Recording", ctx.processor.getLastRecording().existsAsFile());
     }
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&linkButton), [this] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&linkButton), [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         auto chooseSample = [this]
         {
             ctx.chooseFile ("Load Voice Sample", "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg;*.m4a", false,
@@ -426,8 +429,11 @@ void OutputPanel::showOutputMenu()
     m.addSeparator();
     m.addItem (4, "Reset Mix to 100% Wet");
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&linkButton), [this] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&linkButton), [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
+        if (safeThis == nullptr)
+            return;
+
         if (r == 1)
         {
             auto dir = VoxaVersaProcessor::getExportDirectory();
