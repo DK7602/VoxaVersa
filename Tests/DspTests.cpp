@@ -255,6 +255,49 @@ public:
             expect (diff > energy * 0.01, "stereo spread expected");
         }
 
+        beginTest ("Voiced / unvoiced transitions are click-free");
+        {
+            // Phrase: vowel, sibilant noise, vowel at another pitch, silence, vowel.
+            std::vector<float> in;
+            auto append = [&in] (const std::vector<float>& v) { in.insert (in.end(), v.begin(), v.end()); };
+            dsp::Noise noise;
+            dsp::Biquad hp;
+            hp.c = dsp::BiquadCoeffs::highPass (sr, 4000.0, 0.7071);
+            std::vector<float> sss ((size_t) (sr * 0.12));
+            for (auto& v : sss) v = hp.process (noise.next()) * 0.15f;
+            append (makeVoice (sr, (int) (sr * 0.4), [] (int) { return 200.0f; }));
+            append (sss);
+            append (makeVoice (sr, (int) (sr * 0.4), [] (int) { return 260.0f; }));
+            append (std::vector<float> ((size_t) (sr * 0.2), 0.0f));
+            append (makeVoice (sr, (int) (sr * 0.4), [] (int) { return 150.0f; }));
+
+            auto maxStep = [] (const std::vector<float>& x, size_t from)
+            {
+                float rms = 0.0f, step = 0.0f;
+                for (size_t i = from + 1; i < x.size(); ++i)
+                {
+                    rms += x[i] * x[i];
+                    step = juce::jmax (step, std::abs (x[i] - x[i - 1]));
+                }
+                rms = std::sqrt (rms / (float) (x.size() - from));
+                return step / juce::jmax (1.0e-6f, rms);
+            };
+
+            for (float semis : { -7.0f, 0.0f, 7.0f })
+            {
+                dsp::VoiceChain chain;
+                chain.prepare (sr, 256, Quality::Balanced);
+                auto s = neutralSettings (voice);
+                s.pitch.pitchSemis = semis;
+                s.gender = 0.6f;
+                auto out = run (chain, in, s, 256);
+                const float inStep = maxStep (in, 0);
+                const float outStep = maxStep (out, (size_t) chain.getLatencySamples());
+                logMessage (juce::String (semis) + " st: max step/rms in " + juce::String (inStep, 2) + ", out " + juce::String (outStep, 2));
+                expect (outStep < inStep * 2.5f, "possible clicks at " + juce::String (semis) + " st");
+            }
+        }
+
         beginTest ("CPU budget with every voice and effect enabled");
         {
             dsp::VoiceChain chain;
