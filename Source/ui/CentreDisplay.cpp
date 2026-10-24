@@ -21,6 +21,35 @@ void CentreDisplay::resized()
     rightPill  = { (float) getWidth() - 86.0f, 140.0f, 80.0f, 64.0f };
     rightPill2 = { (float) getWidth() - 86.0f, 214.0f, 80.0f, 64.0f };
     haloImage = {};
+    for (auto& p : pills)
+        p.dirty = true;
+
+    // tiles covering the halo ring (0.9 .. 1.3 x the orb radius)
+    ringTiles.clear();
+    const auto halo = orbArea.expanded (orbArea.getWidth() * 0.15f);
+    const auto c = orbArea.getCentre();
+    const float radius = orbArea.getWidth() * 0.5f;
+    const int grid = 8;
+    const float tw = halo.getWidth() / (float) grid, th = halo.getHeight() / (float) grid;
+    for (int ty = 0; ty < grid; ++ty)
+    {
+        for (int tx = 0; tx < grid; ++tx)
+        {
+            const juce::Rectangle<float> tile (halo.getX() + (float) tx * tw, halo.getY() + (float) ty * th, tw, th);
+            const float nearX = juce::jlimit (tile.getX(), tile.getRight(), c.x), nearY = juce::jlimit (tile.getY(), tile.getBottom(), c.y);
+            const float farX = std::abs (tile.getX() - c.x) > std::abs (tile.getRight() - c.x) ? tile.getX() : tile.getRight();
+            const float farY = std::abs (tile.getY() - c.y) > std::abs (tile.getBottom() - c.y) ? tile.getY() : tile.getBottom();
+            const float minDist = c.getDistanceFrom ({ nearX, nearY });
+            const float maxDist = c.getDistanceFrom ({ farX, farY });
+            if (maxDist > radius * 0.88f && minDist < radius * 1.3f)
+                ringTiles.add (tile.getSmallestIntegerContainer());
+        }
+    }
+
+    const float spacing = orbArea.getWidth() * 0.028f;
+    barsArea = juce::Rectangle<float> (spacing * (float) (numBars + 2), orbArea.getHeight() * 0.42f)
+                   .withCentre ({ orbArea.getCentreX(), orbArea.getCentreY() + orbArea.getHeight() * 0.025f })
+                   .getSmallestIntegerContainer();
 }
 
 void CentreDisplay::updateReadouts()
@@ -77,6 +106,8 @@ void CentreDisplay::updateReadouts()
         engineText = newEngine;
         engineSub = newEngineSub;
         engineLit = lit;
+        for (auto& p : pills)
+            p.dirty = true;
         repaint (leftPill.getUnion (leftPill2).expanded (8.0f).toNearestInt());
         repaint (rightPill.getUnion (rightPill2).expanded (8.0f).toNearestInt());
     }
@@ -115,8 +146,14 @@ void CentreDisplay::tick (float dt)
     }
 
     const float glow = 0.42f + 0.12f * std::sin (phase) + 0.46f * level;
-    if (std::abs (glow - drawnGlow) > 0.012f || barChange > 0.05f)
-        repaint (orbArea.expanded (orbArea.getWidth() * 0.16f).toNearestInt());
+    if (std::abs (glow - drawnGlow) > 0.012f)
+    {
+        drawnGlow = glow;
+        for (auto& tile : ringTiles)
+            repaint (tile);
+    }
+    if (barChange > 0.05f)
+        repaint (barsArea);
 }
 
 void CentreDisplay::paintPill (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& label,
@@ -131,6 +168,27 @@ void CentreDisplay::paintPill (juce::Graphics& g, juce::Rectangle<float> r, cons
     drawText (g, label, inner.removeFromTop (14.0f), font (12.5f, Weight::SemiBold), Palette::textDim);
     drawText (g, value, inner.removeFromTop (26.0f), font (25.0f, Weight::SemiBold), lit ? juce::Colours::white : Palette::text);
     drawText (g, sub, inner, font (12.5f), Palette::textSoft);
+}
+
+void CentreDisplay::drawPill (juce::Graphics& g, int index, juce::Rectangle<float> area, const juce::String& label,
+                              const juce::String& value, const juce::String& sub, bool lit, float phys)
+{
+    if (! g.clipRegionIntersects (area.getSmallestIntegerContainer()))
+        return;
+
+    auto& cache = pills[(size_t) index];
+    if (cache.dirty || std::abs (cache.scale - phys) > 0.001f || ! cache.image.isValid())
+    {
+        cache.dirty = false;
+        cache.scale = phys;
+        cache.image = juce::Image (juce::Image::ARGB, juce::roundToInt (area.getWidth() * phys) + 2,
+                                   juce::roundToInt (area.getHeight() * phys) + 2, true);
+        juce::Graphics pg (cache.image);
+        pg.addTransform (juce::AffineTransform::scale (phys));
+        paintPill (pg, area.withPosition (1.0f / phys, 1.0f / phys), label, value, sub, lit);
+    }
+    g.setOpacity (1.0f);
+    drawCachedImage (g, cache.image, area.getTopLeft() - juce::Point<float> (1.0f / phys, 1.0f / phys), phys);
 }
 
 void CentreDisplay::paint (juce::Graphics& g)
@@ -156,9 +214,7 @@ void CentreDisplay::paint (juce::Graphics& g)
         hg.fillEllipse (0.0f, 0.0f, (float) w, (float) h);
     }
 
-    const float glow = 0.42f + 0.12f * std::sin (phase) + 0.46f * level;
-    drawnGlow = glow;
-    g.setOpacity (juce::jlimit (0.0f, 1.0f, glow));
+    g.setOpacity (juce::jlimit (0.0f, 1.0f, drawnGlow));
     drawCachedImage (g, haloImage, haloArea.getTopLeft(), phys);
     g.setOpacity (1.0f);
 
@@ -187,10 +243,10 @@ void CentreDisplay::paint (juce::Graphics& g)
         }
     }
 
-    paintPill (g, leftPill, "PITCH IN", inNote, "your voice", inNote != "--");
-    paintPill (g, leftPill2, "KEY", keyText, keySub, false);
-    paintPill (g, rightPill, "PITCH OUT", outNote, "new voice", outNote != "--");
-    paintPill (g, rightPill2, "ENGINE", engineText, engineSub, engineLit);
+    drawPill (g, 0, leftPill, "PITCH IN", inNote, "your voice", inNote != "--", phys);
+    drawPill (g, 1, leftPill2, "KEY", keyText, keySub, false, phys);
+    drawPill (g, 2, rightPill, "PITCH OUT", outNote, "new voice", outNote != "--", phys);
+    drawPill (g, 3, rightPill2, "ENGINE", engineText, engineSub, engineLit, phys);
 }
 
 } // namespace voxa::ui

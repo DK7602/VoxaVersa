@@ -203,9 +203,9 @@ void ModeTab::paintButton (juce::Graphics& g, bool hover, bool down)
     content.removeFromLeft (12.0f);
 
     auto titleArea = content.removeFromTop (content.getHeight() * 0.54f);
-    drawText (g, getButtonText(), titleArea, font (21.0f, Weight::Medium), juce::Colours::white.withAlpha (on ? 1.0f : 0.92f),
+    drawText (g, getButtonText(), titleArea, font (22.5f, Weight::SemiBold), juce::Colours::white.withAlpha (on ? 1.0f : 0.94f),
               juce::Justification::bottomLeft);
-    drawText (g, subtitle, content, font (16.0f), (on ? juce::Colour (0xffd8e6ff) : Palette::textSoft), juce::Justification::topLeft);
+    drawText (g, subtitle, content, font (17.0f), (on ? juce::Colour (0xffdde9ff) : Palette::textSoft), juce::Justification::topLeft);
 }
 
 //==============================================================================

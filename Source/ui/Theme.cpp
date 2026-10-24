@@ -66,8 +66,16 @@ float physicalScale (juce::Graphics& g)
 
 void drawCachedImage (juce::Graphics& g, const juce::Image& image, juce::Point<float> topLeft, float scale)
 {
-    if (image.isValid())
-        g.drawImageTransformed (image, juce::AffineTransform::scale (1.0f / scale).translated (topLeft));
+    if (! image.isValid())
+        return;
+
+    // The image was rendered at the physical resolution, so the combined transform is a pure
+    // translation. With low resampling quality the software renderer then takes its fast blit path
+    // (snapping to the nearest pixel) instead of interpolating every pixel.
+    g.saveState();
+    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+    g.drawImageTransformed (image, juce::AffineTransform::scale (1.0f / scale).translated (topLeft));
+    g.restoreState();
 }
 
 void blurImage (juce::Image& image, int radius, int passes)

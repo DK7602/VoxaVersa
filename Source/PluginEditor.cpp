@@ -34,6 +34,7 @@ struct VoxaVersaEditor::Snapshot
     bool demo = true, done = false;
     double time = 0.0;
     std::vector<float> left, right;
+    juce::Random random { 42 };
 
     void feed (VoxaVersaProcessor& p, float dt)
     {
@@ -50,13 +51,22 @@ struct VoxaVersaEditor::Snapshot
             const double t = time + (double) i / sr;
             const double syll = (0.3 + 0.7 * std::pow (std::abs (std::sin (juce::MathConstants<double>::twoPi * 1.3 * t)), 0.7))
                               * (0.6 + 0.4 * std::sin (juce::MathConstants<double>::twoPi * 0.37 * t));
-            const double f0 = 220.0 * (1.0 + 0.015 * std::sin (juce::MathConstants<double>::twoPi * 5.5 * t));
-            double s = 0.0;
+            // harmonic series via the Chebyshev recurrence sin(k x) = 2 cos(x) sin((k-1) x) - sin((k-2) x)
+            const double phi = juce::MathConstants<double>::twoPi * 220.0 * t;
+            const double c2 = 2.0 * std::cos (phi);
+            double sPrev = 0.0, sCur = std::sin (phi), s = 0.0;
             for (int k = 1; k <= 6; ++k)
-                s += std::sin (juce::MathConstants<double>::twoPi * f0 * k * t + k) / (double) k;
-            const double noise = (std::sin (t * 12345.678) * 0.5 + std::sin (t * 7919.1) * 0.5) * 0.15;
-            left[(size_t) i] = (float) (0.42 * syll * (s * 0.6 + noise));
-            right[(size_t) i] = (float) (0.48 * std::pow (syll, 0.8) * (s * 0.55 + noise * 1.4));
+            {
+                s += sCur / (double) k;
+                const double next = c2 * sCur - sPrev;
+                sPrev = sCur;
+                sCur = next;
+            }
+            const double noise = (random.nextDouble() - 0.5) * 0.3;
+            const auto block = (juce::int64) (t * 220.0);
+            const double spike = 0.25 + 0.75 * (double) ((block * 2654435761LL) % 1000) / 1000.0;
+            left[(size_t) i] = (float) (0.5 * syll * spike * (s * 0.6 + noise));
+            right[(size_t) i] = (float) (0.55 * std::pow (syll, 0.8) * std::sqrt (spike) * (s * 0.55 + noise * 1.4));
         }
         time += (double) n / sr;
 

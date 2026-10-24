@@ -59,6 +59,12 @@ private:
     bool highlighted = false, silent = true;
     double playPosition = -1.0;
     juce::String placeholder;
+    juce::Image background, frame;   // cached inset / reused bar buffer (physical resolution)
+    float backgroundScale = 0.0f;
+    std::array<juce::PixelARGB, 256> colourTable;
+    juce::PixelARGB glowPixel;
+
+    void buildColourTable();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WaveformScope)
 };

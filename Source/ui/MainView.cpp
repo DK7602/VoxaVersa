@@ -210,10 +210,10 @@ void MainView::paintBackdrop (juce::Graphics& g)
 
     // luminous base
     {
-        juce::ColourGradient base (juce::Colour (0xfff6f9ff), orbCentre.x, orbCentre.y, juce::Colour (0xff4f72c4), orbCentre.x + 1050.0f, orbCentre.y, true);
-        base.addColour (0.22, juce::Colour (0xffd9e6fd));
-        base.addColour (0.45, juce::Colour (0xffa9c0ef));
-        base.addColour (0.75, juce::Colour (0xff7c9be0));
+        juce::ColourGradient base (juce::Colour (0xfff6f9ff), orbCentre.x, orbCentre.y, juce::Colour (0xff8297c8), orbCentre.x + 1050.0f, orbCentre.y, true);
+        base.addColour (0.22, juce::Colour (0xffe2eafa));
+        base.addColour (0.45, juce::Colour (0xffbccbea));
+        base.addColour (0.75, juce::Colour (0xff9cb0da));
         g.setGradientFill (base);
         g.fillRect (bounds);
     }
@@ -232,10 +232,10 @@ void MainView::paintBackdrop (juce::Graphics& g)
 
         const float width = 10.0f + rng.nextFloat() * 52.0f;
         const float offset = width * 0.45f;
-        g.setColour (juce::Colour (0xff2552c0).withAlpha (0.10f + rng.nextFloat() * 0.20f));
+        g.setColour (juce::Colour (0xff2552c0).withAlpha (0.12f + rng.nextFloat() * 0.26f));
         g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
                       juce::AffineTransform::translation (offset, offset * 0.6f));
-        g.setColour (juce::Colours::white.withAlpha (0.12f + rng.nextFloat() * 0.30f));
+        g.setColour (juce::Colours::white.withAlpha (0.22f + rng.nextFloat() * 0.40f));
         g.strokePath (p, juce::PathStrokeType (width * 0.55f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
@@ -250,9 +250,9 @@ void MainView::paintBackdrop (juce::Graphics& g)
         p.cubicTo (left ? 160.0f + rng.nextFloat() * 200.0f : 1376.0f - rng.nextFloat() * 200.0f, y0 - 200.0f - rng.nextFloat() * 300.0f,
                    left ? 380.0f + rng.nextFloat() * 160.0f : 1156.0f - rng.nextFloat() * 160.0f, y0 + rng.nextFloat() * 200.0f,
                    left ? 520.0f + rng.nextFloat() * 120.0f : 1016.0f - rng.nextFloat() * 120.0f, y0 - 420.0f - rng.nextFloat() * 260.0f);
-        g.setColour (juce::Colour (0xff1a45b0).withAlpha (0.08f + rng.nextFloat() * 0.10f));
+        g.setColour (juce::Colour (0xff1a45b0).withAlpha (0.12f + rng.nextFloat() * 0.16f));
         g.strokePath (p, juce::PathStrokeType (20.0f + rng.nextFloat() * 60.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (juce::Colours::white.withAlpha (0.10f + rng.nextFloat() * 0.18f));
+        g.setColour (juce::Colours::white.withAlpha (0.25f + rng.nextFloat() * 0.3f));
         g.strokePath (p, juce::PathStrokeType (6.0f + rng.nextFloat() * 14.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
                       juce::AffineTransform::translation (-12.0f, -8.0f));
     }

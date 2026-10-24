@@ -81,7 +81,11 @@ public:
     void drawCornerResizer (juce::Graphics&, int w, int h, bool isMouseOver, bool isMouseDragging) override;
 
 private:
+    const juce::TextLayout& getTooltipLayout (const juce::String& text);
+
     std::map<int, juce::Image> chromeCaps;
+    juce::String tooltipText;
+    juce::TextLayout tooltipLayout;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoxaLookAndFeel)
 };

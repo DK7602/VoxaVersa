@@ -155,12 +155,14 @@ void LevelMeter::paint (juce::Graphics& g)
 WaveformScope::WaveformScope (ScopeBuffer& b) : buffer (b)
 {
     setInterceptsMouseClicks (false, false);
+    buildColourTable();
 }
 
 void WaveformScope::resized()
 {
     numPoints = juce::jlimit (32, maxPoints, getWidth() / 3);
     std::fill (drawnAmps.begin(), drawnAmps.end(), -1.0f);
+    background = {};
 }
 
 void WaveformScope::setHighlighted (bool h)
@@ -213,10 +215,48 @@ void WaveformScope::tick()
         repaint();
 }
 
+
+void WaveformScope::buildColourTable()
+{
+    // centre of each bar is near-white, fading through light blue to deep blue at its tips
+    const juce::Colour core (0xfff0f8ff), mid (0xff86c2ff), body (0xff3f8dff), tip (0xff2563ec);
+    for (int i = 0; i < 256; ++i)
+    {
+        const float t = (float) i / 255.0f;
+        juce::Colour c;
+        if (t < 0.3f)       c = core.interpolatedWith (mid, t / 0.3f);
+        else if (t < 0.6f)  c = mid.interpolatedWith (body, (t - 0.3f) / 0.3f);
+        else                c = body.interpolatedWith (tip, (t - 0.6f) / 0.4f).withMultipliedAlpha (1.0f - (t - 0.6f) * 0.5f);
+        colourTable[(size_t) i] = c.getPixelARGB();
+    }
+    glowPixel = juce::Colour (0xff4f9bff).withAlpha (0.42f).getPixelARGB();
+}
+
 void WaveformScope::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    fillInset (g, r, 10.0f);
+    const float phys = physicalScale (g);
+    const int pw = juce::jmax (1, juce::roundToInt (r.getWidth() * phys));
+    const int ph = juce::jmax (1, juce::roundToInt (r.getHeight() * phys));
+
+    // static inset + centre line, cached at the physical resolution
+    if (! background.isValid() || std::abs (backgroundScale - phys) > 0.001f
+        || background.getWidth() != pw || background.getHeight() != ph)
+    {
+        backgroundScale = phys;
+        background = juce::Image (juce::Image::ARGB, pw, ph, true, juce::SoftwareImageType());
+        frame = juce::Image (juce::Image::ARGB, pw, ph, true, juce::SoftwareImageType());
+
+        juce::Graphics bg (background);
+        bg.addTransform (juce::AffineTransform::scale (phys));
+        fillInset (bg, r, 10.0f);
+        auto in = r.reduced (10.0f, 8.0f);
+        juce::ColourGradient cg (Palette::glow.withAlpha (0.0f), in.getX(), in.getCentreY(), Palette::glow.withAlpha (0.0f), in.getRight(), in.getCentreY(), false);
+        cg.addColour (0.5, Palette::glowBright.withAlpha (0.7f));
+        bg.setGradientFill (cg);
+        bg.fillRect (juce::Rectangle<float> (in.getX(), in.getCentreY() - 0.6f, in.getWidth(), 1.2f));
+    }
+    drawCachedImage (g, background, {}, backgroundScale);
 
     if (highlighted)
     {
@@ -226,57 +266,55 @@ void WaveformScope::paint (juce::Graphics& g)
         g.drawRoundedRectangle (r.reduced (1.0f), 10.0f, 2.0f);
     }
 
-    auto inner = r.reduced (10.0f, 8.0f);
-    const float cy = inner.getCentreY();
-    const float halfH = inner.getHeight() * 0.5f;
-
-    // centre line
-    {
-        juce::ColourGradient cg (Palette::glow.withAlpha (0.0f), inner.getX(), cy, Palette::glow.withAlpha (0.0f), inner.getRight(), cy, false);
-        cg.addColour (0.5, Palette::glowBright.withAlpha (0.7f));
-        g.setGradientFill (cg);
-        g.fillRect (juce::Rectangle<float> (inner.getX(), cy - 0.6f, inner.getWidth(), 1.2f));
-    }
-
+    const auto inner = r.reduced (10.0f, 8.0f);
     if (silent && placeholder.isNotEmpty())
         drawText (g, placeholder, inner, font (15.0f), Palette::textDim);
 
-    const float step = inner.getWidth() / (float) numPoints;
-    const float lineW = juce::jmax (1.0f, step * 0.5f);
-    const float edge = (float) numPoints * 0.14f;
-
-    // glow layer
-    juce::ColourGradient glowGrad (Palette::glow.withAlpha (0.0f), 0.0f, cy - halfH, Palette::glow.withAlpha (0.0f), 0.0f, cy + halfH, false);
-    glowGrad.addColour (0.5, Palette::glow.withAlpha (0.35f));
-    g.setGradientFill (glowGrad);
-    for (int i = 0; i < numPoints; ++i)
+    // Bars are written straight into a pixel buffer (no path rasterisation): a colour table gives
+    // every bar a bright core and deep-blue tips, flanked by soft glow columns.
+    frame.clear (frame.getBounds());
     {
-        const float fi = (float) i;
-        const float taper = juce::jmin (1.0f, juce::jmin (fi, (float) numPoints - 1.0f - fi) / edge);
-        const float a = amps[(size_t) i] * (0.25f + 0.75f * taper * taper);
-        drawnAmps[(size_t) i] = amps[(size_t) i];
-        if (a < 0.01f)
-            continue;
-        const float hh = a * halfH;
-        g.fillRect (juce::Rectangle<float> (inner.getX() + fi * step - lineW, cy - hh - 1.5f, lineW * 3.0f, hh * 2.0f + 3.0f));
-    }
+        juce::Image::BitmapData bd (frame, juce::Image::BitmapData::readWrite);
+        const auto in = inner * phys;
+        const float step = in.getWidth() / (float) numPoints;
+        const int lineW = juce::jmax (1, juce::roundToInt (step * 0.5f));
+        const int cy = juce::roundToInt (in.getCentreY());
+        const float halfH = in.getHeight() * 0.5f;
+        const float edge = (float) numPoints * 0.14f;
 
-    // core lines
-    juce::ColourGradient core (juce::Colour (0xff1e63ff), 0.0f, cy - halfH, juce::Colour (0xff1e63ff), 0.0f, cy + halfH, false);
-    core.addColour (0.30, juce::Colour (0xff3d8dff));
-    core.addColour (0.5, juce::Colour (0xffe3f3ff));
-    core.addColour (0.70, juce::Colour (0xff3d8dff));
-    g.setGradientFill (core);
-    for (int i = 0; i < numPoints; ++i)
-    {
-        const float fi = (float) i;
-        const float taper = juce::jmin (1.0f, juce::jmin (fi, (float) numPoints - 1.0f - fi) / edge);
-        const float a = amps[(size_t) i] * (0.25f + 0.75f * taper * taper);
-        if (a < 0.01f)
-            continue;
-        const float hh = juce::jmax (0.8f, a * halfH);
-        g.fillRect (juce::Rectangle<float> (inner.getX() + fi * step, cy - hh, lineW, hh * 2.0f));
+        for (int i = 0; i < numPoints; ++i)
+        {
+            const float fi = (float) i;
+            const float taper = juce::jmin (1.0f, juce::jmin (fi, (float) numPoints - 1.0f - fi) / edge);
+            const float a = amps[(size_t) i] * (0.25f + 0.75f * taper * taper);
+            drawnAmps[(size_t) i] = amps[(size_t) i];
+            if (a < 0.01f)
+                continue;
+
+            const int x = (int) (in.getX() + fi * step);
+            const int hh = juce::jlimit (1, ph / 2 - 1, juce::roundToInt (a * halfH));
+            const int y0 = juce::jmax (0, cy - hh), y1 = juce::jmin (ph - 1, cy + hh);
+            const float invH = 255.0f / (float) hh;
+
+            for (int col = x - 1; col <= x + lineW; ++col)
+            {
+                if (! juce::isPositiveAndBelow (col, pw))
+                    continue;
+
+                const bool glowColumn = col < x || col >= x + lineW;
+                for (int y = glowColumn ? y0 + hh / 4 : y0; y <= (glowColumn ? y1 - hh / 4 : y1); ++y)
+                {
+                    auto* p = reinterpret_cast<juce::PixelARGB*> (bd.getPixelPointer (col, y));
+                    if (glowColumn)
+                        p->blend (glowPixel);
+                    else
+                        p->set (colourTable[(size_t) juce::jmin (255, (int) ((float) std::abs (y - cy) * invH))]);
+                }
+            }
+        }
     }
+    g.setOpacity (1.0f);
+    drawCachedImage (g, frame, {}, backgroundScale);
 
     if (playPosition >= 0.0)
     {

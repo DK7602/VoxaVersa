@@ -78,12 +78,13 @@ void GlassPanel::paintGlassCard (juce::Graphics& g, juce::Rectangle<float> area,
     outline.addRoundedRectangle (area, corner);
 
     // outer glow + shadow
-    drawGlow (g, outline, Palette::glow.withAlpha (0.45f), 12);
     {
         juce::Path shadow;
-        shadow.addRoundedRectangle (area.translated (0.0f, 6.0f), corner);
-        drawGlow (g, shadow, juce::Colours::black.withAlpha (0.35f), 14);
+        shadow.addRoundedRectangle (area.translated (0.0f, 7.0f), corner);
+        drawGlow (g, shadow, juce::Colour (0xff06103a).withAlpha (0.35f), 16);
     }
+    drawGlow (g, outline, Palette::glow.withAlpha (0.55f), 10);
+    drawGlow (g, outline, juce::Colours::white.withAlpha (0.35f), 3);
 
     g.saveState();
     g.reduceClipRegion (outline);
@@ -91,35 +92,39 @@ void GlassPanel::paintGlassCard (juce::Graphics& g, juce::Rectangle<float> area,
     if (backdrop != nullptr && backdrop->isValid())
         g.drawImageTransformed (*backdrop, juce::AffineTransform::scale (1.0f / backdropScale).translated (backdropOrigin));
 
-    // navy tint
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a2d60).withAlpha (0.80f), area.getX(), area.getY(),
-                                             juce::Colour (0xff09142f).withAlpha (0.90f), area.getX(), area.getBottom(), false));
-    g.fillRect (area);
+    // translucent navy tint: lighter towards the top so the silk shows through like frosted glass
+    {
+        juce::ColourGradient tint (juce::Colour (0xff253a70).withAlpha (0.70f), area.getX(), area.getY(),
+                                   juce::Colour (0xff0a1736).withAlpha (0.86f), area.getX(), area.getBottom(), false);
+        tint.addColour (0.35, juce::Colour (0xff18295a).withAlpha (0.78f));
+        g.setGradientFill (tint);
+        g.fillRect (area);
+    }
 
     // diagonal sheen
     {
-        juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.07f), area.getX(), area.getY(),
-                                    juce::Colours::white.withAlpha (0.0f), area.getX() + area.getWidth() * 0.35f, area.getY() + area.getHeight() * 0.6f, false);
+        juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.12f), area.getX(), area.getY(),
+                                    juce::Colours::white.withAlpha (0.0f), area.getX() + area.getWidth() * 0.4f, area.getY() + area.getHeight() * 0.7f, false);
         g.setGradientFill (sheen);
         g.fillRect (area);
     }
 
     // inner top light
-    g.setGradientFill (juce::ColourGradient (Palette::glowBright.withAlpha (0.10f), area.getX(), area.getY(),
-                                             Palette::glowBright.withAlpha (0.0f), area.getX(), area.getY() + 40.0f, false));
-    g.fillRect (area.withHeight (40.0f));
+    g.setGradientFill (juce::ColourGradient (Palette::glowBright.withAlpha (0.12f), area.getX(), area.getY(),
+                                             Palette::glowBright.withAlpha (0.0f), area.getX(), area.getY() + 44.0f, false));
+    g.fillRect (area.withHeight (44.0f));
 
-    // inner edge darkening
-    g.setColour (juce::Colours::black.withAlpha (0.25f));
-    g.drawRoundedRectangle (area.reduced (2.0f), corner - 1.5f, 2.0f);
+    // inner rim light
+    g.setColour (Palette::glow.withAlpha (0.25f));
+    g.drawRoundedRectangle (area.reduced (2.5f), corner - 2.0f, 2.0f);
     g.restoreState();
 
-    // border
-    juce::ColourGradient border (Palette::panelBorder.withAlpha (0.85f), area.getX(), area.getY(),
-                                 Palette::panelBorder.withAlpha (0.35f), area.getRight(), area.getBottom(), false);
-    border.addColour (0.5, Palette::glow.withAlpha (0.55f));
+    // bright frosted border
+    juce::ColourGradient border (juce::Colour (0xfff2f7ff).withAlpha (0.95f), area.getX(), area.getY(),
+                                 Palette::glowBright.withAlpha (0.55f), area.getRight(), area.getBottom(), false);
+    border.addColour (0.45, juce::Colour (0xffbcd8ff).withAlpha (0.8f));
     g.setGradientFill (border);
-    g.drawRoundedRectangle (area.reduced (0.6f), corner, 1.3f);
+    g.drawRoundedRectangle (area.reduced (0.75f), corner, 1.6f);
 }
 
 } // namespace voxa::ui

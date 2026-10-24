@@ -10,7 +10,7 @@ ValueBox::ValueBox (juce::Slider& s) : slider (s)
 {
     setEditable (false, true, false);
     setJustificationType (juce::Justification::centred);
-    setFont (ui::font (16.0f, Weight::Medium));
+    setFont (ui::font (17.0f, Weight::SemiBold));
     setColour (juce::Label::textColourId, Palette::text);
     setTitle (s.getTitle() + " value");
     setTooltip ("Double-click to type a value");
@@ -19,7 +19,7 @@ ValueBox::ValueBox (juce::Slider& s) : slider (s)
 
 void ValueBox::setFontHeight (float h)
 {
-    setFont (ui::font (h, Weight::Medium));
+    setFont (ui::font (h, Weight::SemiBold));
 }
 
 void ValueBox::update()

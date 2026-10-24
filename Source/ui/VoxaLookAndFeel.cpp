@@ -184,22 +184,40 @@ void VoxaLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wid
     }
 
     // bezel well
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff22356a), c.x, c.y - bezelR,
-                                             juce::Colour (0xff050a1a), c.x, c.y + bezelR, false));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1c2d5c), c.x, c.y - bezelR,
+                                             juce::Colour (0xff040817), c.x, c.y + bezelR, false));
     g.fillEllipse (circle (bezelR));
-    g.setColour (Palette::panelBorder.withAlpha (0.22f));
-    g.drawEllipse (circle (bezelR - 0.5f), 1.0f);
+
+    // luminous blue ring around the cap (brighter where the light falls, and when active)
+    {
+        const float ringR = (capR + bezelR) * 0.5f + 0.5f;
+        const float ringW = juce::jmax (1.2f, (bezelR - capR) * (small ? 0.55f : 0.62f));
+        juce::Path ring;
+        ring.addEllipse (circle (ringR));
+        const float boost = enabled ? (active ? 1.0f : 0.82f) : 0.3f;
+
+        juce::ColourGradient rg (accent.brighter (0.6f).withMultipliedAlpha (boost), c.x - ringR, c.y - ringR,
+                                 accent.darker (0.9f).withMultipliedAlpha (boost), c.x + ringR * 0.6f, c.y + ringR, false);
+        rg.addColour (0.45, accent.withMultipliedAlpha (boost));
+
+        g.setColour (accent.withAlpha (0.18f * boost));
+        g.strokePath (ring, juce::PathStrokeType (ringW * 2.6f));
+        g.setGradientFill (rg);
+        g.strokePath (ring, juce::PathStrokeType (ringW));
+        g.setColour (juce::Colours::white.withAlpha (0.35f * boost));
+        g.drawEllipse (circle (ringR + ringW * 0.5f), 0.6f);
+    }
 
     // cap shadow
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillEllipse (circle (capR + 1.2f).translated (0.0f, capR * 0.07f));
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillEllipse (circle (capR + 0.8f).translated (0.0f, capR * 0.06f));
 
     // chrome cap
     {
         const float phys = physicalScale (g);
         const auto& cap = getChromeCap (juce::roundToInt (capR * 2.0f * phys));
         g.setOpacity (enabled ? 1.0f : 0.55f);
-        g.drawImage (cap, circle (capR));
+        drawCachedImage (g, cap, c - juce::Point<float> ((float) cap.getWidth(), (float) cap.getHeight()) * (0.5f / phys), phys);
         g.setOpacity (1.0f);
 
         if (active && enabled)
@@ -399,7 +417,7 @@ void VoxaLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bo
 
 juce::Font VoxaLookAndFeel::getComboBoxFont (juce::ComboBox& box)
 {
-    return font (juce::jlimit (12.0f, 16.0f, (float) box.getHeight() * 0.46f), Weight::Medium);
+    return font (juce::jlimit (12.0f, 17.0f, (float) box.getHeight() * 0.47f), Weight::Medium);
 }
 
 void VoxaLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
@@ -545,10 +563,20 @@ namespace
     }
 }
 
+const juce::TextLayout& VoxaLookAndFeel::getTooltipLayout (const juce::String& text)
+{
+    if (text != tooltipText || tooltipLayout.getNumLines() == 0)
+    {
+        tooltipText = text;
+        tooltipLayout = layoutTooltip (text, 300.0f);
+    }
+    return tooltipLayout;
+}
+
 juce::Rectangle<int> VoxaLookAndFeel::getTooltipBounds (const juce::String& tipText, juce::Point<int> screenPos,
                                                         juce::Rectangle<int> parentArea)
 {
-    const auto tl = layoutTooltip (tipText, 300.0f);
+    const auto& tl = getTooltipLayout (tipText);
     const int w = (int) std::ceil (tl.getWidth()) + 22;
     const int h = (int) std::ceil (tl.getHeight()) + 14;
 
@@ -566,7 +594,7 @@ void VoxaLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, 
     g.setColour (Palette::glow.withAlpha (0.8f));
     g.drawRoundedRectangle (r.reduced (0.5f), 6.0f, 1.0f);
 
-    layoutTooltip (text, 300.0f).draw (g, r.reduced (11.0f, 7.0f));
+    getTooltipLayout (text).draw (g, r.reduced (11.0f, 7.0f));
 }
 
 //==============================================================================

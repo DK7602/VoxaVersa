@@ -160,7 +160,18 @@ void HeaderBar::resized()
 
 void HeaderBar::paint (juce::Graphics& g)
 {
+    // dark glass tray holding the two mode tabs
+    {
+        const auto tray = juce::Rectangle<float> (70.0f, 5.0f, 448.0f, 82.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1b2c58).withAlpha (0.55f), tray.getX(), tray.getY(),
+                                                 juce::Colour (0xff081230).withAlpha (0.7f), tray.getX(), tray.getBottom(), false));
+        g.fillRoundedRectangle (tray, 14.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.4f));
+        g.drawRoundedRectangle (tray.reduced (0.5f), 14.0f, 1.0f);
+    }
+
     drawGlassControl (g, presetPill, 10.0f, false, presetName->isMouseOver(), false);
+    fillInset (g, presetName->getBounds().toFloat().reduced (2.0f, 5.0f), 7.0f, 0.8f);
     drawGlassControl (g, abPill, 10.0f, false, false, false);
     drawGlassControl (g, undoPill, 10.0f, false, false, false);
 
