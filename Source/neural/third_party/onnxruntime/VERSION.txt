@@ -1,0 +1,7 @@
+onnxruntime_c_api.h is an unmodified copy of
+https://github.com/microsoft/onnxruntime/blob/v1.20.1/include/onnxruntime/core/session/onnxruntime_c_api.h
+(release v1.20.1, commit 5c1b7ccbff7e5141c1da7a9d963d660e5741c319), licensed under the MIT License (see LICENSE).
+
+VoxaVersa does not link against ONNX Runtime. The shared library is loaded at run time and the C API is
+requested with version 16 (ORT_API_VERSION of ONNX Runtime 1.16), so any runtime >= 1.16 works.
+Only functions that exist in API version 16 may be used (the OrtApi struct is append-only).
