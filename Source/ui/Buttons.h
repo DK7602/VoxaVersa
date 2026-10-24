@@ -21,13 +21,13 @@ public:
 
     explicit GlassButton (const juce::String& buttonText = {}, std::optional<Icon> buttonIcon = std::nullopt, Style buttonStyle = Style::Glass);
 
-    void setIcon (std::optional<Icon> newIcon)          { icon = newIcon; repaint(); }
+    void setIcon (std::optional<Icon> newIcon)          { if (icon != newIcon) { icon = newIcon; repaint(); } }
     void setStyle (Style s)                             { style = s; repaint(); }
     void setCornerRadius (float r)                      { corner = r; repaint(); }
     void setFontHeight (float h)                        { fontHeight = h; repaint(); }
-    void setIconColour (std::optional<juce::Colour> c)  { iconColour = c; repaint(); }
-    void setTextColour (std::optional<juce::Colour> c)  { textColour = c; repaint(); }
-    void setTrailingIcon (std::optional<Icon> i)        { trailingIcon = i; repaint(); }
+    void setIconColour (std::optional<juce::Colour> c)  { if (iconColour != c) { iconColour = c; repaint(); } }
+    void setTextColour (std::optional<juce::Colour> c)  { if (textColour != c) { textColour = c; repaint(); } }
+    void setTrailingIcon (std::optional<Icon> i)        { if (trailingIcon != i) { trailingIcon = i; repaint(); } }
     void setProgress (float p)                          { if (! juce::approximatelyEqual (p, progress)) { progress = p; repaint(); } }
 
     void paintButton (juce::Graphics&, bool isHighlighted, bool isDown) override;
@@ -50,10 +50,10 @@ public:
 
     IconButton (const juce::String& name, Icon icon, Background bg = Background::None);
 
-    void setIcon (Icon newIcon)                 { icon = newIcon; repaint(); }
+    void setIcon (Icon newIcon)                 { if (icon != newIcon) { icon = newIcon; repaint(); } }
     void setIconScale (float s)                 { iconScale = s; repaint(); }
     void setStrokeWidth (float w)               { strokeWidth = w; repaint(); }
-    void setColour (juce::Colour c)             { colour = c; repaint(); }
+    void setColour (juce::Colour c)             { if (colour != c) { colour = c; repaint(); } }
     void setLitWhenOn (bool shouldLight)        { litWhenOn = shouldLight; repaint(); }
 
     void paintButton (juce::Graphics&, bool isHighlighted, bool isDown) override;

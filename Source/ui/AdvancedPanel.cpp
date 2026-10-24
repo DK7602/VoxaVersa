@@ -186,27 +186,25 @@ namespace
         {
             const float hz = ctx.processor.detectedPitchHz.load();
             const float target = ctx.processor.targetPitchHz.load();
-            juce::String newNote = "--";
-            int newCents = 0;
-            bool voiced = hz > 1.0f;
+            const bool voiced = hz > 1.0f;
+            const float midi = voiced ? music::hzToMidi (hz) : 0.0f;
+            const int nearest = juce::roundToInt (midi);
+            const int newCents = voiced ? juce::roundToInt ((midi - (float) nearest) * 100.0f) : 0;
+            const int targetMidi = target > 1.0f ? juce::roundToInt (music::hzToMidi (target)) : -1;
 
-            if (voiced)
-            {
-                const float midi = music::hzToMidi (hz);
-                const int nearest = juce::roundToInt (midi);
-                newNote = music::noteName (nearest);
-                newCents = juce::roundToInt ((midi - (float) nearest) * 100.0f);
-            }
+            const int midiKey = voiced ? nearest : -1;
+            if (voiced == isVoiced && midiKey == shownMidi && newCents == cents && targetMidi == shownTarget)
+                return;
 
-            const auto newTarget = target > 1.0f ? noteNameForHz (target) : juce::String ("--");
-            if (newNote != note || std::abs (newCents - cents) >= 1 || voiced != isVoiced || newTarget != targetNote)
-            {
-                note = newNote;
-                cents = newCents;
-                isVoiced = voiced;
-                targetNote = newTarget;
-                repaint();
-            }
+            isVoiced = voiced;
+            cents = newCents;
+            if (midiKey != shownMidi)
+                note = voiced ? music::noteName (nearest) : juce::String ("--");
+            if (targetMidi != shownTarget)
+                targetNote = targetMidi >= 0 ? music::noteName (targetMidi) : juce::String ("--");
+            shownMidi = midiKey;
+            shownTarget = targetMidi;
+            repaint();
         }
 
         void paint (juce::Graphics& g) override
@@ -250,7 +248,7 @@ namespace
     private:
         EditorContext& ctx;
         juce::String note { "--" }, targetNote { "--" };
-        int cents = 0;
+        int cents = 0, shownMidi = -1, shownTarget = -1;
         bool isVoiced = false;
     };
 

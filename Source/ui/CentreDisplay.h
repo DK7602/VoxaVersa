@@ -46,6 +46,7 @@ private:
     juce::String inNote, outNote, keyText, keySub, engineText, engineSub;
     bool engineLit = false;
     int readoutCounter = 0;
+    std::array<int, 8> readoutSignature { -2, -2, -2, -2, -2, -2, -2, -2 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CentreDisplay)
 };

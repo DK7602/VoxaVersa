@@ -45,6 +45,11 @@ public:
     bool isAnyRenderPending() const noexcept { return pending.has_value(); }
     float getRenderProgress() const noexcept { return processor.getOfflineRenderProgress(); }
     juce::File getRenderedFile (RenderTarget target) const;
+    /** True once a render for this target finished (no file-system access, cheap to poll). */
+    bool hasRender (RenderTarget target) const noexcept
+    {
+        return (target == RenderTarget::Sample ? renderedSample : renderedTake) != juce::File();
+    }
     void invalidateRender (RenderTarget target);
 
     /** Polls render completion; called from the editor's timer. */

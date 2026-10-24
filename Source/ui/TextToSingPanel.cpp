@@ -482,7 +482,7 @@ void TextToSingPanel::tick (float)
 
         using RT = EditorContext::RenderTarget;
         const bool rendering = ctx.isRendering (RT::SingTake);
-        const bool rendered = ctx.getRenderedFile (RT::SingTake).existsAsFile();
+        const bool rendered = ctx.hasRender (RT::SingTake);
         const int percent = juce::roundToInt (ctx.getRenderProgress() * 100.0f);
         const int renderSignature = rendering ? 1000 + percent : (rendered ? 1 : 0);
         if (renderSignature != shownRenderSignature)

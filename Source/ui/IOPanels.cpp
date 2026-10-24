@@ -175,6 +175,7 @@ void InputPanel::updateSampleControls()
     clearButton.setVisible (sample);
 
     caption = sample ? shownSampleName : juce::String ("Your Vocal Track");
+    shownCaptionSignature = -1;
     repaint (captionArea.toNearestInt().expanded (2));
 }
 
@@ -195,21 +196,26 @@ void InputPanel::tick (float dt)
         scope.setPlayPosition (playing ? ctx.processor.getSamplePlayPosition() : -1.0);
 
         const auto len = ctx.processor.getSampleLengthSeconds();
-        auto newCaption = shownSampleName;
-        if (len > 0.0)
-            newCaption << "  " << formatTime (playing ? ctx.processor.getSamplePlayPosition() * len : 0.0) << " / " << formatTime (len);
-        if (newCaption != caption)
+        const int position = playing ? (int) (ctx.processor.getSamplePlayPosition() * len) : 0;
+        const int captionSignature = position * 100000 + (int) len;
+        if (captionSignature != shownCaptionSignature)
         {
-            caption = newCaption;
+            shownCaptionSignature = captionSignature;
+            caption = shownSampleName;
+            if (len > 0.0)
+                caption << "  " << formatTime (position) << " / " << formatTime (len);
             repaint (captionArea.toNearestInt().expanded (2));
         }
 
         const bool rendering = ctx.isRendering (EditorContext::RenderTarget::Sample);
-        renderButton.setButtonText (rendering ? "Cancel" : "Render");
+        if (rendering != renderButton.getToggleState())
+        {
+            renderButton.setButtonText (rendering ? "Cancel" : "Render");
+            renderButton.setToggleState (rendering, juce::dontSendNotification);
+        }
         renderButton.setProgress (rendering ? ctx.getRenderProgress() : -1.0f);
-        renderButton.setToggleState (rendering, juce::dontSendNotification);
 
-        const bool rendered = ctx.getRenderedFile (EditorContext::RenderTarget::Sample).existsAsFile();
+        const bool rendered = ctx.hasRender (EditorContext::RenderTarget::Sample);
         dragButton.setEnabled (rendered);
         dragButton.setToggleState (rendered, juce::dontSendNotification);
     }
@@ -221,10 +227,15 @@ void InputPanel::tick (float dt)
     if (recordButton.isVisible())
     {
         const bool rec = ctx.processor.isRecording();
-        recordButton.setToggleState (rec, juce::dontSendNotification);
-        recordButton.setButtonText (rec ? formatTime (ctx.processor.getRecordingSeconds()) : juce::String ("Rec"));
-        recordButton.setIcon (rec ? Icon::Stop : Icon::Record);
-        recordButton.setIconColour (rec ? juce::Colours::white : Palette::record);
+        const int recSignature = rec ? 1 + (int) ctx.processor.getRecordingSeconds() : 0;
+        if (recSignature != shownRecordSignature)
+        {
+            shownRecordSignature = recSignature;
+            recordButton.setToggleState (rec, juce::dontSendNotification);
+            recordButton.setButtonText (rec ? formatTime (ctx.processor.getRecordingSeconds()) : juce::String ("Rec"));
+            recordButton.setIcon (rec ? Icon::Stop : Icon::Record);
+            recordButton.setIconColour (rec ? juce::Colours::white : Palette::record);
+        }
 
         if (wasRecording && ! rec)
         {

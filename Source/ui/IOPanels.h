@@ -66,6 +66,7 @@ private:
 
     juce::String caption, shownSampleName;
     bool hadSample = false, wasRecording = false, dropHover = false;
+    int shownCaptionSignature = -1, shownRecordSignature = -1;
     juce::Rectangle<float> captionArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InputPanel)

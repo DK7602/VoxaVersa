@@ -58,6 +58,16 @@ void CentreDisplay::updateReadouts()
     const float inHz = p.detectedPitchHz.load();
     const float outHz = p.targetPitchHz.load();
 
+    // only rebuild the strings when something visible changed (no per-frame allocations)
+    const std::array<int, 8> signature { inHz > 1.0f ? juce::roundToInt (music::hzToMidi (inHz)) : -1,
+                                         outHz > 1.0f ? juce::roundToInt (music::hzToMidi (outHz)) : -1,
+                                         ctx.getChoice (ParamID::key), ctx.getChoice (ParamID::scale),
+                                         p.detectedKeyRoot.load(), p.detectedScale.load(),
+                                         (int) p.getNeuralStatus(), ctx.getBool (ParamID::aiEngine) ? 1 : 0 };
+    if (signature == readoutSignature)
+        return;
+    readoutSignature = signature;
+
     auto newIn = noteNameForHz (inHz);
     auto newOut = noteNameForHz (outHz > 1.0f ? outHz : 0.0f);
 
