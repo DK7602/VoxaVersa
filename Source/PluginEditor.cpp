@@ -31,7 +31,7 @@ struct VoxaVersaEditor::Snapshot
 {
     juce::File output, avatarSheet;
     double startMs = 0.0, delayMs = 1500.0;
-    bool demo = true, done = false;
+    bool demo = true, done = false, reportedBounds = false;
     double time = 0.0;
     std::vector<float> left, right;
     juce::Random random { 42 };
@@ -264,7 +264,16 @@ void VoxaVersaEditor::timerCallback()
     lastTickMs = now;
 
     if (snapshot != nullptr && ! snapshot->done)
+    {
         snapshot->feed (processor, dt);
+
+        if (! snapshot->reportedBounds && isShowing())
+        {
+            // lets UI test scripts find the editor on screen
+            snapshot->reportedBounds = true;
+            std::fprintf (stderr, "VOXAVERSA_EDITOR_BOUNDS %s\n", getScreenBounds().toString().toRawUTF8());
+        }
+    }
 
     context.tick();
     view->tick (dt);

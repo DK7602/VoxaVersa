@@ -717,7 +717,7 @@ void VoiceLibraryPanel::showStylesMenu()
     for (int i = 0; i < styles.size(); ++i)
         m.addItem (100 + i, styles[i], true, styles[i] == filter.style);
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&stylesButton).withMaximumNumColumns (3), [this, styles] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&stylesButton).withMinimumNumColumns (3).withMaximumNumColumns (3), [this, styles] (int r)
     {
         if (r == 1)
             filter.style = {};
@@ -738,7 +738,7 @@ void VoiceLibraryPanel::showGenresMenu()
     for (int i = 0; i < genres.size(); ++i)
         m.addItem (100 + i, genres[i], true, genres[i] == filter.genre);
 
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&genresButton).withMaximumNumColumns (2), [this, genres] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&genresButton).withMinimumNumColumns (2).withMaximumNumColumns (2), [this, genres] (int r)
     {
         if (r == 1)
             filter.genre = {};

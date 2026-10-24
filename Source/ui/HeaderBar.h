@@ -42,6 +42,7 @@ private:
     void importVoicePack();
     void showAbout();
     void showABMenu();
+    juce::Component* getDialogParent() { return getParentComponent() != nullptr ? getParentComponent() : this; }
 
     EditorContext& ctx;
 

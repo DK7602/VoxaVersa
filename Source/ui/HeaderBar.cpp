@@ -309,7 +309,7 @@ void HeaderBar::savePresetDialog()
     const int current = pm.getCurrentIndex();
     const bool isUser = juce::isPositiveAndBelow (current, (int) presets.size()) && ! presets[(size_t) current].isFactory;
 
-    dialog = std::make_unique<juce::AlertWindow> ("Save Preset", "Enter a name for your preset:", juce::MessageBoxIconType::NoIcon, this);
+    dialog = std::make_unique<juce::AlertWindow> ("Save Preset", "Enter a name for your preset:", juce::MessageBoxIconType::NoIcon, getDialogParent());
     dialog->addTextEditor ("name", isUser ? pm.getCurrentName() : juce::String ("My Preset"), "Name");
     dialog->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     dialog->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -357,7 +357,7 @@ void HeaderBar::confirmDeletePreset()
                        .withMessage ("Delete the user preset \"" + name + "\"? This cannot be undone.")
                        .withButton ("Delete")
                        .withButton ("Cancel")
-                       .withAssociatedComponent (this);
+                       .withAssociatedComponent (getDialogParent());
 
     juce::AlertWindow::showAsync (options, [this, index, name] (int result)
     {
@@ -416,7 +416,7 @@ void HeaderBar::showAbout()
                                       .withTitle ("About VoxaVersa")
                                       .withMessage (msg)
                                       .withButton ("OK")
-                                      .withAssociatedComponent (this),
+                                      .withAssociatedComponent (getDialogParent()),
                                   nullptr);
 }
 
