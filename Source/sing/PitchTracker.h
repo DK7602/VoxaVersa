@@ -9,7 +9,8 @@ struct PitchFrame
 {
     float hz = 0.0f;          // 0 = unvoiced
     float clarity = 0.0f;     // 1 - YIN aperiodicity (1 = perfectly periodic)
-    float rms = 0.0f;
+    float rms = 0.0f;         // over the (long) analysis window
+    float energy = 0.0f;      // short-time RMS (10 ms) around the frame centre
 };
 
 /** YIN fundamental-frequency estimator (de Cheveigne & Kawahara, 2002), with cumulative-mean

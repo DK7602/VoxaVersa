@@ -1093,7 +1093,8 @@ Score fitProvided (const LyricScript& script, const std::vector<Note>& melodyIn,
     }
 
     // More syllables than notes: repeat the melody (whole bars) until everything can be sung.
-    if (slotsNeeded > (int) mel.size())
+    const bool repeated = slotsNeeded > (int) mel.size();
+    if (repeated)
     {
         const double barStart = std::floor (mel.front().startBeat / 4.0) * 4.0;
         double lastEnd = 0.0;
@@ -1165,13 +1166,14 @@ Score fitProvided (const LyricScript& script, const std::vector<Note>& melodyIn,
         }
     }
 
-    // Spare notes: the last syllable carries on through the rest of its phrase (as a melisma);
-    // anything after the next rest is dropped.
+    // Spare notes: the last syllable carries on through the rest of its phrase as a short melisma;
+    // anything after the next rest is dropped. A repeated melody only finishes its current figure.
     if (! score.notes.empty())
     {
         const int held = score.notes.back().syllable;
+        const int maxExtension = repeated ? 2 : 4;
         int extended = 0;
-        while (next < mel.size() && extended < 8)
+        while (next < mel.size() && extended < maxExtension)
         {
             const auto& n = mel[next];
             const double gap = n.startBeat - score.notes.back().endBeat();

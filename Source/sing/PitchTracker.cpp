@@ -64,6 +64,24 @@ PitchFrame YinPitchTracker::estimate (const float* x)
                 best = tau;
     }
 
+    // Octave check: when a strong 2nd harmonic (e.g. on a formant) makes half the period look
+    // periodic enough, the full period is still clearly *more* periodic.
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        const int target = 2 * best;
+        if (target + 2 >= lastLag || difference[(size_t) best] < 0.02f)
+            break;
+
+        int local = target;
+        for (int tau = target - 2; tau <= target + 2; ++tau)
+            if (difference[(size_t) tau] < difference[(size_t) local])
+                local = tau;
+
+        if (difference[(size_t) local] >= 0.5f * difference[(size_t) best])
+            break;
+        best = local;
+    }
+
     result.clarity = juce::jlimit (0.0f, 1.0f, 1.0f - difference[(size_t) best]);
     if (difference[(size_t) best] > 0.45f || best <= 1 || best >= lastLag)
         return result;
@@ -122,15 +140,23 @@ std::vector<PitchFrame> trackPitch (const float* samples, int numSamples, double
     const int numFrames = (int) std::ceil ((double) n / hop);
     frames.reserve ((size_t) numFrames);
 
+    const int shortHalf = juce::jmax (1, (int) std::round (0.005 * rate));
     for (int i = 0; i < numFrames; ++i)
     {
-        const int start = (int) std::round (i * hop) - frameSize / 2;
+        const int centre = (int) std::round (i * hop);
+        const int start = centre - frameSize / 2;
         for (int j = 0; j < frameSize; ++j)
         {
             const int k = start + j;
             frame[(size_t) j] = (k >= 0 && k < n) ? signal[(size_t) k] : 0.0f;
         }
-        frames.push_back (yin.estimate (frame.data()));
+        auto result = yin.estimate (frame.data());
+
+        double sum = 0.0;
+        for (int k = juce::jmax (0, centre - shortHalf); k < juce::jmin (n, centre + shortHalf); ++k)
+            sum += (double) signal[(size_t) k] * signal[(size_t) k];
+        result.energy = (float) std::sqrt (sum / (2 * shortHalf));
+        frames.push_back (result);
     }
     return frames;
 }
@@ -174,19 +200,20 @@ std::vector<Note> transcribeMelody (const float* samples, int numSamples, double
 
     float maxRms = 0.0f;
     for (const auto& f : frames)
-        maxRms = juce::jmax (maxRms, f.rms);
+        maxRms = juce::jmax (maxRms, f.energy);
     if (maxRms <= 1.0e-5f)
         return notes;
 
-    const float silence = juce::jmax (1.0e-4f, maxRms * 0.03f);
+    const float silenceThreshold = juce::jmax (1.0e-4f, maxRms * 0.03f);
     const int n = (int) frames.size();
 
-    std::vector<bool> voiced ((size_t) n);
+    std::vector<bool> voiced ((size_t) n), silent ((size_t) n);
     std::vector<float> midi ((size_t) n, 0.0f);
     for (int i = 0; i < n; ++i)
     {
         const auto& f = frames[(size_t) i];
-        voiced[(size_t) i] = f.hz > 0.0f && f.clarity > 0.6f && f.rms > silence;
+        silent[(size_t) i] = f.energy <= silenceThreshold;
+        voiced[(size_t) i] = f.hz > 0.0f && f.clarity > 0.6f && ! silent[(size_t) i];
         if (voiced[(size_t) i])
             midi[(size_t) i] = music::hzToMidi (f.hz);
     }
@@ -210,7 +237,7 @@ std::vector<Note> transcribeMelody (const float* samples, int numSamples, double
     std::vector<Segment> segments;
     Segment current;
     bool active = false;
-    int gap = 0;
+    int gap = 0, silence = 0;
 
     auto close = [&]
     {
@@ -224,14 +251,17 @@ std::vector<Note> transcribeMelody (const float* samples, int numSamples, double
     {
         if (! voiced[(size_t) i])
         {
-            if (active && ++gap > 2)
+            // A real silence (even a short one) ends the note; a tracking dropout is bridged.
+            silence = silent[(size_t) i] ? silence + 1 : 0;
+            if (active && (++gap > 5 || silence >= 2))
                 close();
             continue;
         }
         gap = 0;
+        silence = 0;
 
         const float m = midi[(size_t) i];
-        const float level = frames[(size_t) i].rms;
+        const float level = frames[(size_t) i].energy;
 
         if (! active)
         {
@@ -355,6 +385,7 @@ std::vector<Note> transcribeMelody (const float* samples, int numSamples, double
         pending.push_back ({ note, seg.rearticulated, start, end });
     }
 
+    double previousRawEnd = -1.0;
     for (const auto& p : pending)
     {
         if (! notes.empty())
@@ -369,15 +400,17 @@ std::vector<Note> transcribeMelody (const float* samples, int numSamples, double
             if (prev.startBeat + prev.lengthBeats > p.note.startBeat)
                 prev.lengthBeats = p.note.startBeat - prev.startBeat;
 
-            // Same pitch, no gap and no new attack: one long note split by the tracker.
+            // Same pitch, no real gap and no new attack: one long note split by the tracker.
             const bool adjacent = std::abs (prev.startBeat + prev.lengthBeats - p.note.startBeat) < 1.0e-9;
-            if (adjacent && prev.midiNote == p.note.midiNote && ! p.rearticulated)
+            if (adjacent && prev.midiNote == p.note.midiNote && ! p.rearticulated && p.rawStart - previousRawEnd < 0.02)
             {
                 prev.lengthBeats = p.note.startBeat + p.note.lengthBeats - prev.startBeat;
+                previousRawEnd = p.rawEnd;
                 continue;
             }
         }
         notes.push_back (p.note);
+        previousRawEnd = p.rawEnd;
     }
 
     // Leading silence: keep the phase within the beat but drop whole empty beats (leave one).
