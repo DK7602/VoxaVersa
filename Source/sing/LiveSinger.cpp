@@ -333,7 +333,8 @@ struct LiveSinger::Impl
         appendCluster (currentItem.coda.data(), currentItem.numCoda, Role::Coda, 0.9f, 0.3f);
         pushPhase ({ Ph::Sil, Role::Silence, -1.0f });
         releaseFloor = hasCoda ? 0.35f : 0.0f;
-        releaseStart = envelope;
+        // Released before the vowel was reached (a quick tap): still sing a short vowel.
+        releaseStart = numRemaining > 0 ? juce::jmax (envelope, 0.8f) : envelope;
         fallActive = true;
         fallElapsed = 0.0f;
     }

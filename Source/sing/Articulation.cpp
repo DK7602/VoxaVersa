@@ -139,11 +139,11 @@ namespace
     FricShape burstShape (Ph p, float velarCentre) noexcept
     {
         if (p == Ph::P)  return { 900,  1500, 0.6f, 2500, 3000, 0.4f,  0.4f,  400,  0.55f };
-        if (p == Ph::B)  return { 900,  1500, 0.6f, 2500, 3000, 0.4f,  0.4f,  400,  0.30f };
+        if (p == Ph::B)  return { 900,  1500, 0.6f, 2500, 3000, 0.4f,  0.4f,  400,  0.50f };
         if (p == Ph::T)  return { 4200, 2000, 1.0f, 6500, 3000, 0.6f,  0.15f, 2200, 0.80f };
-        if (p == Ph::D)  return { 4200, 2000, 1.0f, 6500, 3000, 0.6f,  0.15f, 2200, 0.45f };
+        if (p == Ph::D)  return { 4200, 2000, 1.0f, 6500, 3000, 0.6f,  0.15f, 2200, 0.75f };
         if (p == Ph::K)  return { velarCentre, 800, 1.0f, 4000, 2000, 0.35f, 0.05f, 900, 0.75f };
-        if (p == Ph::G)  return { velarCentre, 800, 1.0f, 4000, 2000, 0.35f, 0.05f, 900, 0.40f };
+        if (p == Ph::G)  return { velarCentre, 800, 1.0f, 4000, 2000, 0.35f, 0.05f, 900, 0.70f };
         return { 4000, 2000, 1.0f, 6000, 3000, 0.5f, 0.1f, 1000, 0.5f };
     }
 
@@ -427,7 +427,7 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
         {
             const bool voiced = info.voiced;
             const float duration = juce::jmax (0.02f, e.duration);
-            const float burst = juce::jmin (voiced ? 0.006f : 0.010f, 0.2f * duration);
+            const float burst = juce::jmin (voiced ? 0.008f : 0.010f, 0.2f * duration);
             float vot;
             if (voiced)
                 vot = juce::jmin (0.012f, 0.2f * duration);
@@ -456,7 +456,11 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
             }
             else if (voiced)
             {
-                v[apAV] = 0.3f;
+                // Short-lag release: voicing starts with a little frication from the opening.
+                const auto shape = burstShape (e.ph, velarCentre);
+                setFrication (shape);
+                v[apAF] = 0.25f * shape.amplitude;
+                v[apAV] = 0.4f;
             }
             else
             {
@@ -505,9 +509,9 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
             setLocus (info.place);
             v[apF1] = 270.0f * cs;
             v[apB1] = 45.0f * bs;
-            v[apB2] = 350.0f * bs;
-            v[apB3] = 450.0f * bs;
-            v[apUpperDamping] = 2.5f;
+            v[apB2] = 650.0f * bs;
+            v[apB3] = 750.0f * bs;
+            v[apUpperDamping] = 4.0f;
             v[apNasality] = 1.0f;
             v[apNasalZero] = (e.ph == Ph::M ? 1100.0f : (e.ph == Ph::N ? 1700.0f : 2700.0f)) * cs;
             v[apAV] = e.syllabic ? 0.75f : 0.45f;

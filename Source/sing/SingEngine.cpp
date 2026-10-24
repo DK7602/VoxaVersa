@@ -41,6 +41,7 @@ SingResult SingEngine::render (const SingRequest& request, const std::atomic<boo
         return result;
     }
 
+    const double bpm = juce::jlimit (20.0, 400.0, request.bpm);
     const auto script = parseLyrics (request.lyrics);
     if (script.isEmpty())
     {
@@ -60,7 +61,7 @@ SingResult SingEngine::render (const SingRequest& request, const std::atomic<boo
             return result;
         }
         score = melody::fitProvided (script, request.melody, request.voice.traits, request.keyRoot,
-                                     request.scale, request.bpm);
+                                     request.scale, bpm);
     }
     else
     {
@@ -81,7 +82,7 @@ SingResult SingEngine::render (const SingRequest& request, const std::atomic<boo
 
     report (0.03f);
 
-    OfflineRenderer renderer (script, score, request.voice.traits, request.bpm, request.sampleRate, request.seed);
+    OfflineRenderer renderer (script, score, request.voice.traits, bpm, request.sampleRate, request.seed);
     const bool finished = renderer.render (cancel, [&report] (float p) { report (0.03f + 0.97f * p); });
 
     if (! finished || isCancelled())
@@ -95,7 +96,7 @@ SingResult SingEngine::render (const SingRequest& request, const std::atomic<boo
     result.keyRoot = score.keyRoot;
     result.scale = score.scale;
 
-    const double secondsPerBeat = 60.0 / request.bpm;
+    const double secondsPerBeat = 60.0 / bpm;
     for (const auto& n : score.notes)
     {
         SungNote sn;

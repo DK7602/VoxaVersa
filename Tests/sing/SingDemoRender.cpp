@@ -56,6 +56,17 @@ public:
         renderAuto ("deep_bass", voice ("male-deep-bass"), song, 6, 90.0);
         renderAuto ("metal_male", voice ("male-metal"), song, 7, 120.0);
 
+        const juce::String song2 = "Take me home tonight\n"
+                                   "I need your love to keep me warm\n"
+                                   "Dancing in the moonlight\n"
+                                   "Give it all you got";
+        renderAuto ("b_pop_female", voice ("female-pop"), song2, 11, 104.0);
+        renderAuto ("b_pop_male", voice ("male-pop"), song2, 12, 104.0);
+        renderAuto ("b_rnb_female", voice ("female-rnb"), song2, 13, 90.0);
+        renderAuto ("b_country_male", voice ("male-country"), song2, 14, 110.0);
+        renderAuto ("b_indie_female", voice ("female-indie"), song2, 15, 96.0);
+        renderAuto ("b_soul_male", voice ("male-soul"), song2, 16, 96.0);
+
         // Phoneme inventories on a monotone, for calibration and listening.
         renderMonotone ("vowels", voice ("female-pop"), "ah eh ee ih oh oo uh ur ay i ow oy", 62);
         renderMonotone ("fricatives", voice ("male-pop"), "sa sha fa tha ha za va zha tha", 52);
@@ -122,6 +133,7 @@ private:
         }
 
         writeWav (takeName, result.audio, result.sampleRate);
+        outputDir.getChildFile (takeName + ".txt").replaceWithText (lyrics);
         logMessage (takeName + ": " + juce::String (result.audio.getNumSamples() / result.sampleRate, 2) + " s in "
                     + juce::String (elapsed, 0) + " ms, key " + music::getKeyNames()[result.keyRoot]);
 
