@@ -222,7 +222,9 @@ public:
                 expect (p.getSingTakeLengthSeconds() > 1.0);
                 expect (! p.getSungNotes().empty());
                 p.setSingPreviewPlaying (true);
-                std::vector<float> silence ((size_t) (sr * 1.5), 0.0f);
+                // Auto melodies can start after a lead-in, so listen until past the first note.
+                const double firstNote = p.getSungNotes().front().startSeconds;
+                std::vector<float> silence ((size_t) (sr * (firstNote + 1.5)), 0.0f);
                 auto out = run (p, silence);
                 float peak = 0.0f;
                 for (auto v : out) peak = juce::jmax (peak, std::abs (v));
