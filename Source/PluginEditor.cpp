@@ -24,6 +24,8 @@ namespace
       VOXAVERSA_SNAPSHOT_MODE=sing|voice   switch the mode first
       VOXAVERSA_SNAPSHOT_TAB=<tab>         select an Advanced tab (Advanced, Expression, Tune, Harmony, FX, Space)
       VOXAVERSA_SNAPSHOT_GRID=1            open the voice grid
+      VOXAVERSA_SNAPSHOT_PARAMS=a=1,b=2    set parameters (real values) first
+      VOXAVERSA_SNAPSHOT_BLEND=<voice id>  set a blend voice
       VOXAVERSA_SNAPSHOT_DELAY=<ms>        delay before capturing (default 1500)
       VOXAVERSA_SNAPSHOT_DEMO=0            do not feed the demo signal into the scopes / meters
       VOXAVERSA_SNAPSHOT_SIZE=<width>      editor width for the capture (default 1536)
@@ -144,6 +146,14 @@ VoxaVersaEditor::VoxaVersaEditor (VoxaVersaProcessor& p)
             if (sing && processor.getLyrics().isEmpty())
                 processor.setLyrics ("City lights are call-ing out my name\nDanc-ing through the night, we'll nev-er be the same");
         }
+
+        // VOXAVERSA_SNAPSHOT_PARAMS="melodySource=2,pitch=5" sets parameters (real values) before capturing
+        for (auto& assignment : juce::StringArray::fromTokens (env ("VOXAVERSA_SNAPSHOT_PARAMS"), ",", {}))
+            if (auto* param = processor.getState().getParameter (assignment.upToFirstOccurrenceOf ("=", false, false).trim()))
+                param->setValueNotifyingHost (param->convertTo0to1 (assignment.fromFirstOccurrenceOf ("=", false, false).getFloatValue()));
+
+        if (auto blend = env ("VOXAVERSA_SNAPSHOT_BLEND"); blend.isNotEmpty())
+            processor.setBlendVoice (blend);
 
         if (auto tab = env ("VOXAVERSA_SNAPSHOT_TAB"); tab.isNotEmpty())
             view->advanced.showTabNamed (tab);
