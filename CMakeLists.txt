@@ -160,6 +160,7 @@ if(VOXAVERSA_BUILD_TESTS)
     target_include_directories(VoxaVersaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Tests)
     target_compile_definitions(VoxaVersaTests PRIVATE
         VOXAVERSA_TESTS=1
+        JUCE_MODAL_LOOPS_PERMITTED=1
         JucePlugin_Name="VoxaVersa"
         JucePlugin_IsSynth=0
         JucePlugin_WantsMidiInput=1

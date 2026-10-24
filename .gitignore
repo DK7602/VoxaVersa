@@ -7,3 +7,4 @@ cmake-build-*/
 .DS_Store
 Resources/fonts/*.zip
 __pycache__/
+.claude/worktrees/
