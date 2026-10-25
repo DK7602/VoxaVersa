@@ -99,27 +99,45 @@ class HttpRangeFile(io.RawIOBase):
         return len(d)
 
 
-def download(url, path):
-    """Whole-archive download with resume (fast on a data-centre connection such as Colab's)."""
+def download(url, path, attempts=20):
+    """Whole-archive download, resumed after every network error (fast on a data-centre connection)."""
     if os.path.exists(path):
         return
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     part = path + ".part"
-    have = os.path.getsize(part) if os.path.exists(part) else 0
-    req = urllib.request.Request(url, headers={"Range": "bytes=%d-" % have} if have else {})
-    start, last = time.time(), 0.0
-    with urllib.request.urlopen(req, timeout=120) as r, open(part, "ab" if have else "wb") as f:
-        total = have + int(r.headers.get("Content-Length", 0))
-        while True:
-            chunk = r.read(1 << 22)
-            if not chunk:
+    total, start, last = None, time.time(), 0.0
+    for attempt in range(attempts):
+        have = os.path.getsize(part) if os.path.exists(part) else 0
+        if total is not None and have >= total:
+            break
+        try:
+            req = urllib.request.Request(url, headers={"Range": "bytes=%d-" % have} if have else {})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                if have and r.status != 206:      # the server ignored the range: start again
+                    have = 0
+                length = int(r.headers.get("Content-Length", 0))
+                total = have + length if length else total
+                with open(part, "ab" if have else "wb") as f:
+                    while True:
+                        chunk = r.read(1 << 22)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        have += len(chunk)
+                        if time.time() - last > 30:
+                            last = time.time()
+                            print("  %.2f of %.2f GB (%.0f MB/s)" % (have / 1e9, (total or 0) / 1e9,
+                                                                   have / 1e6 / max(1e-3, last - start)), flush=True)
+            if total is None or have >= total:
                 break
-            f.write(chunk)
-            have += len(chunk)
-            if time.time() - last > 30:
-                last = time.time()
-                print("  %.2f of %.2f GB (%.0f MB/s)" % (have / 1e9, total / 1e9, have / 1e6 / max(1e-3, last - start)),
-                      flush=True)
+        except Exception as e:
+            print("  download interrupted (%s) - resuming in %d s" % (e, min(60, 5 * (attempt + 1))), flush=True)
+            time.sleep(min(60, 5 * (attempt + 1)))
+    else:
+        raise SystemExit("VocalSet download kept failing - run the step again later (it resumes)")
+    if total is not None and os.path.getsize(part) != total:
+        raise SystemExit("VocalSet download incomplete (%d of %d bytes) - run the step again (it resumes)"
+                         % (os.path.getsize(part), total))
     os.replace(part, path)
 
 
