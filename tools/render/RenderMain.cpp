@@ -2,12 +2,16 @@
 //
 //   VoxaVersaRender <in.wav> <out.wav> [--voice <id>] [--preset "<name>"] [--quality 0|1|2]
 //                   [--set <paramId>=<value> ...] [--list-voices] [--list-params]
+//   VoxaVersaRender <file> --analyse          source gender analysis
+//   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // Prints source/target pitch statistics so renders can be compared objectively.
 
 #include "PluginProcessor.h"
+#include "core/AiDisclosure.h"
 #include "core/AudioUtils.h"
+#include "core/Watermark.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/VoiceGenderEstimator.h"
 #include <map>
@@ -58,7 +62,7 @@ int main (int argc, char* argv[])
         return 0;
     }
 
-    if (args.size() < 2 && ! args.contains ("--analyse"))
+    if (args.size() < 2 && ! args.contains ("--analyse") && ! args.contains ("--detect"))
         return fail ("usage: VoxaVersaRender <in.wav> <out.wav> [--voice id] [--preset name] [--quality 0|1|2] [--set id=value ...]");
 
     const juce::File inFile = juce::File::getCurrentWorkingDirectory().getChildFile (args[0]);
@@ -74,6 +78,15 @@ int main (int argc, char* argv[])
     juce::AudioBuffer<float> raw ((int) reader->numChannels, (int) reader->lengthInSamples);
     reader->read (&raw, 0, (int) reader->lengthInSamples, 0, true, true);
     auto input = voxa::toMono (raw);
+
+    if (args.contains ("--detect"))
+    {
+        const auto r = voxa::detectWatermark (raw, sr);
+        std::printf ("%-62s watermark: %s (AI voice score %.1f, synthesized singing score %.1f, threshold %.1f)\n",
+                     inFile.getFileName().toRawUTF8(), voxa::watermarkKindName (r.kind).toRawUTF8(),
+                     r.aiVoiceScore, r.synthesizedSingingScore, voxa::WatermarkDetection::threshold);
+        return r.found() ? 0 : 2;
+    }
 
     if (args.contains ("--analyse"))
     {
@@ -150,6 +163,13 @@ int main (int argc, char* argv[])
     processor.prepareToPlay (sr, block);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 
+    // An AI voice model loads on a background thread and is attached on the message thread: wait for it,
+    // otherwise the render silently uses the DSP engine.
+    for (int i = 0; i < 1200 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+    if (processor.getNeuralStatus() != voxa::VoxaVersaProcessor::NeuralStatus::NoModelForVoice)
+        std::printf ("  %s\n", processor.getNeuralStatusMessage().toRawUTF8());
+
     const int latency = processor.getLatencySamples();
     const int tail = (int) (sr * 2.0);
     const int total = input.getNumSamples() + latency + tail;
@@ -184,7 +204,11 @@ int main (int argc, char* argv[])
     if (peak > 0.99f)
         aligned.applyGain (0.99f / peak);
 
-    if (! voxa::writeWav (outFile, aligned, sr))
+    const bool aiVoice = processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Active
+                         && state.getRawParameterValue (voxa::ParamID::aiEngine)->load() > 0.5f;
+    if (! voxa::writeWav (outFile, aligned, sr,
+                          voxa::disclosureMetadata (aiVoice ? voxa::VocalOrigin::AiVoiceModel : voxa::VocalOrigin::Transformed,
+                                                    processor.getSelectedVoice().name)))
         return fail ("cannot write " + outFile.getFullPathName());
 
     const float inPitch = medianVoicedPitch (input.getReadPointer (0), input.getNumSamples(), sr);

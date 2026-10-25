@@ -8,6 +8,8 @@ cmake-build-*/
 Resources/fonts/*.zip
 __pycache__/
 .claude/worktrees/
+research_notes/
+reports/
 
 # Voice training (docs/TRAINING.md): never commit recordings, datasets, checkpoints or models
 *.vxpack

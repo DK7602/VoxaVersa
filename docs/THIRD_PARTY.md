@@ -36,3 +36,30 @@ per word, and gzip the result.
 - YIN fundamental-frequency estimator (de Cheveigné & Kawahara, 2002).
 - Krumhansl-Schmuckler key finding (already part of `Source/core/MusicTheory.cpp`).
 - Vowel formant targets derived from Peterson & Barney (1952) and Hillenbrand et al. (1995).
+
+## Voice Library portraits (`Resources/voices/*.jpg`)
+
+The 46 factory-voice headshots are **AI-generated images of people who do not exist**. No photos
+of real people were used as input, and no prompt names a real person, artist or celebrity; every
+image was reviewed and anything resembling a recognisable person was rejected.
+
+- **Generator:** [`SG161222/Realistic_Vision_V5.1_noVAE`](https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE)
+  (Stable Diffusion 1.5 fine-tune "Realistic Vision V5.1" by SG161222), Hugging Face revision
+  `1e9f017a7b1eaefb63a1900ea6c5953d2739fd21`.
+  - **Licence:** CreativeML OpenRAIL-M (as stated on the model card). The licence places no
+    restrictions on the generated output beyond its use-based restrictions (Attachment A), so the
+    images may be used commercially. The author's CivitAI page (model 4201) additionally lists
+    "sell images they generate" as permitted and asks for credit, which this section provides.
+- **VAE:** [`stabilityai/sd-vae-ft-mse`](https://huggingface.co/stabilityai/sd-vae-ft-mse),
+  revision `31f26fdeee1355a5c34592e401dd41e45d25a493`, MIT licence.
+- **Generation:** offline on CPU with Hugging Face `diffusers`; image-to-image from a neutral
+  head-and-shoulders silhouette (so every portrait has the same framing), DPM++ 2M Karras sampler,
+  CFG 5.5. The per-voice prompts (genre styling, wardrobe, age, ethnicity) and seeds are kept with
+  the generation scripts, not in the product.
+- **Post-processing tools (not shipped):** the YuNet face detector from the OpenCV model zoo
+  (MIT) to frame each face consistently, and the IS-Net `isnet-general-use` segmentation model
+  (Apache-2.0) together with the U^2-Net `u2net_human_seg` human-segmentation model (Apache-2.0)
+  to cut the person out and place them on the shared navy/indigo starry backdrop with a blue rim
+  light. Images are exported as 256 x 280 JPEGs.
+
+The model weights are not redistributed with VoxaVersa; only the generated images are.

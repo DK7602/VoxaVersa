@@ -73,6 +73,8 @@ public:
     /** Total latency of the chain (constant until the next prepare / setNeuralStream). */
     int getLatencySamples() const noexcept { return totalLatency; }
     Quality getQuality() const noexcept { return quality; }
+    /** True when the last processed block's lead voice came from the neural stream. */
+    bool isNeuralLeadActive() const noexcept { return neuralLeadActive; }
 
     /** Processes one block. `leadOverride` (optional) replaces the lead voice with externally rendered
         audio already aligned to the chain's output timeline (used for offline neural rendering). */
@@ -103,6 +105,7 @@ private:
     bool harmonyActive[3] {}, doublerActive[2] {};
 
     int timeOffset = 0, placementLag = 0, dspLatency = 0, neuralLatency = 0, totalLatency = 0;
+    bool neuralLeadActive = false;
     float maxHalfGrain = 1000.0f;
     juce::int64 blockStart = 0;
 

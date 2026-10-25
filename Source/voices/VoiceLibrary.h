@@ -44,7 +44,9 @@ public:
     static juce::File getUserDataDirectory();      // .../VoxaVersa
     static juce::File getUserVoicesDirectory();    // .../VoxaVersa/Voices
     static juce::File getEncodersDirectory();      // .../VoxaVersa/Encoders
-    void rescanUserVoices();
+    void rescanUserVoices()   { rescanUserVoices (getUserVoicesDirectory()); }
+    /** Reloads the voice packs from `voicesDirectory` (built-in voices pick up AI models listed by packs). */
+    void rescanUserVoices (const juce::File& voicesDirectory);
     /** Installs a voice pack folder or .zip/.vxpack archive into the user voices directory. */
     bool importVoicePack (const juce::File& folderOrArchive, juce::String& errorMessage);
 

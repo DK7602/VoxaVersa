@@ -19,6 +19,10 @@ VoiceTraits VoiceTraits::blend (const VoiceTraits& a, const VoiceTraits& b, floa
     r.presenceDb = lerp (a.presenceDb, b.presenceDb);
     r.airDb = lerp (a.airDb, b.airDb);
     r.nasalDb = lerp (a.nasalDb, b.nasalDb);
+    r.ringHz = std::exp (lerp (std::log (a.ringHz), std::log (b.ringHz)));
+    r.ringDb = lerp (a.ringDb, b.ringDb);
+    r.bodyHz = std::exp (lerp (std::log (a.bodyHz), std::log (b.bodyHz)));
+    r.bodyDb = lerp (a.bodyDb, b.bodyDb);
     r.breathiness = lerp (a.breathiness, b.breathiness);
     r.rasp = lerp (a.rasp, b.rasp);
     r.vibratoRateHz = lerp (a.vibratoRateHz, b.vibratoRateHz);
@@ -266,6 +270,11 @@ bool VoiceLibrary::loadVoicePack (const juce::File& directory, VoiceProfile& p, 
     if (auto avatar = get ("avatar").toString(); avatar.isNotEmpty())
         p.avatarImage = directory.getChildFile (avatar);
 
+    if (auto* ids = get ("factoryVoices").getArray())
+        for (auto& id : *ids)
+            p.factoryVoices.addIfNotAlreadyThere (id.toString().trim());
+    p.listed = (bool) get ("listed", true);
+
     if (auto* model = obj->getProperty ("model").getDynamicObject())
     {
         p.neuralModelFile = directory.getChildFile (model->getProperty ("file").toString());
@@ -281,26 +290,51 @@ bool VoiceLibrary::loadVoicePack (const juce::File& directory, VoiceProfile& p, 
     return true;
 }
 
-void VoiceLibrary::rescanUserVoices()
+void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 {
     voices.resize (numFactoryVoices);
+    for (auto& v : voices)
+    {
+        v.packDirectory = juce::File();
+        v.neuralModelFile = juce::File();
+        v.neuralEncoder.clear();
+        v.neuralSampleRate = 0;
+        v.aiPackName.clear();
+    }
 
-    const auto dir = getUserVoicesDirectory();
     if (dir.isDirectory())
     {
-        for (const auto& entry : juce::RangedDirectoryIterator (dir, false, "*", juce::File::findDirectories))
+        auto packs = dir.findChildFiles (juce::File::findDirectories, false);
+        packs.sort();   // deterministic: when two packs claim a built-in voice, the first by name wins
+
+        for (const auto& packDir : packs)
         {
             VoiceProfile p;
             juce::String error;
-            if (loadVoicePack (entry.getFile(), p, error))
-            {
-                if (indexOf (p.id) < 0)
-                    voices.push_back (std::move (p));
-            }
-            else
+            if (! loadVoicePack (packDir, p, error))
             {
                 DBG ("VoxaVersa: skipping voice pack: " << error);
+                continue;
             }
+
+            if (p.hasNeuralModel())
+            {
+                for (const auto& id : p.factoryVoices)
+                {
+                    const int index = indexOf (id);
+                    if (index < 0 || index >= (int) numFactoryVoices || voices[(size_t) index].hasNeuralModel())
+                        continue;
+                    auto& v = voices[(size_t) index];
+                    v.packDirectory = p.packDirectory;
+                    v.neuralModelFile = p.neuralModelFile;
+                    v.neuralEncoder = p.neuralEncoder;
+                    v.neuralSampleRate = p.neuralSampleRate;
+                    v.aiPackName = p.name;
+                }
+            }
+
+            if (p.listed && indexOf (p.id) < 0)
+                voices.push_back (std::move (p));
         }
     }
 

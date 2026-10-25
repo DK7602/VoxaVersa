@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "core/Watermark.h"
 #include "core/AudioUtils.h"
 #include "dsp/PitchDetector.h"
 #include "TestSignals.h"
@@ -194,6 +195,15 @@ public:
                 const double seconds = (double) reader->lengthInSamples / reader->sampleRate;
                 expect (seconds >= 1.45 && seconds < 5.0, "rendered length " + juce::String (seconds));
                 expectEquals ((int) reader->numChannels, 2);
+                // Every export carries a machine-readable disclosure of how the vocal was made.
+                expect (reader->metadataValues[juce::WavAudioFormat::riffInfoComment2].contains ("VoxaVersa"),
+                        "disclosure comment: " + reader->metadataValues[juce::WavAudioFormat::riffInfoComment2]);
+                expect (reader->metadataValues[juce::WavAudioFormat::riffInfoSoftware].startsWith ("VoxaVersa"));
+
+                // A DSP transform of the user's own voice is not AI output: no watermark.
+                juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+                reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+                expect (! detectWatermark (audio, reader->sampleRate).found(), "transformed export carries an AI watermark");
             }
             rendered.deleteFile();
 
@@ -222,7 +232,9 @@ public:
                 expect (p.getSingTakeLengthSeconds() > 1.0);
                 expect (! p.getSungNotes().empty());
                 p.setSingPreviewPlaying (true);
-                std::vector<float> silence ((size_t) (sr * 1.5), 0.0f);
+                // Auto melodies can start after a lead-in, so listen until past the first note.
+                const double firstNote = p.getSungNotes().front().startSeconds;
+                std::vector<float> silence ((size_t) (sr * (firstNote + 1.5)), 0.0f);
                 auto out = run (p, silence);
                 float peak = 0.0f;
                 for (auto v : out) peak = juce::jmax (peak, std::abs (v));
@@ -230,6 +242,26 @@ public:
                 auto midiFile = p.exportSingMidi();
                 expect (midiFile.existsAsFile());
                 midiFile.deleteFile();
+
+                // The exported take carries the synthetic-singing watermark.
+                p.startOfflineRender (VoxaVersaProcessor::RenderTarget::SingTake);
+                expect (test::waitFor ([&p] { return ! p.isOfflineRendering(); }, 120000), "sing render finished");
+                const auto rendered = p.getLastRenderedFile();
+                juce::AudioFormatManager fm;
+                fm.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (rendered));
+                expect (reader != nullptr, "sung export: " + p.getLastRenderError());
+                if (reader != nullptr)
+                {
+                    juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+                    reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+                    const auto mark = detectWatermark (audio, reader->sampleRate);
+                    expect (mark.kind == WatermarkKind::SynthesizedSinging,
+                            "sung export watermark: " + watermarkKindName (mark.kind) + " score "
+                                + juce::String (mark.synthesizedSingingScore));
+                }
+                reader.reset();
+                rendered.deleteFile();
             }
             else
             {

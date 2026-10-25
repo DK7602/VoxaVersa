@@ -205,6 +205,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     std::fill (busR.begin(), busR.begin() + n, 0.0f);
 
     const bool neuralActive = s.useNeural && neural != nullptr && neuralLatency > 0 && neural->hasModel();
+    neuralLeadActive = neuralActive;
 
     //==========================================================================
     // 3. Lead voice (PSOLA)
@@ -361,6 +362,10 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     cs.tiltDb = traits.tiltDb * I - s.tone * 6.0f - s.age * 1.5f;
     cs.warmthDb = traits.warmthDb * I + juce::jmax (0.0f, s.age) * 1.0f;
     cs.nasalDb = traits.nasalDb * I;
+    cs.ringHz = traits.ringHz;
+    cs.ringDb = traits.ringDb * I;
+    cs.bodyHz = traits.bodyHz;
+    cs.bodyDb = traits.bodyDb * I;
     cs.presenceDb = s.presenceDb + traits.presenceDb * I;
     cs.airDb = s.airDb + traits.airDb * I;
     cs.breath = juce::jlimit (0.0f, 1.0f, s.breath + (synth ? 0.0f : traits.breathiness * I) + juce::jmax (0.0f, -s.age) * 0.08f);

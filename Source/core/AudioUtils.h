@@ -2,6 +2,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <unordered_map>
 
 namespace voxa
 {
@@ -41,8 +42,9 @@ inline juce::AudioBuffer<float> toMono (const juce::AudioBuffer<float>& source)
     return mono;
 }
 
-/** Writes a buffer as a 24-bit WAV. */
-inline bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& buffer, double sampleRate)
+/** Writes a buffer as a 24-bit WAV, optionally with metadata (see AiDisclosure.h). */
+inline bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& buffer, double sampleRate,
+                      const std::unordered_map<juce::String, juce::String>& metadata = {})
 {
     file.getParentDirectory().createDirectory();
     file.deleteFile();
@@ -54,7 +56,8 @@ inline bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& bu
     juce::WavAudioFormat wav;
     const auto options = juce::AudioFormatWriterOptions{}.withSampleRate (sampleRate)
                                                          .withNumChannels (buffer.getNumChannels())
-                                                         .withBitsPerSample (24);
+                                                         .withBitsPerSample (24)
+                                                         .withMetadataValues (metadata);
     auto writer = wav.createWriterFor (stream, options);
     if (writer == nullptr)
         return false;
@@ -62,7 +65,8 @@ inline bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& bu
 }
 
 /** Creates a WAV writer for streaming (e.g. recording). Returns nullptr on failure. */
-inline std::unique_ptr<juce::AudioFormatWriter> createWavWriter (const juce::File& file, double sampleRate, int numChannels)
+inline std::unique_ptr<juce::AudioFormatWriter> createWavWriter (const juce::File& file, double sampleRate, int numChannels,
+                                                                const std::unordered_map<juce::String, juce::String>& metadata = {})
 {
     file.getParentDirectory().createDirectory();
     file.deleteFile();
@@ -72,7 +76,8 @@ inline std::unique_ptr<juce::AudioFormatWriter> createWavWriter (const juce::Fil
     juce::WavAudioFormat wav;
     return wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (sampleRate)
                                                                          .withNumChannels (numChannels)
-                                                                         .withBitsPerSample (24));
+                                                                         .withBitsPerSample (24)
+                                                                         .withMetadataValues (metadata));
 }
 
 } // namespace voxa
