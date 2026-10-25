@@ -101,11 +101,20 @@ class HttpRangeFile(io.RawIOBase):
 
 def download(url, path, attempts=20):
     """Whole-archive download, resumed after every network error (fast on a data-centre connection)."""
-    if os.path.exists(path):
-        return
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    try:
+        size = HttpRangeFile(url).size
+    except Exception:
+        size = None
     part = path + ".part"
-    total, start, last = None, time.time(), 0.0
+    if os.path.exists(path):
+        if size is None or os.path.getsize(path) == size:
+            return
+        # an earlier download ended early (the connection closed without an error): resume it
+        print("  the downloaded archive is incomplete (%.2f of %.2f GB) - resuming"
+              % (os.path.getsize(path) / 1e9, size / 1e9), flush=True)
+        os.replace(path, part)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    total, start, last = size, time.time(), 0.0
     for attempt in range(attempts):
         have = os.path.getsize(part) if os.path.exists(part) else 0
         if total is not None and have >= total:
@@ -116,7 +125,7 @@ def download(url, path, attempts=20):
                 if have and r.status != 206:      # the server ignored the range: start again
                     have = 0
                 length = int(r.headers.get("Content-Length", 0))
-                total = have + length if length else total
+                total = total or (have + length if length else None)
                 with open(part, "ab" if have else "wb") as f:
                     while True:
                         chunk = r.read(1 << 22)
@@ -179,7 +188,12 @@ def main():
     if args.zip:
         print("VocalSet: downloading the archive to %s" % args.zip, flush=True)
         download(args.url, args.zip)
-        src = args.zip
+        try:
+            zipfile.ZipFile(args.zip).close()
+            src = args.zip
+        except zipfile.BadZipFile:
+            print("VocalSet: the downloaded archive is damaged - deleted; reading from Zenodo directly instead", flush=True)
+            os.remove(args.zip)
 
     todo = [i for i in open_archive(src).infolist() if wanted(i) and i.filename.split("/")[1] in args.singers]
     print("VocalSet: %d recordings (%.1f GB) without %s" % (len(todo), sum(i.file_size for i in todo) / 1e9,
