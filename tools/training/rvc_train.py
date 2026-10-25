@@ -306,6 +306,8 @@ def cmd_train(args):
         run([py, "train/dataset/extract_hubert_feature.py", "cpu", "1", "0", exp_dir, "v2", "false"], rvc, env)
     n = write_filelist(rvc, exp_dir, args.sr)
     log("4/5 filelist: %d pieces (%.1f min)" % (n, n * 3.7 / 60 * 0.85))
+    if args.prepare_only:
+        return
     log("5/5 training %d epochs (batch %d, checkpoint every %d)" % (args.epochs, args.batch, args.save_every))
     pre = os.path.join("assets", "pretrained_v2")
     cmd = [py, "train/train.py", "-e", args.name, "-sr", args.sr, "-f0", "1", "-bs", str(args.batch),
@@ -383,6 +385,7 @@ def main():
     t.add_argument("--cache-gpu", action="store_true", help="keep the dataset in GPU memory (small datasets)")
     t.add_argument("--f0-unvoiced", default="zero", choices=["zero", "interpolate"])
     t.add_argument("--python", help="Python interpreter for the RVC scripts (default: this one)")
+    t.add_argument("--prepare-only", action="store_true", help="stop after stage 4 (for other trainers, e.g. train_queue.py)")
     e = sub.add_parser("export", help="write the trained generator as ONNX for VoxaVersa")
     e.add_argument("--rvc-dir", required=True)
     e.add_argument("--name", help="experiment name (uses the newest saved model)")

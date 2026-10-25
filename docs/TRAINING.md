@@ -172,6 +172,76 @@ python3 tools/neural/package_voice.py --model my_voice.onnx --name "My Voice" --
 RVC WebUI itself, or with forks such as Applio (HiFi-GAN vocoder, v2), export the same way:
 `export_onnx.py --rvc-dir rvc --pth their_model.pth --out model.onnx`.
 
+### Many voices, unattended, on a CPU: `train_queue.py`
+
+For a machine that should train voice after voice on its own for days (a home server, a cloud VM),
+`tools/training/train_queue.py` runs a queue described in `WORK/queue.json`
+(`train_queue.py example` prints a template: the RVC checkout, the venv's Python, and per voice the dataset,
+pack metadata and two or three dry test recordings of *other* singers with the shift to the voice's range):
+
+```
+python3 tools/training/train_queue.py resume --work WORK     # start - or, if it is running, just report
+python3 tools/training/train_queue.py status --work WORK     # also in WORK/QUEUE_STATUS.md
+python3 tools/training/train_queue.py stop   --work WORK     # checkpoint now and stop
+```
+
+`resume` is safe to run any number of times (e.g. from a scheduler after reboots): it starts the supervisor
+only if none is running, and every voice continues from its last checkpoint. Per voice it prepares the data
+(as `rvc_train.py`), holds out ~4 % of the pieces, fine-tunes from the pretrained base with RVC's own
+model and loss code, evaluates, stops by the rule below, exports the best checkpoint to ONNX, builds and
+installs the `.vxpack`, renders the test recordings through VoxaVersa (`VoxaVersaRender`, if configured)
+and writes `WORK/voices/<voice>/report.md` and before/after MP3s in `WORK/listen/<voice>/`.
+
+**When a voice is finished.** Every `eval_every` (10) epochs two numbers are measured:
+
+* *validation mel distance*: the held-out pieces resynthesised through the inference path (the way
+  VoxaVersa uses the model, fixed noise), mean absolute log-mel difference to the originals - lower is
+  cleaner and more faithful;
+* *similarity*: ECAPA speaker similarity between conversions of the test recordings (other singers) and the
+  voice's own recordings - higher means the timbre has moved further to the target singer.
+
+Training runs at least `min_epochs` (default 100 - the RVC FAQ calls ~200 epochs right for clean data,
+community practice for 10 - 30 minutes is 150 - 300) and at most `max_epochs` (300). After the minimum it
+stops when, for `patience` (3) evaluations in a row, neither the mel distance improved by more than 0.5 %
+nor the similarity by more than 0.005. The checkpoint kept is the one with the lowest mel distance among
+those within 0.01 of the best similarity, so an overtrained (harsh) late checkpoint is not chosen.
+
+**CPU speed and safety.** Measured on a 4-core Sapphire Rapids VM (AMX): one step at batch 2 takes 8 - 15 s
+with 2 threads (the discriminator is about two thirds of the time); bf16 autocast for the discriminator
+saves 10 - 25 % CPU and changes nothing measurable, but bf16 in the generator raised the mel loss by 19 % at
+identical weights, so the generator stays fp32. torch 2.7 was not faster than 2.4, channels-last gave
+nothing and `torch.compile` fails on RVC's weight-normalised layers. The queue uses 2 threads, 4 while the
+rest of the machine is idle; caps its address space (an allocation failure halves the batch and resumes);
+sets `oom_score_adj` so the kernel would kill it (resumable) before anything else; and never keeps the
+trainer and the evaluation in memory at the same time (about 4 GB at batch 2). Expect roughly 15 - 20 minutes
+per epoch for 15 minutes of singing on 2 threads, so 100 - 300 epochs take 1 - 4 days per voice: a rented
+GPU does the same in under an hour.
+
+### Which trained singer powers which built-in voice
+
+A pack can give VoxaVersa's built-in genre voices its AI model (`"factoryVoices"` in `voice.json`,
+[NEURAL_ENGINE.md section 5](NEURAL_ENGINE.md#5-voicejson-reference)); each built-in voice keeps its own DSP
+colour, range and expression on top of the model's timbre. `tools/training/factory_voices.py` makes that
+choice from the data:
+
+1. `measure` describes every singer from their cleaned dataset: median note and range, spectral tilt of the
+   voiced long-term spectrum plus "air" (brightness), median aperiodicity (breathiness) and the 2.5 - 4 kHz
+   "ring" relative to 0.3 - 1 kHz (power).
+2. `assign` reads the built-in voices from `Source/voices/FactoryVoices.cpp` (register from their range;
+   brightness from tilt, air, presence and ring frequency; breathiness; power from presence, ring, rasp and
+   breath), standardises both sides per gender and gives each voice the closest singer of its gender,
+   best matches first. Similar genres (bright pop: pop / K-pop / Latin / EDM / Afrobeats; soulful: R&B /
+   soul / jazz / blues / lo-fi; powerful: gospel / rock / metal / opera / theatre; rhythmic: rap / trap /
+   reggae; acoustic: country / indie) get different singers while there are enough singers, and the load
+   is spread. Specialty voices (Deep Bass, Angelic Soprano, Smoky Alto, Whisper) are matched the same way.
+
+The result for all queued singers is kept in
+[`tools/training/factory_voice_assignment.md`](../tools/training/factory_voice_assignment.md). The training
+queue applies it to the singers that are *finished*: after every voice it re-measures, re-assigns and
+rewrites `factoryVoices` (and `"listed"`: packs that only power built-in voices are hidden) in every
+installed pack, so with one finished singer per gender that singer powers all of that gender's voices, and
+the voices spread out as more singers finish.
+
 ## 6. Installing the voice in VoxaVersa
 
 Once per computer:
