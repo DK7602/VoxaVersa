@@ -20,11 +20,15 @@ mkdir -p "$root/Library/Audio/Plug-Ins/VST3" "$root/Library/Audio/Plug-Ins/Compo
 [ -d "$dist/Standalone" ] && cp -R "$dist/Standalone/"*.app "$root/Applications/"
 
 # Bundles must stay where we put them (pkgbuild would otherwise "relocate" them to an older copy found elsewhere).
-pkgbuild --analyze --root "$root" "$work/components.plist"
-count=$(/usr/libexec/PlistBuddy -c "Print" "$work/components.plist" | grep -c "RootRelativeBundlePath" || true)
-for ((i = 0; i < count; i++)); do
-    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$work/components.plist"
+plist="$work/components.plist"
+pkgbuild --analyze --root "$root" "$plist"
+i=0
+while /usr/libexec/PlistBuddy -c "Print :$i" "$plist" > /dev/null 2>&1; do
+    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$plist" 2> /dev/null \
+        || /usr/libexec/PlistBuddy -c "Add :$i:BundleIsRelocatable bool false" "$plist"
+    i=$((i + 1))
 done
+echo "bundles in the package: $i"
 
 pkgbuild --root "$root" --component-plist "$work/components.plist" --identifier com.voxaversa.pkg \
          --version "$version" --install-location / "$out"
