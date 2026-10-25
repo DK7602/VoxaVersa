@@ -150,6 +150,13 @@ int main (int argc, char* argv[])
     processor.prepareToPlay (sr, block);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 
+    // An AI voice model loads on a background thread and is attached on the message thread: wait for it,
+    // otherwise the render silently uses the DSP engine.
+    for (int i = 0; i < 1200 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+    if (processor.getNeuralStatus() != voxa::VoxaVersaProcessor::NeuralStatus::NoModelForVoice)
+        std::printf ("  %s\n", processor.getNeuralStatusMessage().toRawUTF8());
+
     const int latency = processor.getLatencySamples();
     const int tail = (int) (sr * 2.0);
     const int total = input.getNumSamples() + latency + tail;
