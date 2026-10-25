@@ -53,13 +53,13 @@ image was reviewed and anything resembling a recognisable person was rejected.
 - **VAE:** [`stabilityai/sd-vae-ft-mse`](https://huggingface.co/stabilityai/sd-vae-ft-mse),
   revision `31f26fdeee1355a5c34592e401dd41e45d25a493`, MIT licence.
 - **Generation:** offline on CPU with Hugging Face `diffusers`; image-to-image from a neutral
-  head-and-shoulders silhouette (so every portrait has the same framing), DPM++ 2M Karras sampler,
-  CFG 5.5. The per-voice prompts (genre styling, wardrobe, age, ethnicity) and seeds are kept with
-  the generation scripts, not in the product.
+  head-and-shoulders silhouette on a plain mid-grey studio backdrop (so every portrait has the same
+  framing), soft key + fill lighting, DPM++ 2M Karras sampler, CFG 5.5. The per-voice prompts
+  (genre styling, wardrobe, age, ethnicity) and seeds are kept with the generation scripts, not in
+  the product.
 - **Post-processing tools (not shipped):** the YuNet face detector from the OpenCV model zoo
   (MIT) to frame each face consistently, and the IS-Net `isnet-general-use` segmentation model
-  (Apache-2.0) together with the U^2-Net `u2net_human_seg` human-segmentation model (Apache-2.0)
-  to cut the person out and place them on the shared navy/indigo starry backdrop with a blue rim
-  light. Images are exported as 256 x 280 JPEGs.
+  (Apache-2.0) to cut the person out of the grey backdrop and place them on the shared
+  navy/indigo starry backdrop with a thin blue rim light. Images are exported as 256 x 280 JPEGs.
 
 The model weights are not redistributed with VoxaVersa; only the generated images are.
