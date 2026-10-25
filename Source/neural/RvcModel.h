@@ -30,7 +30,7 @@ namespace streaming
             "hopSize": 400,                  // optional: generator samples per 10 ms frame (default sampleRate / 100)
             "speakerId": 0,                  // optional: speaker index for multi-speaker models
             "noiseScale": 0.66666,           // optional: scale of the generator's "rnd" noise input
-            "streamContextMs": 300           // optional: left context of each real-time chunk (100..3000)
+            "streamContextMs": 1000          // optional: left context of each real-time chunk (100..3000)
         }
 */
 struct ModelConfig
@@ -41,7 +41,7 @@ struct ModelConfig
     int hopSize = 0;
     int speakerId = 0;
     float noiseScale = 0.66666f;
-    int streamContextMs = 300;
+    int streamContextMs = 1000;   // 0.3 s measurably weakened the timbre; 1 s is close to offline quality
 
     static ModelConfig fromProfile (const VoiceProfile&);
 

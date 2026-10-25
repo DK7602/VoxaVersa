@@ -691,10 +691,10 @@ private:
             }
         }
 
-        // default context (300 ms) and a long one (1 s, most of it seen by the content encoder only)
+        // default context (1 s) and a long one (3 s, most of it seen by the content encoder only)
         juce::String error;
         auto longContext = loadTempPack (packJson (modelsDir.getChildFile ("generator_40k.onnx"),
-                                                   modelsDir.getChildFile ("encoder_768.onnx"), 40000, "dummy", 1000), error);
+                                                   modelsDir.getChildFile ("encoder_768.onnx"), 40000, "dummy", 3000), error);
         expect (longContext != nullptr, error);
 
         if (longContext != nullptr)

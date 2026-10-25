@@ -33,6 +33,7 @@ public:
         float userVibratoRate = 5.5f;
         int sourceGender = 0;             // 0 auto, 1 male, 2 female
         bool sourceIsSynth = false;       // Text-to-Sing guide: no correction / register / profile expression
+        bool naturalVibrato = false;      // AI lead: keep the singer's own vibrato, add none unless correcting
         VoiceTraits traits;               // target voice
     };
 

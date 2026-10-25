@@ -1143,6 +1143,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
         settings.pitch.sourceGender = sourceGender;   // whole-file analysis beats the live estimate
     const auto model = (! sourceIsNeural && settings.useNeural) ? impl->currentModel : nullptr;
     settings.useNeural = false;
+    settings.pitch.naturalVibrato = model != nullptr;   // the AI lead keeps the singer's own vibrato
 
     const float mix = ParamCache::v (impl->params.mix) * 0.01f;
     const float outGainLin = juce::Decibels::decibelsToGain (ParamCache::v (impl->params.outputGain));

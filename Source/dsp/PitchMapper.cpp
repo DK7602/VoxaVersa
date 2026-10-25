@@ -246,7 +246,7 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     // Profile vibrato is strongest when correction has flattened the natural vibrato.
     const float ageVibrato = 1.0f + 0.35f * juce::jmax (0.0f, s.age);
     float profileDepth = profileExpression
-                       ? s.traits.vibratoDepthCents * s.styleScale * ageVibrato * (correcting ? 1.0f : 0.3f)
+                       ? s.traits.vibratoDepthCents * s.styleScale * ageVibrato * (correcting ? 1.0f : (s.naturalVibrato ? 0.0f : 0.3f))
                        : 0.0f;
     const float depthCents = profileDepth + s.userVibratoCents;
 

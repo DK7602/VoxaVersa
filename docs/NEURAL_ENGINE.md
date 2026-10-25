@@ -72,9 +72,12 @@ Contents
 * The audio thread writes input samples and per-sample target f0 into lock-free ring buffers indexed by
   absolute sample position, and reads already-converted output from a third ring. It never allocates,
   locks or waits (one exception: see *offline bounces* below).
-* A worker thread converts **chunks of 0.4 s of new audio** with **0.3 s of left context**
-  (`streamContextMs`) plus a 90 ms tail: the content encoder sees all 0.8 s, the (much more expensive)
+* A worker thread converts **chunks of 0.4 s of new audio** with **1 s of left context**
+  (`streamContextMs`) plus a 90 ms tail: the content encoder sees all 1.5 s, the (much more expensive)
   generator only the last 0.69 s (chunk + tail + 200 ms of its own context), as in RVC's real-time mode.
+  Measured on a trained voice, 0.3 s of context made the encoder's view of each chunk differ clearly from
+  the whole-file view and cost speaker similarity (0.642 vs 0.669 offline); 1 s recovers most of it
+  (0.656) and 2 s matches offline (0.672).
   Every chunk has the same shape, so ONNX Runtime reuses its memory plan.
 * Consecutive chunks are joined with **SOLA**: the start of the new chunk is searched within 12.5 ms
   (≥ one period of an 80 Hz voice) for the best match with the previous chunk's tail, then crossfaded over
@@ -122,7 +125,7 @@ latency = chunk (0.4 s) + crossfade (60 ms) + SOLA search / 2 (6.25 ms) + resamp
 This is typical for RVC-style real-time conversion; the AI engine is meant for tracking/monitoring with
 latency compensation and for rendering, not for zero-latency live monitoring (the DSP engine covers that).
 
-**CPU budget.** Every 0.4 s the worker runs the encoder on 0.8 s and the generator on 0.69 s of audio
+**CPU budget.** Every 0.4 s the worker runs the encoder on 1.5 s and the generator on 0.69 s of audio
 and must finish within the 200 ms headroom. When a model is loaded it is timed on this computer;
 `NeuralVoiceModel::getDescription()` then ends with "real-time load NN%" (time per chunk relative to the
 200 ms budget) or "too slow for real time on this computer". For reference, the community
@@ -325,7 +328,7 @@ engine. (Copying the unzipped folder into `<user data>/Voices/` and rescanning w
     "hopSize": 400,
     "speakerId": 0,
     "noiseScale": 0.66666,
-    "streamContextMs": 300
+    "streamContextMs": 1000
   }
 }
 ```
@@ -354,7 +357,7 @@ Top level (read by the voice library; all optional except `name`):
 | `hopSize` | no | Generator samples per 10 ms frame (default `sampleRate / 100`); the load fails if the model disagrees. |
 | `speakerId` | no | Speaker index (`ds`) for multi-speaker models, default 0. |
 | `noiseScale` | no | Scale of the `rnd` noise input, default 0.66666 (0 = deterministic, slightly duller). |
-| `streamContextMs` | no | Left context of each real-time chunk, 100 – 3000 ms, default 300. More context = more consistent timbre between chunks but more CPU; it does not change the latency. |
+| `streamContextMs` | no | Left context of each real-time chunk, 100 – 3000 ms, default 1000. More context = more consistent timbre between chunks but more encoder CPU; it does not change the latency. 2000 matches offline quality on a fast CPU; 300 is the minimum sensible value for slow machines. |
 
 \* strongly recommended.
 

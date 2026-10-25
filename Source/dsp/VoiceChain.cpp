@@ -152,6 +152,13 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     const auto& traits = s.pitch.traits;
     const float styleScale = 1.0f + s.style;
 
+    const bool neuralActive = s.useNeural && neural != nullptr && neuralLatency > 0 && neural->hasModel();
+    neuralLeadActive = neuralActive;
+
+    // An AI lead re-sings the performance with its own vibrato: don't stack the profile's on top.
+    auto pitchSettings = s.pitch;
+    pitchSettings.naturalVibrato = pitchSettings.naturalVibrato || neuralActive;
+
     //==========================================================================
     // 1. Analysis
     const juce::int64 start = blockStart;
@@ -165,7 +172,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         if (f.voiced)
             genderEstimator.addPitch (f.frequencyHz);
         const juce::int64 t = start + i + 1 - timeOffset;
-        timeline.push (mapper.process (f, t, s.pitch));
+        timeline.push (mapper.process (f, t, pitchSettings));
     });
     analyzer.push (in, n, timeline, placementLag);
     blockStart += n;
@@ -203,9 +210,6 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
 
     std::fill (busL.begin(), busL.begin() + n, 0.0f);
     std::fill (busR.begin(), busR.begin() + n, 0.0f);
-
-    const bool neuralActive = s.useNeural && neural != nullptr && neuralLatency > 0 && neural->hasModel();
-    neuralLeadActive = neuralActive;
 
     //==========================================================================
     // 3. Lead voice (PSOLA)
