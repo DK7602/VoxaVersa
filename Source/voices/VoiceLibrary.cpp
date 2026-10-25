@@ -19,6 +19,10 @@ VoiceTraits VoiceTraits::blend (const VoiceTraits& a, const VoiceTraits& b, floa
     r.presenceDb = lerp (a.presenceDb, b.presenceDb);
     r.airDb = lerp (a.airDb, b.airDb);
     r.nasalDb = lerp (a.nasalDb, b.nasalDb);
+    r.ringHz = std::exp (lerp (std::log (a.ringHz), std::log (b.ringHz)));
+    r.ringDb = lerp (a.ringDb, b.ringDb);
+    r.bodyHz = std::exp (lerp (std::log (a.bodyHz), std::log (b.bodyHz)));
+    r.bodyDb = lerp (a.bodyDb, b.bodyDb);
     r.breathiness = lerp (a.breathiness, b.breathiness);
     r.rasp = lerp (a.rasp, b.rasp);
     r.vibratoRateHz = lerp (a.vibratoRateHz, b.vibratoRateHz);

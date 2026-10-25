@@ -18,6 +18,8 @@ public:
         float nasalDb = 0.0f;
         float presenceDb = 0.0f;
         float airDb = 0.0f;
+        float ringHz = 3000.0f, ringDb = 0.0f;   // voice colour: upper resonance
+        float bodyHz = 250.0f, bodyDb = 0.0f;    // voice colour: lower resonance
         float breath = 0.0f;       // 0..1
         float rasp = 0.0f;         // 0..1
     };
@@ -35,7 +37,7 @@ private:
 
     struct Channel
     {
-        Biquad hp1, hp2, lowShelf, highShelf, warmth, nasal, presence, air;
+        Biquad hp1, hp2, lowShelf, highShelf, warmth, nasal, presence, air, ring, body;
         Biquad breathHp, breathLp;
         Noise noise;
     } ch[2];

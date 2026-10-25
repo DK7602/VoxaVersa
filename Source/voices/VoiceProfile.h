@@ -27,6 +27,10 @@ struct VoiceTraits
     float presenceDb   = 0.0f;   // 3-5 kHz
     float airDb        = 0.0f;   // 12 kHz shelf
     float nasalDb      = 0.0f;   // narrow 1.2-1.8 kHz resonance (twang)
+    float ringHz       = 3000.0f;  // the voice's own upper resonance ("ring" / singer's formant region)
+    float ringDb       = 0.0f;
+    float bodyHz       = 250.0f;   // the voice's own lower resonance (chest / body)
+    float bodyDb       = 0.0f;
     float breathiness  = 0.0f;   // 0..1 aspiration noise
     float rasp         = 0.0f;   // 0..1 grit / vocal fry
 

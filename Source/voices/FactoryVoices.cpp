@@ -147,6 +147,50 @@ namespace
           43, 64, -1.0f,  55, 72, 0.9f },
     };
 
+    /** Each genre's own vocal colour, chosen so that same-gender voices are clearly different:
+        vocal-tract size (formants), an upper "ring" resonance, a lower "body" resonance, and how
+        breathy / gritty the voice is. Applied on top of the genre's tonal EQ, which is also widened. */
+    struct VoiceColour
+    {
+        const char* idPart;
+        float maleFormant, femaleFormant;
+        float ringHz, ringDb, bodyHz, bodyDb;
+        float breathScale, raspAdd;
+    };
+
+    constexpr float eqWidening = 1.6f;
+
+    const VoiceColour voiceColours[] = {
+        { "pop",       -0.4f, 1.4f, 3200.0f, 3.5f, 250.0f, -1.5f, 1.0f, 0.00f },
+        { "rap",       -0.6f, 0.6f, 1800.0f, 3.0f, 160.0f,  2.5f, 0.7f, 0.05f },
+        { "rnb",       -0.7f, 0.9f, 2600.0f, 2.0f, 300.0f,  2.0f, 1.6f, 0.00f },
+        { "country",   -1.1f, 1.2f, 2300.0f, 4.0f, 400.0f, -1.0f, 0.8f, 0.05f },
+        { "gospel",    -1.3f, 0.5f, 2900.0f, 4.5f, 220.0f,  3.0f, 0.6f, 0.10f },
+        { "soul",      -1.2f, 0.5f, 1600.0f, 3.5f, 320.0f,  2.0f, 1.0f, 0.15f },
+        { "rock",      -0.8f, 0.9f, 1700.0f, 5.0f, 500.0f, -2.0f, 0.6f, 0.15f },
+        { "jazz",      -1.6f, 0.3f,  700.0f, 2.5f, 200.0f,  3.0f, 1.4f, 0.05f },
+        { "opera",     -1.3f, 1.6f, 3000.0f, 6.0f, 350.0f,  1.5f, 0.3f, 0.00f },
+        { "edm",       -0.3f, 1.6f, 5200.0f, 4.0f, 400.0f, -3.0f, 1.2f, 0.00f },
+        { "indie",     -0.7f, 1.1f, 1500.0f, -2.0f, 250.0f, 1.0f, 1.8f, 0.00f },
+        { "latin",     -0.5f, 1.4f, 2500.0f, 3.0f, 300.0f, -2.0f, 1.1f, 0.00f },
+        { "kpop",      -0.1f, 2.0f, 2900.0f, 3.5f, 220.0f, -1.0f, 1.3f, 0.00f },
+        { "metal",     -1.1f, 0.7f, 1200.0f, 5.5f, 180.0f,  2.5f, 0.4f, 0.25f },
+        { "blues",     -1.6f, 0.1f,  800.0f, 3.0f, 180.0f,  2.5f, 1.0f, 0.20f },
+        { "reggae",    -1.1f, 0.7f, 1300.0f, 2.5f, 350.0f,  2.0f, 1.1f, 0.05f },
+        { "afrobeats", -0.8f, 0.9f, 3900.0f, 3.5f, 200.0f,  2.5f, 1.1f, 0.00f },
+        { "trap",      -1.4f, 0.9f, 2300.0f, 2.0f, 140.0f,  4.0f, 1.0f, 0.00f },
+        { "theatre",   -0.8f, 1.3f, 3300.0f, 5.0f, 400.0f, -1.0f, 0.4f, 0.00f },
+        { "lofi",      -0.9f, 0.7f, 1000.0f, 2.0f, 300.0f,  1.5f, 1.5f, 0.05f },
+    };
+
+    const VoiceColour* findColour (const char* idPart)
+    {
+        for (const auto& c : voiceColours)
+            if (juce::String (c.idPart) == idPart)
+                return &c;
+        return nullptr;
+    }
+
     VoiceProfile makeVoice (const GenreStyle& g, VoiceGender gender)
     {
         const bool male = gender == VoiceGender::Male;
@@ -172,6 +216,22 @@ namespace
         t.nasalDb = g.nasalDb;
         t.breathiness = juce::jlimit (0.0f, 1.0f, g.breathiness + (male ? 0.0f : 0.05f));
         t.rasp = juce::jlimit (0.0f, 1.0f, g.rasp * (male ? 1.0f : 0.8f));
+        if (const auto* c = findColour (g.idPart))
+        {
+            t.formantSemis = male ? c->maleFormant : c->femaleFormant;
+            t.ringHz = c->ringHz * (male ? 0.92f : 1.0f);
+            t.ringDb = c->ringDb;
+            t.bodyHz = c->bodyHz * (male ? 0.85f : 1.0f);
+            t.bodyDb = c->bodyDb;
+            t.breathiness = juce::jlimit (0.0f, 1.0f, t.breathiness * c->breathScale);
+            t.rasp = juce::jlimit (0.0f, 1.0f, t.rasp + c->raspAdd);
+        }
+        t.tiltDb *= eqWidening;
+        t.warmthDb *= eqWidening;
+        t.presenceDb *= eqWidening;
+        t.airDb *= eqWidening;
+        t.nasalDb *= eqWidening;
+
         t.vibratoRateHz = g.vibRate + (male ? -0.1f : 0.1f);
         t.vibratoDepthCents = g.vibDepth;
         t.vibratoOnsetMs = g.vibOnset;
@@ -223,6 +283,7 @@ std::vector<VoiceProfile> createFactoryVoices()
                                      { "Deep", "Resonant", "Warm" }, 0xff1f3a93, 0xff6f8fd9, [] (VoiceTraits& t)
     {
         t.rangeLowMidi = 33; t.rangeHighMidi = 57; t.formantSemis = -2.6f;
+        t.ringHz = 2400.0f; t.ringDb = 2.0f; t.bodyHz = 120.0f; t.bodyDb = 4.0f;
         t.tiltDb = -2.0f; t.warmthDb = 3.0f; t.presenceDb = 0.5f; t.airDb = -1.0f;
         t.vibratoDepthCents = 15.0f; t.vibratoRateHz = 5.0f; t.jitterCents = 4.0f;
         t.vibeCompressor = 0.5f; t.vibeReverbMix = 0.15f; t.vibeLowCutHz = 40.0f;
@@ -231,7 +292,8 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("female-angelic", "Angelic Soprano", "Pure, ethereal head voice", VoiceGender::Female,
                                      { "Airy", "Ethereal", "Classical" }, 0xffbfd9ff, 0xffffffff, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 64; t.rangeHighMidi = 88; t.formantSemis = 1.7f;
+        t.rangeLowMidi = 64; t.rangeHighMidi = 88; t.formantSemis = 1.9f;
+        t.ringHz = 3600.0f; t.ringDb = 4.0f; t.bodyHz = 300.0f; t.bodyDb = -3.0f;
         t.tiltDb = 2.0f; t.airDb = 4.0f; t.breathiness = 0.3f;
         t.vibratoDepthCents = 25.0f; t.vibratoRateHz = 5.4f; t.vibratoOnsetMs = 300.0f;
         t.vibeReverbMix = 0.4f; t.vibeReverbSize = 0.9f; t.vibeDoubler = 0.2f; t.vibeLowCutHz = 140.0f;
@@ -240,8 +302,9 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("female-smoky-alto", "Smoky Alto", "Low, husky contralto", VoiceGender::Female,
                                      { "Smoky", "Warm", "Intimate" }, 0xff7a4e8f, 0xffd2b4e0, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 50; t.rangeHighMidi = 70; t.formantSemis = 0.4f;
-        t.tiltDb = -1.0f; t.warmthDb = 2.0f; t.breathiness = 0.3f; t.rasp = 0.15f;
+        t.rangeLowMidi = 50; t.rangeHighMidi = 70; t.formantSemis = 0.1f;
+        t.ringHz = 2200.0f; t.ringDb = 2.0f; t.bodyHz = 250.0f; t.bodyDb = 3.5f;
+        t.tiltDb = -1.0f; t.warmthDb = 2.0f; t.breathiness = 0.4f; t.rasp = 0.15f;
         t.vibratoDepthCents = 25.0f; t.vibratoRateHz = 5.2f; t.scoopCents = 40.0f;
         t.vibeReverbMix = 0.18f; t.vibeSaturation = 0.1f;
     }));
@@ -250,7 +313,8 @@ std::vector<VoiceProfile> createFactoryVoices()
                                      { "Breathy", "Intimate", "Airy" }, 0xff8fa3bf, 0xffe1e8f2, [] (VoiceTraits& t)
     {
         t.rangeLowMidi = 48; t.rangeHighMidi = 72; t.formantSemis = 0.2f;
-        t.breathiness = 0.9f; t.airDb = 3.0f; t.presenceDb = 1.0f; t.vibratoDepthCents = 0.0f;
+        t.breathiness = 0.9f; t.airDb = 4.0f; t.presenceDb = 1.0f; t.vibratoDepthCents = 0.0f;
+        t.ringHz = 6000.0f; t.ringDb = 3.0f; t.bodyHz = 250.0f; t.bodyDb = -3.0f;
         t.vibeCompressor = 0.6f; t.vibeReverbMix = 0.08f; t.vibeDeEsser = 0.5f;
     }));
 
@@ -258,7 +322,8 @@ std::vector<VoiceProfile> createFactoryVoices()
                                      { "Auto-Tuned", "Robotic", "Creative" }, 0xff00e5c7, 0xffb2fff3, [] (VoiceTraits& t)
     {
         t.rangeLowMidi = 45; t.rangeHighMidi = 72; t.formantSemis = 0.0f;
-        t.tiltDb = 2.0f; t.presenceDb = 2.0f; t.vibratoDepthCents = 0.0f; t.jitterCents = 0.0f;
+        t.tiltDb = 3.0f; t.presenceDb = 3.0f; t.vibratoDepthCents = 0.0f; t.jitterCents = 0.0f;
+        t.ringHz = 2000.0f; t.ringDb = 5.0f; t.bodyHz = 400.0f; t.bodyDb = -2.0f;
         t.vibeCompressor = 0.6f; t.vibeSaturation = 0.2f; t.vibeDelayMix = 0.15f; t.vibeReverbMix = 0.15f;
     }));
 
@@ -267,6 +332,7 @@ std::vector<VoiceProfile> createFactoryVoices()
     {
         t.rangeLowMidi = 48; t.rangeHighMidi = 76; t.formantSemis = 0.3f;
         t.breathiness = 0.15f; t.vibratoDepthCents = 25.0f; t.vibratoRateHz = 5.6f;
+        t.ringHz = 2800.0f; t.ringDb = 3.0f; t.bodyHz = 300.0f; t.bodyDb = 2.0f;
         t.vibeDoubler = 0.9f; t.vibeReverbMix = 0.38f; t.vibeReverbSize = 0.85f; t.vibeCompressor = 0.4f;
     }));
 

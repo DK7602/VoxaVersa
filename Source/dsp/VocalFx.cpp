@@ -27,7 +27,7 @@ void CharacterProcessor::reset()
 {
     for (auto& c : ch)
         for (auto* b : { &c.hp1, &c.hp2, &c.lowShelf, &c.highShelf, &c.warmth, &c.nasal, &c.presence, &c.air,
-                         &c.breathHp, &c.breathLp })
+                         &c.ring, &c.body, &c.breathHp, &c.breathLp })
             b->reset();
     raspLp.reset();
     envelope = 0.0f;
@@ -38,7 +38,9 @@ void CharacterProcessor::updateFilters (const Settings& s) noexcept
     const bool changed = ! filtersValid
         || differs (s.lowCutHz, current.lowCutHz, 0.5f) || differs (s.tiltDb, current.tiltDb, 0.05f)
         || differs (s.warmthDb, current.warmthDb, 0.05f) || differs (s.nasalDb, current.nasalDb, 0.05f)
-        || differs (s.presenceDb, current.presenceDb, 0.05f) || differs (s.airDb, current.airDb, 0.05f);
+        || differs (s.presenceDb, current.presenceDb, 0.05f) || differs (s.airDb, current.airDb, 0.05f)
+        || differs (s.ringHz, current.ringHz, 1.0f) || differs (s.ringDb, current.ringDb, 0.05f)
+        || differs (s.bodyHz, current.bodyHz, 1.0f) || differs (s.bodyDb, current.bodyDb, 0.05f);
 
     if (! changed)
         return;
@@ -51,6 +53,8 @@ void CharacterProcessor::updateFilters (const Settings& s) noexcept
     const auto nasal = BiquadCoeffs::peak (sr, 1500.0, 2.5, s.nasalDb);
     const auto pres = BiquadCoeffs::peak (sr, 4200.0, 0.9, s.presenceDb);
     const auto air = BiquadCoeffs::highShelf (sr, 11000.0, s.airDb);
+    const auto ring = BiquadCoeffs::peak (sr, s.ringHz, 2.0, s.ringDb);
+    const auto body = BiquadCoeffs::peak (sr, s.bodyHz, 1.0, s.bodyDb);
     const auto bhp = BiquadCoeffs::highPass (sr, 1800.0, 0.7071);
     const auto blp = BiquadCoeffs::lowPass (sr, juce::jmin (9500.0, sr * 0.45), 0.7071);
 
@@ -58,6 +62,7 @@ void CharacterProcessor::updateFilters (const Settings& s) noexcept
     {
         c.hp1.c = hp1; c.hp2.c = hp2; c.lowShelf.c = ls; c.highShelf.c = hs;
         c.warmth.c = warm; c.nasal.c = nasal; c.presence.c = pres; c.air.c = air;
+        c.ring.c = ring; c.body.c = body;
         c.breathHp.c = bhp; c.breathLp.c = blp;
     }
 
@@ -76,6 +81,8 @@ void CharacterProcessor::process (float* left, float* right, int n, const Settin
     const bool doNasal = std::abs (s.nasalDb) > 0.01f;
     const bool doPresence = std::abs (s.presenceDb) > 0.01f;
     const bool doAir = std::abs (s.airDb) > 0.01f;
+    const bool doRing = std::abs (s.ringDb) > 0.01f;
+    const bool doBody = std::abs (s.bodyDb) > 0.01f;
     const float breathGain = 0.9f * s.breath * s.breath + 0.25f * s.breath;
     const float raspDepth = 0.75f * s.rasp;
     const float raspDrive = 1.0f + 3.0f * s.rasp;
@@ -104,6 +111,8 @@ void CharacterProcessor::process (float* left, float* right, int n, const Settin
             if (doNasal)    x = st.nasal.process (x);
             if (doPresence) x = st.presence.process (x);
             if (doAir)      x = st.air.process (x);
+            if (doRing)     x = st.ring.process (x);
+            if (doBody)     x = st.body.process (x);
 
             if (doRasp)
             {
@@ -123,7 +132,7 @@ void CharacterProcessor::process (float* left, float* right, int n, const Settin
 
     for (auto& c : ch)
         for (auto* b : { &c.hp1, &c.hp2, &c.lowShelf, &c.highShelf, &c.warmth, &c.nasal, &c.presence, &c.air,
-                         &c.breathHp, &c.breathLp })
+                         &c.ring, &c.body, &c.breathHp, &c.breathLp })
             b->sanitise();
 }
 
