@@ -8,15 +8,20 @@ Finds out which recordings were sung by the same person, so a voice model is tra
 
 Every clip gets a speaker embedding from SpeechBrain's ECAPA-TDNN model trained on VoxCeleb
 (speechbrain/spkrec-ecapa-voxceleb, Apache-2.0, downloaded from Hugging Face on first use; runs on the
-CPU). The clips of each source file ("stem") are averaged, and stems are clustered by cosine similarity
-(average linkage). Because a speaker model trained on speech is less sure about singing, the report
-calibrates the scale on your own data:
+CPU). The clips of each source file ("stem"), or of each group of stems with --group (e.g. a song), are
+averaged and the units with at least --core-seconds of audio are clustered by cosine similarity (average
+linkage). Shorter units (single phrases give noisy embeddings) are attached to a cluster only when they are
+clearly closest to it; the rest are clustered among themselves, and leftovers are reported as unassigned.
 
-  * same stem:      the similarity between the two halves of one stem (same singer by definition),
-  * other gender:   stems whose median pitch differs by more than 9 semitones and that the user did
-                    not put into the same cluster (almost surely different singers).
+A speaker model trained on speech is less sure about singing, so the scale is calibrated on your data:
 
-and states, for every cluster, how tight it is and how far it is from the nearest other cluster.
+  * same stem:     similarity between the two halves of one stem (same singer by definition),
+  * different:     units whose median sung pitch differs by more than 9 semitones (almost surely
+                   different singers); the merge threshold is their 99th percentile + 0.03, kept within
+                   0.5 - 0.75 (override with --threshold),
+
+and every cluster gets a cohesion, its nearest cluster (among those with at least a minute of audio) and a
+confidence label.
 
 Outputs (in --out): clusters.md (human readable), clusters.json, manifest.csv (columns path,voice: the
 source files per cluster, ready for prepare_dataset.py --manifest after you rename/merge the voices),
@@ -131,6 +136,12 @@ def main():
         z = np.load(cache_path, allow_pickle=False)
         cache = {k: (z["emb"][i], float(z["dur"][i]), float(z["f0"][i])) for i, k in enumerate(z["keys"])}
 
+    def key_of(c):              # re-embed clips that were rewritten since the cache was made
+        st = os.stat(c)
+        return "%s|%d|%d" % (c, st.st_size, int(st.st_mtime))
+
+    keyed = {c: key_of(c) for c in clip_paths}
+    cache = {c: cache[keyed[c]] for c in clip_paths if keyed[c] in cache}
     todo = [c for c in clip_paths if c not in cache]
     if todo:
         from speechbrain.inference.speaker import EncoderClassifier
@@ -144,7 +155,7 @@ def main():
             if (i + 1) % 50 == 0 or i + 1 == len(todo):
                 print("embedded %d/%d clips" % (i + 1, len(todo)), flush=True)
         keys = sorted(cache)
-        np.savez(cache_path, keys=np.array(keys), emb=np.stack([cache[k][0] for k in keys]),
+        np.savez(cache_path, keys=np.array([keyed[k] for k in keys]), emb=np.stack([cache[k][0] for k in keys]),
                  dur=np.array([cache[k][1] for k in keys]), f0=np.array([cache[k][2] for k in keys]))
 
     # ---- stems
