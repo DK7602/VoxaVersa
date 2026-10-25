@@ -250,11 +250,23 @@ it may be shared as long as you credit it:
 
 > VocalSet: A Singing Voice Dataset, J. Wilkins, P. Seetharaman, A. Wahl, B. Pardo, ISMIR 2018, CC BY 4.0.
 
-Put that line in the pack's `--description` or `--license` field. Prepare one dataset per singer:
+Put that line in the pack's `--description` or `--license` field. Prepare one dataset per singer
+(a manifest with one row per singer folder does all 20 in one run, about 10 minutes on one CPU core):
 
 ```
 python3 tools/training/prepare_dataset.py vocalset/data/male1 --out datasets --name vocalset_male1 --zip
 ```
+
+Usable singing per singer after cleaning (of the techniques listed above, spoken excerpts included):
+
+| Singers | Minutes each | Range (3rd - 97th percentile) |
+|---|---|---|
+| female1 - female9 | 14.3 - 21.1 (median 18.4) | about B3 - G5 |
+| male1 - male11 | 10.3 - 23.6 (median 18.7; male10 has least) | about B2 - G4 (male8 down to F2, male9 up to F5) |
+
+The cleaner removed 5 % of the singing (367 minutes kept in total), mostly as "not a single voice" in forte and heavy-vibrato
+scales and arpeggios (wide vibrato lowers the periodicity measure) and some clipped forte notes; for trained
+classical voices `--min-periodicity 0.8` keeps more.
 
 VocalSet is mostly classical-style exercises (vowels, scales, arpeggios) with some song excerpts, recorded
 dry in a studio: excellent for a clean, stable *timbre* across a wide range, but it does not teach a
