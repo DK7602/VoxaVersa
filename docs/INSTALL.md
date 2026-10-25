@@ -44,3 +44,7 @@ limits.
 
 * Code signing: an Authenticode certificate for Windows, an Apple Developer ID + notarisation for macOS.
 * AAX (Pro Tools) needs Avid's SDK and PACE signing.
+* The Windows installer is built with Inno Setup, whose current versions are free for non-commercial use only:
+  buy its commercial licence before selling VoxaVersa, or switch the installer to a free tool (WiX, NSIS).
+* Licences of trained voices: VocalSet voices must credit VocalSet (CC BY 4.0); check that the Cymatics licence
+  also covers selling AI voice models trained on its vocals, not only training on them.
