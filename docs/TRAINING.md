@@ -142,7 +142,7 @@ latest checkpoint at any time (`USE_LATEST_CHECKPOINT`), so you can listen at, s
 | Colab Pro / pay-as-you-go | L4 / A100 | 2 - 5x faster | 30 - 60 min | about 1 - 2 USD in compute units |
 | Rented GPU (RunPod, Vast.ai, Lambda...) | RTX 3090 / 4090 | 3 - 5x faster than T4 | 30 - 50 min | about 0.2 - 0.8 USD per hour |
 | Your PC | NVIDIA, 8 GB+ | like the rented GPU of the same class | | electricity |
-| CPU only | - | ~10 min per epoch for 14 min of audio (4 cores) | days | not practical except for tests |
+| CPU only | - | 18 - 24 min per epoch for 14 min of audio (2 threads, batch 2, shared 4-core VM) | 4 days | only for tests: an 8-epoch CPU proof of concept already moves the timbre clearly towards the singer |
 
 Free Colab tips: keep the tab open (or use Drive so a disconnect only costs the epochs since the last
 checkpoint); if you run out of GPU time, continue the next day: run all cells again with the same voice name.
