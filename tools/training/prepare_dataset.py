@@ -38,7 +38,6 @@ import shutil
 import subprocess
 import sys
 import zipfile
-from dataclasses import dataclass, field
 
 import numpy as np
 import soundfile as sf
@@ -261,13 +260,6 @@ def release_tails(db, active, level, floor):
 
 # --------------------------------------------------------------------------------------- processing
 
-@dataclass
-class Clip:
-    start: int                       # analysis frames
-    end: int
-    pieces: list = field(default_factory=list)   # [(start_frame, end_frame)] joined into this clip
-
-
 def plan_clips(active, min_len, max_len, min_gap_s=0.25, keep_gap_s=0.3, quiet=None):
     """Groups active frames into clips of min_len..max_len seconds.
     Returns a list of lists of (start, end) frame ranges that are concatenated into one clip."""
@@ -336,7 +328,7 @@ def safe_name(text):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("_")[:80] or "clip"
 
 
-def process_file(path, args, out_dir, voice):
+def process_file(path, args, out_dir, voice, taken=None):
     rep = {"file": path, "voice": voice, "status": "ok", "notes": [], "rejected_s": {}}
     try:
         data, sr = decode(path)
@@ -469,6 +461,12 @@ def process_file(path, args, out_dir, voice):
                           lufs=round(lufs + gain_db, 1), index=k))
 
     base = safe_name(os.path.splitext(os.path.basename(path))[0])
+    if taken is not None:                   # same file name in two input folders: keep both
+        unique, k = base, 2
+        while (out_dir, unique) in taken:
+            unique, k = "%s_%d" % (base, k), k + 1
+        taken.add((out_dir, unique))
+        base = unique
     written = []
     os.makedirs(out_dir, exist_ok=True)
     for c in clips:
@@ -550,8 +548,9 @@ def main():
                         os.remove(os.path.join(d, name))
 
     reports, per_voice = [], {v: dict(clips=0, seconds=0.0, f0=[], files=0) for v in voices}
+    taken = set()
     for i, (path, voice) in enumerate(jobs):
-        rep, written = process_file(path, args, os.path.join(args.out, safe_name(voice)), voice)
+        rep, written = process_file(path, args, os.path.join(args.out, safe_name(voice)), voice, taken)
         reports.append(rep)
         pv = per_voice[voice]
         pv["files"] += 1
