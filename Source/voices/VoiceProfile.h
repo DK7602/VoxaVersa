@@ -87,6 +87,12 @@ struct VoiceProfile
     int neuralSampleRate = 0;           // model output sample rate
     juce::String author, license;
 
+    // AI models for built-in voices: a pack may list factory voice ids ("factoryVoices" in voice.json);
+    // each listed built-in voice then uses that pack's model (packDirectory/neural* are copied over).
+    juce::StringArray factoryVoices;    // on a pack: the built-in voices it gives an AI model
+    juce::String aiPackName;            // on a built-in voice: the pack its AI model comes from
+    bool listed = true;                 // false: the pack only powers built-in voices and is not shown itself
+
     VoiceGender getGender() const noexcept { return traits.gender; }
     bool hasNeuralModel() const          { return neuralModelFile.existsAsFile(); }
     juce::String getGenderName() const;

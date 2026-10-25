@@ -313,6 +313,8 @@ engine. (Copying the unzipped folder into `<user data>/Voices/` and rescanning w
   "avatar": "avatar.png",
   "author": "Your Name",
   "license": "Personal use only",
+  "factoryVoices": ["female-pop", "female-latin"],
+  "listed": true,
   "model": {
     "file": "MyVoice.onnx",
     "encoder": "contentvec-768",
@@ -336,6 +338,8 @@ Top level (read by the voice library; all optional except `name`):
 | `formant`, `breathiness`, `rasp`, `vibratoDepth`, `vibratoRate` | DSP voice traits (used by the DSP engine and for blending). |
 | `colour`, `avatar` | Accent colour (`#rrggbb`) and image file in the pack. |
 | `author`, `license` | Credits and terms of use — state what the speaker agreed to. |
+| `factoryVoices` | Built-in voice ids (e.g. `female-pop`, see `VoxaVersaRender --list-voices`) that use this pack's AI model. Each keeps its own DSP colour, range and expression on top of the model's timbre. If two packs list the same voice, the pack whose folder name sorts first wins. |
+| `listed` | `false` hides the pack as a voice of its own (it then only powers the built-in voices it lists). Default `true`. |
 
 `"model"` (AI engine):
 

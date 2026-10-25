@@ -16,7 +16,7 @@ namespace
         if (v.styles.size() > 0)
             t << "Style: " << v.styles.joinIntoString (", ") << "\n";
         if (v.hasNeuralModel())
-            t << "AI neural voice model included\n";
+            t << (v.aiPackName.isNotEmpty() ? "AI voice model: " + v.aiPackName : juce::String ("AI neural voice model included")) << "\n";
         if (! v.isFactory && v.author.isNotEmpty())
             t << "By " << v.author << "\n";
         t << (favourite ? "Favourite - " : "") << "Click to select, right-click for options";
