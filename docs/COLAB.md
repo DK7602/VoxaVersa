@@ -16,10 +16,11 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
 2. Create a folder named **VoxaVersa** in *My Drive* (New > New folder).
 3. Upload **VoxaVersa_Colab_Data.zip** into it, without unzipping it (New > File upload). It is ~185 MB.
    The path must be *My Drive > VoxaVersa > VoxaVersa_Colab_Data.zip*.
-4. Get the notebook: either open
-   `https://colab.research.google.com/github/DK7602/VoxaVersa/blob/claude/voxaversa-voice-plugin-20arm6/tools/training/VoxaVersa_Queue_Colab.ipynb`
-   or, in [Colab](https://colab.research.google.com), *File > Upload notebook* and pick
-   `VoxaVersa_Queue_Colab.ipynb`. Then *File > Save a copy in Drive* so it is easy to find again.
+4. Open the notebook from GitHub, so it is always the newest version: in
+   [Colab](https://colab.research.google.com) choose *File > Open notebook*, the **GitHub** tab, type
+   `DK7602/VoxaVersa`, pick the branch `claude/voxaversa-voice-plugin-20arm6` and click
+   `tools/training/VoxaVersa_Queue_Colab.ipynb`. (Or *File > Upload notebook* with the `.ipynb` file. The
+   notebook fetches the newest VoxaVersa tools by itself either way.)
 
 ## 2. Training (repeat until all voices are done)
 
@@ -28,8 +29,8 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
 3. Menu **Runtime > Run all**. When asked, allow access to your Google Drive (choose your account, tick
    "See, edit, create and delete all of your Google Drive files": the notebook only uses the VoxaVersa
    folder).
-4. Wait for step 6. The first time, steps 3 - 5 take about 30 - 40 minutes (software, base models and
-   downloading and cleaning the free VocalSet singers). Later sessions start in about 5 minutes.
+4. Wait for step 6. The first time, steps 3 - 5 take about 30 - 50 minutes (software, base models and
+   downloading and cleaning the free VocalSet singers; every step shows its progress). Later sessions start in about 5 minutes.
 5. Step 6 refreshes every 2 minutes: which singer is training, its epoch, the speed, and the time left.
    Leave the browser tab open.
 
