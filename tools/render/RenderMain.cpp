@@ -7,6 +7,7 @@
 // Prints source/target pitch statistics so renders can be compared objectively.
 
 #include "PluginProcessor.h"
+#include "core/AiDisclosure.h"
 #include "core/AudioUtils.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/VoiceGenderEstimator.h"
@@ -191,7 +192,11 @@ int main (int argc, char* argv[])
     if (peak > 0.99f)
         aligned.applyGain (0.99f / peak);
 
-    if (! voxa::writeWav (outFile, aligned, sr))
+    const bool aiVoice = processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Active
+                         && state.getRawParameterValue (voxa::ParamID::aiEngine)->load() > 0.5f;
+    if (! voxa::writeWav (outFile, aligned, sr,
+                          voxa::disclosureMetadata (aiVoice ? voxa::VocalOrigin::AiVoiceModel : voxa::VocalOrigin::Transformed,
+                                                    processor.getSelectedVoice().name)))
         return fail ("cannot write " + outFile.getFullPathName());
 
     const float inPitch = medianVoicedPitch (input.getReadPointer (0), input.getNumSamples(), sr);

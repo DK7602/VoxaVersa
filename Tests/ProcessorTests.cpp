@@ -194,6 +194,10 @@ public:
                 const double seconds = (double) reader->lengthInSamples / reader->sampleRate;
                 expect (seconds >= 1.45 && seconds < 5.0, "rendered length " + juce::String (seconds));
                 expectEquals ((int) reader->numChannels, 2);
+                // Every export carries a machine-readable disclosure of how the vocal was made.
+                expect (reader->metadataValues[juce::WavAudioFormat::riffInfoComment2].contains ("VoxaVersa"),
+                        "disclosure comment: " + reader->metadataValues[juce::WavAudioFormat::riffInfoComment2]);
+                expect (reader->metadataValues[juce::WavAudioFormat::riffInfoSoftware].startsWith ("VoxaVersa"));
             }
             rendered.deleteFile();
 

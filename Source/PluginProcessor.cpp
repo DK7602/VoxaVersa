@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "core/AiDisclosure.h"
 #include "core/AudioUtils.h"
 #include "dsp/VoiceChain.h"
 #include "dsp/VoiceGenderEstimator.h"
@@ -1132,6 +1133,10 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     const double sr = currentSampleRate;
     const auto quality = Quality::HighQuality;   // latency is irrelevant offline
     const auto voiceName = getSelectedVoice().name;
+    const auto origin = sourceIsSynth ? ((sourceIsNeural || model != nullptr) ? VocalOrigin::SynthesizedSingingAiVoice
+                                                                               : VocalOrigin::SynthesizedSinging)
+                                      : (model != nullptr ? VocalOrigin::AiVoiceModel : VocalOrigin::Transformed);
+    const auto metadata = disclosureMetadata (origin, voiceName);
     const auto outFile = getExportDirectory().getNonexistentChildFile (
         sanitiseForFileName ("VoxaVersa " + voiceName + " " + name), ".wav");
 
@@ -1140,7 +1145,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     offlineRendering.store (true);
 
     auto* self = this;
-    impl->pool.addJob ([self, source, settings, model, mix, outGainLin, sr, quality, outFile]
+    impl->pool.addJob ([self, source, settings, model, mix, outGainLin, sr, quality, outFile, metadata]
     {
         auto& cancel = self->impl->cancelRender;
         juce::String error;
@@ -1219,7 +1224,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
             if (peak > 0.99f)
                 out.applyGain (0.99f / peak);
 
-            ok = writeWav (outFile, out, sr);
+            ok = writeWav (outFile, out, sr, metadata);
             if (! ok)
                 error = "Could not write " + outFile.getFullPathName();
         }
@@ -1541,7 +1546,7 @@ void VoxaVersaProcessor::startRecording()
                     .getChildFile ("VoxaVersa").getChildFile ("Recordings")
                     .getNonexistentChildFile ("VoxaVersa Recording " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S"), ".wav");
 
-    auto writer = createWavWriter (file, currentSampleRate, 2);
+    auto writer = createWavWriter (file, currentSampleRate, 2, disclosureMetadata (VocalOrigin::Recording, getSelectedVoice().name));
     if (writer == nullptr)
         return;
 

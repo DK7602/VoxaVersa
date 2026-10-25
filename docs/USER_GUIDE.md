@@ -111,3 +111,12 @@ Tips:
 | Recordings (standalone) | `Documents/VoxaVersa/Recordings` |
 
 `<app data>` is `%APPDATA%` on Windows, `~/Library/Application Support` on macOS, `~/.config` on Linux.
+
+## 7. Disclosure of AI and transformed vocals
+
+Every WAV that VoxaVersa renders or records carries a short machine-readable statement in its metadata
+(RIFF INFO comment and software fields, plus the Broadcast WAV description), for example
+*"AI-generated vocal: re-sung by the VoxaVersa AI voice model ..."* or *"Vocal digitally transformed with
+VoxaVersa"*. This supports the EU AI Act's requirement (Article 50) that synthetic audio is marked as
+such. An inaudible audio watermark for AI-voice output is planned in addition. Please keep these notes
+intact and disclose AI vocals where your distributor or platform requires it.
