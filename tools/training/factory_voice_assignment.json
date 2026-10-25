@@ -1,0 +1,692 @@
+{
+ "assignment": {
+  "male-theatre": "vocalset_male1",
+  "male-kpop": "cymatics_male_a",
+  "male-blues": "vocalset_male2",
+  "male-afrobeats": "vocalset_male4",
+  "male-trap": "vocalset_male3",
+  "male-reggae": "vocalset_male6",
+  "male-rnb": "cymatics_male_a",
+  "male-latin": "vocalset_male7",
+  "male-country": "vocalset_male1",
+  "male-jazz": "vocalset_male8",
+  "male-soul": "vocalset_male6",
+  "male-gospel": "vocalset_male4",
+  "male-pop": "vocalset_male5",
+  "male-opera": "vocalset_male2",
+  "male-rap": "vocalset_male1",
+  "male-edm": "vocalset_male3",
+  "male-rock": "vocalset_male11",
+  "male-deep-bass": "vocalset_male8",
+  "male-indie": "vocalset_male10",
+  "male-metal": "vocalset_male6",
+  "male-lofi": "vocalset_male10",
+  "female-theatre": "vocalset_female9",
+  "female-blues": "cymatics_female_b",
+  "female-smoky-alto": "cymatics_female_blend",
+  "female-latin": "vocalset_female3",
+  "female-pop": "vocalset_female6",
+  "female-afrobeats": "vocalset_female5",
+  "female-opera": "vocalset_female1",
+  "female-reggae": "vocalset_female4",
+  "female-rock": "vocalset_female8",
+  "female-edm": "vocalset_female9",
+  "female-country": "vocalset_female3",
+  "female-soul": "vocalset_female7",
+  "female-gospel": "vocalset_female6",
+  "female-rap": "cymatics_female_b",
+  "female-jazz": "vocalset_female4",
+  "female-trap": "cymatics_female_blend",
+  "female-kpop": "vocalset_female1",
+  "female-rnb": "vocalset_female3",
+  "female-metal": "vocalset_female7",
+  "female-angelic": "vocalset_female5",
+  "female-indie": "cymatics_female_a",
+  "female-lofi": "cymatics_female_blend",
+  "neutral-whisper": "vocalset_male11"
+ },
+ "costs": {
+  "male-theatre": 1.218,
+  "male-kpop": 1.243,
+  "male-blues": 2.064,
+  "male-afrobeats": 2.09,
+  "male-trap": 2.378,
+  "male-reggae": 2.517,
+  "male-rnb": 2.595,
+  "male-latin": 2.692,
+  "male-country": 3.258,
+  "male-jazz": 3.339,
+  "male-soul": 3.485,
+  "male-gospel": 3.54,
+  "male-pop": 3.709,
+  "male-opera": 4.758,
+  "male-rap": 5.004,
+  "male-edm": 6.155,
+  "male-rock": 6.91,
+  "male-deep-bass": 7.354,
+  "male-indie": 8.457,
+  "male-metal": 10.417,
+  "male-lofi": 10.973,
+  "female-theatre": 1.182,
+  "female-blues": 1.321,
+  "female-smoky-alto": 1.908,
+  "female-latin": 2.1,
+  "female-pop": 2.107,
+  "female-afrobeats": 2.625,
+  "female-opera": 2.943,
+  "female-reggae": 3.065,
+  "female-rock": 3.141,
+  "female-edm": 3.388,
+  "female-country": 3.509,
+  "female-soul": 4.03,
+  "female-gospel": 4.264,
+  "female-rap": 4.418,
+  "female-jazz": 4.605,
+  "female-trap": 4.605,
+  "female-kpop": 4.721,
+  "female-rnb": 5.287,
+  "female-metal": 6.541,
+  "female-angelic": 6.624,
+  "female-indie": 8.002,
+  "female-lofi": 10.387,
+  "neutral-whisper": 0.0
+ },
+ "singers": [
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_female_a",
+   "gender": "female",
+   "seconds": 393.6,
+   "median_midi": 63.14,
+   "range_midi": [
+    53.1,
+    72.3
+   ],
+   "tilt_db_oct": -8.36,
+   "air_db": -20.38,
+   "ring_db": -14.52,
+   "aperiodicity": 0.0287,
+   "register": 63.14,
+   "bright": -18.552,
+   "breath": 0.0287,
+   "power": -13.145,
+   "name": "cymatics_female_a",
+   "corpus": "cymatics",
+   "style": "contemporary"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_female_b",
+   "gender": "female",
+   "seconds": 377.1,
+   "median_midi": 61.84,
+   "range_midi": [
+    54.9,
+    69.2
+   ],
+   "tilt_db_oct": -10.52,
+   "air_db": -22.12,
+   "ring_db": -13.19,
+   "aperiodicity": 0.013,
+   "register": 61.84,
+   "bright": -21.578,
+   "breath": 0.013,
+   "power": -12.093,
+   "name": "cymatics_female_b",
+   "corpus": "cymatics",
+   "style": "contemporary"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_female_blend",
+   "gender": "female",
+   "seconds": 1033.6,
+   "median_midi": 62.15,
+   "range_midi": [
+    53.1,
+    70.7
+   ],
+   "tilt_db_oct": -8.64,
+   "air_db": -21.34,
+   "ring_db": -14.9,
+   "aperiodicity": 0.0199,
+   "register": 62.15,
+   "bright": -19.306,
+   "breath": 0.0199,
+   "power": -13.624,
+   "name": "cymatics_female_blend",
+   "corpus": "cymatics",
+   "style": "contemporary"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_male_a",
+   "gender": "male",
+   "seconds": 866.6,
+   "median_midi": 56.94,
+   "range_midi": [
+    44.8,
+    67.8
+   ],
+   "tilt_db_oct": -6.67,
+   "air_db": -21.01,
+   "ring_db": -12.19,
+   "aperiodicity": 0.0362,
+   "register": 56.94,
+   "bright": -17.169,
+   "breath": 0.0362,
+   "power": -10.562,
+   "name": "cymatics_male_a",
+   "corpus": "cymatics",
+   "style": "contemporary"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female1",
+   "gender": "female",
+   "seconds": 1105.9,
+   "median_midi": 68.24,
+   "range_midi": [
+    59.5,
+    77.7
+   ],
+   "tilt_db_oct": -12.48,
+   "air_db": -37.96,
+   "ring_db": -12.49,
+   "aperiodicity": 0.0154,
+   "register": 68.24,
+   "bright": -31.457,
+   "breath": 0.0154,
+   "power": -11.068,
+   "name": "vocalset_female1",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female2",
+   "gender": "female",
+   "seconds": 1195.2,
+   "median_midi": 68.24,
+   "range_midi": [
+    59.5,
+    78.5
+   ],
+   "tilt_db_oct": -13.34,
+   "air_db": -34.88,
+   "ring_db": -18.85,
+   "aperiodicity": 0.0071,
+   "register": 68.24,
+   "bright": -30.785,
+   "breath": 0.0071,
+   "power": -17.309,
+   "name": "vocalset_female2",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female3",
+   "gender": "female",
+   "seconds": 1170.9,
+   "median_midi": 67.79,
+   "range_midi": [
+    59.8,
+    77.7
+   ],
+   "tilt_db_oct": -11.81,
+   "air_db": -39.46,
+   "ring_db": -14.64,
+   "aperiodicity": 0.0103,
+   "register": 67.79,
+   "bright": -31.541,
+   "breath": 0.0103,
+   "power": -13.153,
+   "name": "vocalset_female3",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female4",
+   "gender": "female",
+   "seconds": 860.3,
+   "median_midi": 66.92,
+   "range_midi": [
+    59.5,
+    77.7
+   ],
+   "tilt_db_oct": -14.58,
+   "air_db": -38.53,
+   "ring_db": -15.87,
+   "aperiodicity": 0.0078,
+   "register": 66.92,
+   "bright": -33.845,
+   "breath": 0.0078,
+   "power": -14.258,
+   "name": "vocalset_female4",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female5",
+   "gender": "female",
+   "seconds": 1098.6,
+   "median_midi": 67.35,
+   "range_midi": [
+    59.2,
+    77.7
+   ],
+   "tilt_db_oct": -13.18,
+   "air_db": -34.17,
+   "ring_db": -16.34,
+   "aperiodicity": 0.0072,
+   "register": 67.35,
+   "bright": -30.262,
+   "breath": 0.0072,
+   "power": -14.79,
+   "name": "vocalset_female5",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female6",
+   "gender": "female",
+   "seconds": 1027.7,
+   "median_midi": 67.35,
+   "range_midi": [
+    59.8,
+    77.7
+   ],
+   "tilt_db_oct": -13.06,
+   "air_db": -33.6,
+   "ring_db": -15.77,
+   "aperiodicity": 0.0073,
+   "register": 67.35,
+   "bright": -29.865,
+   "breath": 0.0073,
+   "power": -14.215,
+   "name": "vocalset_female6",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female7",
+   "gender": "female",
+   "seconds": 1178.2,
+   "median_midi": 67.79,
+   "range_midi": [
+    60.0,
+    77.7
+   ],
+   "tilt_db_oct": -14.59,
+   "air_db": -38.3,
+   "ring_db": -13.18,
+   "aperiodicity": 0.0064,
+   "register": 67.79,
+   "bright": -33.744,
+   "breath": 0.0064,
+   "power": -11.693,
+   "name": "vocalset_female7",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female8",
+   "gender": "female",
+   "seconds": 1201.2,
+   "median_midi": 66.92,
+   "range_midi": [
+    59.2,
+    77.7
+   ],
+   "tilt_db_oct": -11.51,
+   "air_db": -34.98,
+   "ring_db": -10.87,
+   "aperiodicity": 0.0084,
+   "register": 66.92,
+   "bright": -29.004,
+   "breath": 0.0084,
+   "power": -9.251,
+   "name": "vocalset_female8",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female9",
+   "gender": "female",
+   "seconds": 977.4,
+   "median_midi": 67.35,
+   "range_midi": [
+    59.5,
+    78.5
+   ],
+   "tilt_db_oct": -10.96,
+   "air_db": -36.11,
+   "ring_db": -14.03,
+   "aperiodicity": 0.0098,
+   "register": 67.35,
+   "bright": -29.018,
+   "breath": 0.0098,
+   "power": -12.355,
+   "name": "vocalset_female9",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male1",
+   "gender": "male",
+   "seconds": 1090.1,
+   "median_midi": 54.92,
+   "range_midi": [
+    46.7,
+    65.3
+   ],
+   "tilt_db_oct": -11.59,
+   "air_db": -37.18,
+   "ring_db": -7.59,
+   "aperiodicity": 0.0186,
+   "register": 54.92,
+   "bright": -30.177,
+   "breath": 0.0186,
+   "power": -6.032,
+   "name": "vocalset_male1",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male10",
+   "gender": "male",
+   "seconds": 618.9,
+   "median_midi": 55.35,
+   "range_midi": [
+    46.8,
+    69.7
+   ],
+   "tilt_db_oct": -11.8,
+   "air_db": -39.03,
+   "ring_db": -11.64,
+   "aperiodicity": 0.0375,
+   "register": 55.35,
+   "bright": -31.314,
+   "breath": 0.0375,
+   "power": -9.491,
+   "name": "vocalset_male10",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male11",
+   "gender": "male",
+   "seconds": 971.5,
+   "median_midi": 55.13,
+   "range_midi": [
+    46.8,
+    66.1
+   ],
+   "tilt_db_oct": -11.93,
+   "air_db": -37.53,
+   "ring_db": -4.74,
+   "aperiodicity": 0.0391,
+   "register": 55.13,
+   "bright": -30.695,
+   "breath": 0.0391,
+   "power": -3.096,
+   "name": "vocalset_male11",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male2",
+   "gender": "male",
+   "seconds": 1122.6,
+   "median_midi": 55.57,
+   "range_midi": [
+    47.3,
+    65.3
+   ],
+   "tilt_db_oct": -14.56,
+   "air_db": -37.94,
+   "ring_db": -7.37,
+   "aperiodicity": 0.0242,
+   "register": 55.57,
+   "bright": -33.529,
+   "breath": 0.0242,
+   "power": -5.91,
+   "name": "vocalset_male2",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male3",
+   "gender": "male",
+   "seconds": 1208.3,
+   "median_midi": 54.71,
+   "range_midi": [
+    46.9,
+    70.2
+   ],
+   "tilt_db_oct": -10.26,
+   "air_db": -37.8,
+   "ring_db": -14.22,
+   "aperiodicity": 0.0125,
+   "register": 54.71,
+   "bright": -29.159,
+   "breath": 0.0125,
+   "power": -11.903,
+   "name": "vocalset_male3",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male4",
+   "gender": "male",
+   "seconds": 1051.3,
+   "median_midi": 55.79,
+   "range_midi": [
+    47.1,
+    67.3
+   ],
+   "tilt_db_oct": -11.18,
+   "air_db": -36.94,
+   "ring_db": -10.05,
+   "aperiodicity": 0.0243,
+   "register": 55.79,
+   "bright": -29.652,
+   "breath": 0.0243,
+   "power": -8.311,
+   "name": "vocalset_male4",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male5",
+   "gender": "male",
+   "seconds": 1153.8,
+   "median_midi": 55.13,
+   "range_midi": [
+    46.9,
+    65.7
+   ],
+   "tilt_db_oct": -12.5,
+   "air_db": -35.87,
+   "ring_db": -15.1,
+   "aperiodicity": 0.0155,
+   "register": 55.13,
+   "bright": -30.437,
+   "breath": 0.0155,
+   "power": -13.519,
+   "name": "vocalset_male5",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male6",
+   "gender": "male",
+   "seconds": 1201.2,
+   "median_midi": 56.24,
+   "range_midi": [
+    48.0,
+    67.3
+   ],
+   "tilt_db_oct": -13.07,
+   "air_db": -42.38,
+   "ring_db": -12.06,
+   "aperiodicity": 0.0111,
+   "register": 56.24,
+   "bright": -34.257,
+   "breath": 0.0111,
+   "power": -10.396,
+   "name": "vocalset_male6",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male7",
+   "gender": "male",
+   "seconds": 1209.7,
+   "median_midi": 55.35,
+   "range_midi": [
+    47.3,
+    76.2
+   ],
+   "tilt_db_oct": -11.39,
+   "air_db": -38.24,
+   "ring_db": -15.17,
+   "aperiodicity": 0.0259,
+   "register": 55.35,
+   "bright": -30.508,
+   "breath": 0.0259,
+   "power": -12.048,
+   "name": "vocalset_male7",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male8",
+   "gender": "male",
+   "seconds": 999.2,
+   "median_midi": 52.56,
+   "range_midi": [
+    41.4,
+    65.7
+   ],
+   "tilt_db_oct": -14.11,
+   "air_db": -43.12,
+   "ring_db": -10.95,
+   "aperiodicity": 0.0194,
+   "register": 52.56,
+   "bright": -35.668,
+   "breath": 0.0194,
+   "power": -8.981,
+   "name": "vocalset_male8",
+   "corpus": "vocalset",
+   "style": "classical"
+  },
+  {
+   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male9",
+   "gender": "male",
+   "seconds": 1199.1,
+   "median_midi": 64.56,
+   "range_midi": [
+    51.5,
+    76.9
+   ],
+   "tilt_db_oct": -12.56,
+   "air_db": -42.57,
+   "ring_db": -18.0,
+   "aperiodicity": 0.0048,
+   "register": 64.56,
+   "bright": -33.848,
+   "breath": 0.0048,
+   "power": -16.149,
+   "name": "vocalset_male9",
+   "corpus": "vocalset",
+   "style": "classical"
+  }
+ ],
+ "factory_voices": {
+  "cymatics_female_a": [
+   "female-indie"
+  ],
+  "cymatics_female_b": [
+   "female-blues",
+   "female-rap"
+  ],
+  "cymatics_female_blend": [
+   "female-lofi",
+   "female-smoky-alto",
+   "female-trap"
+  ],
+  "cymatics_male_a": [
+   "male-kpop",
+   "male-rnb"
+  ],
+  "vocalset_female1": [
+   "female-kpop",
+   "female-opera"
+  ],
+  "vocalset_female2": [],
+  "vocalset_female3": [
+   "female-country",
+   "female-latin",
+   "female-rnb"
+  ],
+  "vocalset_female4": [
+   "female-jazz",
+   "female-reggae"
+  ],
+  "vocalset_female5": [
+   "female-afrobeats",
+   "female-angelic"
+  ],
+  "vocalset_female6": [
+   "female-gospel",
+   "female-pop"
+  ],
+  "vocalset_female7": [
+   "female-metal",
+   "female-soul"
+  ],
+  "vocalset_female8": [
+   "female-rock"
+  ],
+  "vocalset_female9": [
+   "female-edm",
+   "female-theatre"
+  ],
+  "vocalset_male1": [
+   "male-country",
+   "male-rap",
+   "male-theatre"
+  ],
+  "vocalset_male10": [
+   "male-indie",
+   "male-lofi"
+  ],
+  "vocalset_male11": [
+   "male-rock",
+   "neutral-whisper"
+  ],
+  "vocalset_male2": [
+   "male-blues",
+   "male-opera"
+  ],
+  "vocalset_male3": [
+   "male-edm",
+   "male-trap"
+  ],
+  "vocalset_male4": [
+   "male-afrobeats",
+   "male-gospel"
+  ],
+  "vocalset_male5": [
+   "male-pop"
+  ],
+  "vocalset_male6": [
+   "male-metal",
+   "male-reggae",
+   "male-soul"
+  ],
+  "vocalset_male7": [
+   "male-latin"
+  ],
+  "vocalset_male8": [
+   "male-deep-bass",
+   "male-jazz"
+  ],
+  "vocalset_male9": []
+ }
+}

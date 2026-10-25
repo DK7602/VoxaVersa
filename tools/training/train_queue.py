@@ -1010,6 +1010,7 @@ def apply_factory_voices(w, cfg, current):
             t = fv.measure(v["dataset"], v["gender"])
             t["name"] = v["name"]
             save_json(tpath, t)
+        t["corpus"], t["style"] = v.get("corpus"), v.get("style", "contemporary")
         singers.append(t)
     voices = fv.factory_voices()
     result, costs = fv.assign(singers, voices)

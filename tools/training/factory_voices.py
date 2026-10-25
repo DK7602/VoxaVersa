@@ -22,7 +22,11 @@ first, with two rules:
   * similar genres get different singers while there are enough singers (groups: bright pop, soulful,
     powerful, rhythmic, acoustic - see GROUPS); with fewer singers than a group has voices, reuse is
     allowed but spread out;
-  * the load is balanced (each further voice on the same singer costs a little more).
+  * the load is balanced (each further voice on the same singer costs a little more);
+  * brightness and power are compared within a recording corpus (a singer's "corpus" label: microphones and
+    processing differ more between vendors than voices do), and a singer's "style" ("classical" for trained
+    classical singers, else contemporary) costs STYLE_PENALTY when it differs from the genre's (opera,
+    theatre and angelic are classical).
 Specialty voices: male-deep-bass, female-angelic, female-smoky-alto and neutral-whisper (any gender) are
 matched the same way. Writes <out>.json (for the training queue) and <out>.md (the table).
 Requirements: numpy, scipy, soundfile.
@@ -52,6 +56,9 @@ GROUPS = {
 }
 WEIGHTS = dict(register=1.0, bright=1.0, breath=0.8, power=0.8)
 FEATURES = list(WEIGHTS)
+# Genres whose built-in voice is a trained, "legit" classical/theatre sound; all others are contemporary.
+CLASSICAL = {"opera", "theatre", "angelic"}
+STYLE_PENALTY = 1.5
 
 
 # -------------------------------------------------------------------------------------------- measure
@@ -175,8 +182,24 @@ def zscores(items, keys):
     return out
 
 
+def corpus_normalise(singers):
+    """Brightness, air and ring depend on the microphone and processing as much as on the voice: remove each
+    corpus' mean (singers with the same "corpus" label, e.g. one sample-pack vendor) so only the differences
+    between singers count, then add back the overall mean."""
+    out = [dict(s) for s in singers]
+    for k in ("bright", "power"):
+        overall = float(np.mean([s[k] for s in singers]))
+        for c in {s.get("corpus") for s in singers}:
+            members = [s for s in out if s.get("corpus") == c]
+            mu = float(np.mean([s[k] for s in members]))
+            for s in members:
+                s[k] = s[k] - mu + overall
+    return out
+
+
 def assign(singers, voices):
     """{voice id: singer name} plus the cost table."""
+    singers = corpus_normalise(singers)
     result, costs = {}, {}
     for gender in ("male", "female"):
         sg = [s for s in singers if s["gender"] == gender]
@@ -197,7 +220,11 @@ def assign(singers, voices):
                     group_size = sum(1 for v in vs if v["group"] == group)
                     if group != "specialty" and used:
                         d += 4.0 * used if len(sg) >= group_size else 1.5 * used
-                    d += 0.35 * load[s["name"]]
+                    d += 0.8 * load[s["name"]]
+                    idp = vs[i]["id"].split("-", 1)[1]
+                    style = s.get("style")
+                    if style and (style == "classical") != (idp in CLASSICAL):
+                        d += STYLE_PENALTY
                     if best is None or d < best[0]:
                         best = (d, i, j)
             d, i, j = best
@@ -257,6 +284,8 @@ def main():
     m.add_argument("--dataset", required=True)
     m.add_argument("--gender", required=True, choices=["male", "female"])
     m.add_argument("--name")
+    m.add_argument("--corpus", help="recording source label (e.g. vendor or dataset)")
+    m.add_argument("--style", choices=["contemporary", "classical"], default="contemporary")
     m.add_argument("--out", required=True)
     a = sub.add_parser("assign")
     a.add_argument("--singers", nargs="+", required=True, help="JSON files written by 'measure'")
@@ -266,6 +295,7 @@ def main():
     if args.cmd == "measure":
         r = measure(args.dataset, args.gender)
         r["name"] = args.name or os.path.basename(os.path.abspath(args.dataset))
+        r["corpus"], r["style"] = args.corpus, args.style
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(r, f, indent=1)
         print(json.dumps(r))
