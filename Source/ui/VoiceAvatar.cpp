@@ -1,4 +1,5 @@
 #include "VoiceAvatar.h"
+#include "VoxaAssets.h"
 
 #include <map>
 
@@ -791,6 +792,40 @@ namespace
 }
 
 //==============================================================================
+juce::Image getFactoryPortrait (const VoiceProfile& voice)
+{
+    if (! voice.isFactory || voice.id.isEmpty())
+        return {};
+
+    // BinaryData mangles resource names ("female-pop.jpg" -> "femalepop_jpg"), so look the photo up by its original filename
+    const auto wanted = voice.id + ".jpg";
+
+    for (int i = 0; i < VoxaAssets::namedResourceListSize; ++i)
+    {
+        if (wanted != VoxaAssets::originalFilenames[i])
+            continue;
+
+        int size = 0;
+        if (const auto* data = VoxaAssets::getNamedResource (VoxaAssets::namedResourceList[i], size); data != nullptr && size > 0)
+            return juce::ImageCache::getFromMemory (data, size);
+    }
+
+    return {};
+}
+
+namespace
+{
+    /** Draws a photo so it covers the area, halving it first while it is more than twice the target size
+        so the final resample does not alias. */
+    void drawPhoto (juce::Graphics& g, juce::Image photo, int w, int h, juce::RectanglePlacement placement)
+    {
+        while (photo.getWidth() / 2 >= w && photo.getHeight() / 2 >= h)
+            photo = photo.rescaled (photo.getWidth() / 2, photo.getHeight() / 2, juce::Graphics::highResamplingQuality);
+
+        g.drawImage (photo, juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h), placement);
+    }
+}
+
 juce::Image renderVoiceAvatar (const VoiceProfile& voice, int w, int h)
 {
     w = juce::jmax (8, w);
@@ -803,11 +838,19 @@ juce::Image renderVoiceAvatar (const VoiceProfile& voice, int w, int h)
     if (voice.avatarImage.existsAsFile())
         custom = juce::ImageFileFormat::loadFrom (voice.avatarImage);
 
+    const auto portrait = custom.isValid() ? juce::Image() : getFactoryPortrait (voice);
+
     Painter p (g, voice);
 
     if (custom.isValid())
     {
-        g.drawImage (custom, juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h), juce::RectanglePlacement::fillDestination);
+        drawPhoto (g, custom, w, h, juce::RectanglePlacement::fillDestination);
+    }
+    else if (portrait.isValid())
+    {
+        // anchored at the top so a squarer card never crops the head
+        drawPhoto (g, portrait, w, h, juce::RectanglePlacement::xMid | juce::RectanglePlacement::yTop
+                                          | juce::RectanglePlacement::fillDestination);
     }
     else
     {
