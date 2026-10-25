@@ -8,3 +8,5 @@ cmake-build-*/
 Resources/fonts/*.zip
 __pycache__/
 .claude/worktrees/
+research_notes/
+reports/
