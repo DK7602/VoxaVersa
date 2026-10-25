@@ -93,7 +93,7 @@
  },
  "singers": [
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_female_a",
+   "dataset": "datasets/cymatics_female_a",
    "gender": "female",
    "seconds": 393.6,
    "median_midi": 63.14,
@@ -114,7 +114,7 @@
    "style": "contemporary"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_female_b",
+   "dataset": "datasets/cymatics_female_b",
    "gender": "female",
    "seconds": 377.1,
    "median_midi": 61.84,
@@ -135,7 +135,7 @@
    "style": "contemporary"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_female_blend",
+   "dataset": "datasets/cymatics_female_blend",
    "gender": "female",
    "seconds": 1033.6,
    "median_midi": 62.15,
@@ -156,7 +156,7 @@
    "style": "contemporary"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets/cymatics_male_a",
+   "dataset": "datasets/cymatics_male_a",
    "gender": "male",
    "seconds": 866.6,
    "median_midi": 56.94,
@@ -177,7 +177,7 @@
    "style": "contemporary"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female1",
+   "dataset": "datasets_vocalset/vocalset_female1",
    "gender": "female",
    "seconds": 1105.9,
    "median_midi": 68.24,
@@ -198,7 +198,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female2",
+   "dataset": "datasets_vocalset/vocalset_female2",
    "gender": "female",
    "seconds": 1195.2,
    "median_midi": 68.24,
@@ -219,7 +219,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female3",
+   "dataset": "datasets_vocalset/vocalset_female3",
    "gender": "female",
    "seconds": 1170.9,
    "median_midi": 67.79,
@@ -240,7 +240,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female4",
+   "dataset": "datasets_vocalset/vocalset_female4",
    "gender": "female",
    "seconds": 860.3,
    "median_midi": 66.92,
@@ -261,7 +261,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female5",
+   "dataset": "datasets_vocalset/vocalset_female5",
    "gender": "female",
    "seconds": 1098.6,
    "median_midi": 67.35,
@@ -282,7 +282,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female6",
+   "dataset": "datasets_vocalset/vocalset_female6",
    "gender": "female",
    "seconds": 1027.7,
    "median_midi": 67.35,
@@ -303,7 +303,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female7",
+   "dataset": "datasets_vocalset/vocalset_female7",
    "gender": "female",
    "seconds": 1178.2,
    "median_midi": 67.79,
@@ -324,7 +324,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female8",
+   "dataset": "datasets_vocalset/vocalset_female8",
    "gender": "female",
    "seconds": 1201.2,
    "median_midi": 66.92,
@@ -345,7 +345,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_female9",
+   "dataset": "datasets_vocalset/vocalset_female9",
    "gender": "female",
    "seconds": 977.4,
    "median_midi": 67.35,
@@ -366,7 +366,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male1",
+   "dataset": "datasets_vocalset/vocalset_male1",
    "gender": "male",
    "seconds": 1090.1,
    "median_midi": 54.92,
@@ -387,7 +387,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male10",
+   "dataset": "datasets_vocalset/vocalset_male10",
    "gender": "male",
    "seconds": 618.9,
    "median_midi": 55.35,
@@ -408,7 +408,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male11",
+   "dataset": "datasets_vocalset/vocalset_male11",
    "gender": "male",
    "seconds": 971.5,
    "median_midi": 55.13,
@@ -429,7 +429,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male2",
+   "dataset": "datasets_vocalset/vocalset_male2",
    "gender": "male",
    "seconds": 1122.6,
    "median_midi": 55.57,
@@ -450,7 +450,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male3",
+   "dataset": "datasets_vocalset/vocalset_male3",
    "gender": "male",
    "seconds": 1208.3,
    "median_midi": 54.71,
@@ -471,7 +471,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male4",
+   "dataset": "datasets_vocalset/vocalset_male4",
    "gender": "male",
    "seconds": 1051.3,
    "median_midi": 55.79,
@@ -492,7 +492,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male5",
+   "dataset": "datasets_vocalset/vocalset_male5",
    "gender": "male",
    "seconds": 1153.8,
    "median_midi": 55.13,
@@ -513,7 +513,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male6",
+   "dataset": "datasets_vocalset/vocalset_male6",
    "gender": "male",
    "seconds": 1201.2,
    "median_midi": 56.24,
@@ -534,7 +534,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male7",
+   "dataset": "datasets_vocalset/vocalset_male7",
    "gender": "male",
    "seconds": 1209.7,
    "median_midi": 55.35,
@@ -555,7 +555,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male8",
+   "dataset": "datasets_vocalset/vocalset_male8",
    "gender": "male",
    "seconds": 999.2,
    "median_midi": 52.56,
@@ -576,7 +576,7 @@
    "style": "classical"
   },
   {
-   "dataset": "/tmp/claude-0/-home-user-VoxaVersa/0fd5dcc7-e790-5897-b38c-b03b4b23da6d/scratchpad/training/datasets_vocalset/vocalset_male9",
+   "dataset": "datasets_vocalset/vocalset_male9",
    "gender": "male",
    "seconds": 1199.1,
    "median_midi": 64.56,
