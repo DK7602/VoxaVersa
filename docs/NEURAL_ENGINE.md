@@ -220,6 +220,8 @@ when you redistribute it.
 
 ## 4. Creating a voice pack
 
+Training kit (dataset cleaning, free Colab notebook, ONNX exporters for voices and the content encoder): [TRAINING.md](TRAINING.md).
+
 > **Consent and rights.** Only create voice models from recordings **you made yourself or that you have
 > explicit, informed permission to use for this purpose** from the person whose voice it is (and from the
 > rights holders of the recordings). A voice is personal: do not clone public figures, other artists or
