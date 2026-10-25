@@ -54,6 +54,7 @@ flowchart LR
 | `Source/presets/` | Factory + user presets, A/B |
 | `Source/sing/` | Text to Sing: lyrics parsing, G2P, melody generation/import, singing synthesiser, live MIDI singer |
 | `Source/neural/` | ONNX Runtime loader and RVC-compatible voice conversion (offline + streaming) |
+| `Source/core/AiDisclosure.h`, `Source/core/Watermark.*` | Marking of AI / synthetic vocals (EU AI Act Art. 50): metadata statement in every export, plus an inaudible spread-spectrum watermark on AI-voice and Text to Sing output (live and exported) with a detector |
 
 ## Latency
 

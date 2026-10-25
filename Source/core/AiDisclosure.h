@@ -18,7 +18,7 @@ enum class VocalOrigin
 
 /** Human- and machine-readable disclosure written into every file VoxaVersa exports
     (RIFF INFO comment/software + BWF description/originator). Part of VoxaVersa's marking of
-    synthetic audio under EU AI Act Article 50(2); an inaudible watermark is planned in addition. */
+    synthetic audio under EU AI Act Article 50(2), together with the inaudible watermark (core/Watermark.h). */
 inline std::unordered_map<juce::String, juce::String> disclosureMetadata (VocalOrigin origin, const juce::String& voiceName)
 {
     juce::String statement;

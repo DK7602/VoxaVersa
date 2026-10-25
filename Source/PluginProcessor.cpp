@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "core/AiDisclosure.h"
 #include "core/AudioUtils.h"
+#include "core/Watermark.h"
 #include "dsp/VoiceChain.h"
 #include "dsp/VoiceGenderEstimator.h"
 #include "neural/NeuralVoice.h"
@@ -230,6 +231,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
 
     // Mix / gains
     dsp::AutoLevel autoLevel;
+    WatermarkEmbedder watermark;
     dsp::Smoothed inGain, outGain, mixAmount, powerFade;
     juce::AudioBuffer<float> work;      // [0]=mono source [1]=wetL [2]=wetR [3]=dry
     std::vector<float> dryDelay;
@@ -279,6 +281,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         chain.setNeuralStream (neuralAttached.load() ? &neuralStream : nullptr);
         liveSinger.prepare (sampleRate, maxBlock);
         autoLevel.prepare (sampleRate);
+        watermark.prepare (sampleRate);
 
         const double blockRate = sampleRate;
         for (auto* s : { &inGain, &outGain, &mixAmount, &powerFade })
@@ -670,6 +673,19 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             wetL[i] = l * pw + dryAligned * (1.0f - pw);
             wetR[i] = r2 * pw + dryAligned * (1.0f - pw);
             dry[i] = dryAligned;
+        }
+
+        // Inaudible watermark whenever the output carries an AI or synthesized vocal (EU AI Act Art. 50).
+        {
+            auto mark = WatermarkKind::None;
+            if (powerOn && ParamCache::v (p.mix) > 1.0f)
+            {
+                if (d.chain.isNeuralLeadActive() || (singMode && takeIsNeural))
+                    mark = WatermarkKind::AiVoice;
+                else if (singMode)
+                    mark = WatermarkKind::SynthesizedSinging;
+            }
+            d.watermark.process (wetL, wetR, n, mark);
         }
 
         // 5. Visual feeds
@@ -1137,6 +1153,8 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
                                                                                : VocalOrigin::SynthesizedSinging)
                                       : (model != nullptr ? VocalOrigin::AiVoiceModel : VocalOrigin::Transformed);
     const auto metadata = disclosureMetadata (origin, voiceName);
+    const auto mark = origin == VocalOrigin::Transformed ? WatermarkKind::None
+                    : (origin == VocalOrigin::SynthesizedSinging ? WatermarkKind::SynthesizedSinging : WatermarkKind::AiVoice);
     const auto outFile = getExportDirectory().getNonexistentChildFile (
         sanitiseForFileName ("VoxaVersa " + voiceName + " " + name), ".wav");
 
@@ -1145,7 +1163,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     offlineRendering.store (true);
 
     auto* self = this;
-    impl->pool.addJob ([self, source, settings, model, mix, outGainLin, sr, quality, outFile, metadata]
+    impl->pool.addJob ([self, source, settings, model, mix, outGainLin, sr, quality, outFile, metadata, mark]
     {
         auto& cancel = self->impl->cancelRender;
         juce::String error;
@@ -1219,6 +1237,13 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
             while (last > source.getNumSamples() && out.getMagnitude (last, 1) < 1.0e-4f)
                 --last;
             out.setSize (2, last + 1, true);
+
+            if (mark != WatermarkKind::None)
+            {
+                WatermarkEmbedder embedder;
+                embedder.prepare (sr);
+                embedder.process (out.getWritePointer (0), out.getWritePointer (1), out.getNumSamples(), mark);
+            }
 
             const float peak = out.getMagnitude (0, out.getNumSamples());
             if (peak > 0.99f)

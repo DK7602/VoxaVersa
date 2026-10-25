@@ -205,6 +205,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     std::fill (busR.begin(), busR.begin() + n, 0.0f);
 
     const bool neuralActive = s.useNeural && neural != nullptr && neuralLatency > 0 && neural->hasModel();
+    neuralLeadActive = neuralActive;
 
     //==========================================================================
     // 3. Lead voice (PSOLA)

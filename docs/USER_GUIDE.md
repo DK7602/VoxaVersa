@@ -118,5 +118,11 @@ Every WAV that VoxaVersa renders or records carries a short machine-readable sta
 (RIFF INFO comment and software fields, plus the Broadcast WAV description), for example
 *"AI-generated vocal: re-sung by the VoxaVersa AI voice model ..."* or *"Vocal digitally transformed with
 VoxaVersa"*. This supports the EU AI Act's requirement (Article 50) that synthetic audio is marked as
-such. An inaudible audio watermark for AI-voice output is planned in addition. Please keep these notes
-intact and disclose AI vocals where your distributor or platform requires it.
+such. Please keep these notes intact and disclose AI vocals where your distributor or platform requires it.
+
+In addition, AI-voice and Text to Sing output carries an **inaudible watermark**, both live (so DAW bounces
+are marked too) and in exported files. It sits about 30 dB under the vocal between 1 and 8 kHz, follows the
+vocal's level, disappears in silence and adds no latency. It survives MP3/AAC encoding, resampling, level
+changes and cropping, but not pitch shifting or time stretching. A plain DSP transform of your own voice is
+not marked. To check a file: `VoxaVersaRender <file.wav> --detect` (built with `-DVOXAVERSA_BUILD_TOOLS=ON`).
+A few seconds of solo vocal are enough; in a busy full mix it needs longer.
