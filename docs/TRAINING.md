@@ -116,7 +116,13 @@ on speech, so treat the result as strong evidence, not proof: listen to the clus
 
 ## 4. Training on Google Colab (recommended)
 
-Open `tools/training/VoxaVersa_Voice_Training.ipynb` in Colab. Every cell explains itself; in short:
+**Many voices at once (the full VoxaVersa queue):** `tools/training/VoxaVersa_Queue_Colab.ipynb` runs
+`train_queue.py` on the GPU (`"device": "cuda"`) with the same evaluations, stop rule, best-checkpoint choice
+and built-in voice assignment as the CPU queue, with checkpoints on Google Drive. Step by step:
+[COLAB.md](COLAB.md).
+
+**One voice from your own recordings:** open `tools/training/VoxaVersa_Voice_Training.ipynb` in Colab. Every
+cell explains itself; in short:
 
 | Step | What happens | Time |
 |---|---|---|

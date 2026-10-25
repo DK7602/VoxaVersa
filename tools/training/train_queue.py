@@ -37,6 +37,12 @@ Per voice:
               folder, renders through VoxaVersa (VoxaVersaRender, if configured) and before/after MP3s with
               measured similarity and pitch accuracy.
 
+On a GPU (Google Colab: tools/training/VoxaVersa_Queue_Colab.ipynb, docs/COLAB.md) set "device": "cuda" in
+queue.json: same steps, stop rule and checkpoint choice; training uses RVC's standard fp16 mixed precision
+("amp": false for fp32), the features are extracted in full precision as on the CPU, and without
+VoxaVersaRender the listening files are made with try_voice.py (the same ONNX path as the plug-in's offline
+engine). Relative "dataset" / "tests" paths are resolved against "data_root" (default: the work folder).
+
 Requirements: the venv used for rvc_train.py plus speechbrain (evaluation); ffmpeg for MP3s.
 """
 
@@ -57,7 +63,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 
 DEFAULTS = dict(min_epochs=100, max_epochs=300, eval_every=10, patience=3, batch=2, threads=2, max_threads=4,
-                mem_limit_gb=8.0, d_bf16=True, holdout=0.04)
+                mem_limit_gb=8.0, d_bf16=True, holdout=0.04, amp=True, ckpt_every=1)
+# On a GPU ("device": "cuda"): no memory cap / thread governor / bf16; "amp" = RVC's standard fp16 mixed precision
+# (GradScaler, losses in fp32); "ckpt_every" = full G/D checkpoint every N epochs (always before an evaluation
+# and on stop) - on Google Drive each one is ~1 GB to write.
 
 EXIT_DONE, EXIT_MEMORY, EXIT_STOPPED, EXIT_EVAL, EXIT_BUSY = 0, 3, 4, 5, 6
 
@@ -71,11 +80,14 @@ CHILD_ENV = {
 
 def take_lock(path):
     """An exclusive lock held until the process exits (also when it is killed); None if someone has it."""
+    import errno
     import fcntl
     f = open(path, "a+")
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except OSError as e:
+        if e.errno not in (errno.EAGAIN, errno.EACCES):   # e.g. Google Drive: no locks - carry on without
+            return f
         f.close()
         return None
     return f
@@ -102,6 +114,19 @@ def be_first_oom_victim():
 
 def now():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+
+
+def on_gpu(cfg):
+    return str(cfg.get("device", "cpu")).lower() in ("cuda", "gpu")
+
+
+def limit_memory(cfg, v):
+    """CPU only: a CUDA process reserves far more address space than it uses, so RLIMIT_AS would break it."""
+    if on_gpu(cfg):
+        return
+    import resource
+    limit = int(v["mem_limit_gb"] * 1e9)
+    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 
 
 def load_json(path, default=None):
@@ -134,9 +159,12 @@ class Work:
         cfg = load_json(self.queue_path)
         if cfg is None:
             sys.exit("missing or invalid %s (see example_queue() in %s)" % (self.queue_path, __file__))
+        root = os.path.abspath(cfg.get("data_root", self.dir))
         for v in cfg["voices"]:
             for k, d in DEFAULTS.items():
                 v.setdefault(k, cfg.get(k, d))
+            v["dataset"] = os.path.join(root, v["dataset"])
+            v["tests"] = [[os.path.join(root, t[0]), t[1]] for t in v.get("tests", [])]
         return cfg
 
     def voice(self, name):
@@ -176,9 +204,11 @@ def write_status(w, note=None):
         lines += ["## Now: %s" % v["voice"], "",
                   "| | |", "|---|---|",
                   "| Epoch | %s of min %s / max %s (step %s/%s in this epoch) |" % (v.get("epoch"), v.get("min_epochs"), v.get("max_epochs"), v.get("step"), v.get("steps_per_epoch")),
-                  "| Speed | %.2f s/step, batch %s, %s threads, D in %s |" % (v.get("s_per_step", 0), v.get("batch"), v.get("threads"), "bf16" if v.get("d_bf16") else "fp32"),
+                  ("| Speed | %.2f s/step, batch %s, %s |" % (v.get("s_per_step", 0), v.get("batch"), v["device"])
+                   if str(v.get("device", "CPU")).startswith("GPU") else
+                   "| Speed | %.2f s/step, batch %s, %s threads, D in %s |" % (v.get("s_per_step", 0), v.get("batch"), v.get("threads"), "bf16" if v.get("d_bf16") else "fp32")),
                   "| ETA | min epochs in %s, max epochs in %s |" % (fmt_h(v.get("eta_min_s")), fmt_h(v.get("eta_max_s"))),
-                  "| Memory | %.1f GB RSS (cap %.1f GB address space) |" % (v.get("rss_gb", 0), v.get("mem_limit_gb", 0)),
+                  "| Memory | %.1f GB RSS%s |" % (v.get("rss_gb", 0), (" (cap %.1f GB address space)" % v["mem_limit_gb"]) if v.get("mem_limit_gb") else ""),
                   "| Last losses | %s |" % v.get("losses", "-"),
                   "| Heartbeat | %s UTC (pid %s) |" % (v.get("time"), v.get("pid")), ""]
     lines += ["## Queue", "", "| # | Voice | Status | Epoch | Best eval (epoch: val mel, similarity) | Last eval |", "|---|---|---|---|---|---|"]
@@ -436,9 +466,11 @@ def cmd_prepare(args):
     lock = voice_lock(w, cfg, v["name"])
     exp = w.exp_dir(cfg, v["name"])
     if not os.path.exists(os.path.join(exp, "filelist.txt")):
+        gpu = on_gpu(cfg)
         rc = subprocess.call([cfg["python"], os.path.join(HERE, "rvc_train.py"), "train", "--rvc-dir", cfg["rvc_dir"],
-                              "--dataset", v["dataset"], "--name", v["name"], "--device", cfg.get("device", "cpu"),
-                              "--threads", str(v["threads"]), "--workers", "2", "--prepare-only"])
+                              "--dataset", v["dataset"], "--name", v["name"], "--device", "auto" if gpu else "cpu",
+                              "--threads", str(v["threads"]), "--workers", "2", "--prepare-only"]
+                             + (["--full-precision"] if gpu else []))
         if rc != 0:
             sys.exit(rc)
     split_holdout(exp, v["holdout"])
@@ -511,8 +543,10 @@ def load_audio(path, sr):
 
 def load_ecapa(w):
     from speechbrain.inference.speaker import EncoderClassifier
-    return EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb",
-                                          savedir=os.path.join(w.dir, "ecapa_model"), run_opts={"device": "cpu"})
+    # "ecapa_dir": SpeechBrain links its files into this folder, which Google Drive can't hold (Colab: local disk)
+    savedir = os.path.expanduser(w.cfg().get("ecapa_dir") or os.path.join(w.dir, "ecapa_model"))
+    return EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb", savedir=savedir,
+                                          run_opts={"device": "cpu"})
 
 
 def embed(model, x16, chunk=6.0):
@@ -588,7 +622,7 @@ def save_small(net_g, hps, path, epoch):
     import torch
     from collections import OrderedDict
     opt = OrderedDict()
-    opt["weight"] = {k: v.half() for k, v in net_g.state_dict().items() if "enc_q" not in k}
+    opt["weight"] = {k: v.detach().half().cpu() for k, v in net_g.state_dict().items() if "enc_q" not in k}
     m, d = hps["model"], hps["data"]
     opt["config"] = [d["filter_length"] // 2 + 1, 32, m["inter_channels"], m["hidden_channels"], m["filter_channels"],
                      m["n_heads"], m["n_layers"], m["kernel_size"], m["p_dropout"], m["resblock"],
@@ -639,9 +673,7 @@ def cmd_train(args):
     w = Work(args.work, args.queue)
     cfg, v = w.cfg(), w.voice(args.voice)
     lock = voice_lock(w, cfg, v["name"])
-    import resource
-    limit = int(v["mem_limit_gb"] * 1e9)
-    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    limit_memory(cfg, v)
     be_first_oom_victim()
 
     import numpy as np
@@ -666,17 +698,25 @@ def cmd_train(args):
     H = ns(hps)
     threads = v["threads"]
     torch.set_num_threads(threads)
-    d_bf16 = v["d_bf16"] and torch.backends.mkldnn.is_available() and "avx512" in str(torch.backends.cpu.get_cpu_capability()).lower()
+    gpu = on_gpu(cfg)
+    if gpu and not torch.cuda.is_available():
+        sys.exit("queue.json says \"device\": \"cuda\" but PyTorch sees no GPU")
+    dev = torch.device("cuda" if gpu else "cpu")
+    amp = gpu and bool(v["amp"])
+    d_bf16 = (not gpu) and v["d_bf16"] and torch.backends.mkldnn.is_available() \
+        and "avx512" in str(torch.backends.cpu.get_cpu_capability()).lower()
 
     train_set = TextAudioLoaderMultiNSFsid(os.path.join(exp, "filelist_train.txt"), H.data)
     sampler = DistributedBucketSampler(train_set, batch, [100, 200, 300, 400, 500, 600, 700, 800, 900],
                                        num_replicas=1, rank=0, shuffle=True)
-    loader = torch.utils.data.DataLoader(train_set, num_workers=1, shuffle=False, pin_memory=False,
+    loader = torch.utils.data.DataLoader(train_set, num_workers=2 if gpu else 1, shuffle=False, pin_memory=gpu,
                                          collate_fn=TextAudioCollateMultiNSFsid(), batch_sampler=sampler,
                                          persistent_workers=True, prefetch_factor=2)
     net_g = SynthesizerTrnMs768NSFsid(H.data.filter_length // 2 + 1, H.train.segment_size // H.data.hop_length,
                                       **hps["model"], is_half=False, sr=H.data.sampling_rate)
     net_d = MultiPeriodDiscriminatorV2(H.model.use_spectral_norm)
+    net_g.to(dev)    # before the optimizers and the checkpoint: Adam's state follows its parameters' device
+    net_d.to(dev)
     optim_g = torch.optim.AdamW(net_g.parameters(), H.train.learning_rate, betas=H.train.betas, eps=H.train.eps)
     optim_d = torch.optim.AdamW(net_d.parameters(), H.train.learning_rate, betas=H.train.betas, eps=H.train.eps)
 
@@ -691,8 +731,8 @@ def cmd_train(args):
     else:
         pre = os.path.join(rvc, "assets", "pretrained_v2")
         sr_k = "%dk" % (H.data.sampling_rate // 1000)
-        net_g.load_state_dict(torch.load(os.path.join(pre, "f0G%s.pth" % sr_k), map_location="cpu")["model"])
-        net_d.load_state_dict(torch.load(os.path.join(pre, "f0D%s.pth" % sr_k), map_location="cpu")["model"])
+        net_g.load_state_dict(torch.load(os.path.join(pre, "f0G%s.pth" % sr_k), map_location=dev)["model"])
+        net_d.load_state_dict(torch.load(os.path.join(pre, "f0D%s.pth" % sr_k), map_location=dev)["model"])
         epoch_done = 0
         print("[%s] starting from the pretrained %s base" % (now(), sr_k), flush=True)
     w.update_state(name, epoch_done=epoch_done, partial_epoch=None)
@@ -705,44 +745,53 @@ def cmd_train(args):
     os.makedirs(ckpt_dir, exist_ok=True)
     seg = H.train.segment_size // H.data.hop_length
     ema, t_last, beat = None, time.time(), 0.0
-    governor = ThreadGovernor(v["threads"], v["max_threads"])
+    governor = None if gpu else ThreadGovernor(v["threads"], v["max_threads"])
+    scaler = torch.amp.GradScaler("cuda", enabled=amp)
     steps_per_epoch = len(loader)
     try:
         for epoch in range(epoch_done + 1, v["max_epochs"] + 1):
             sampler.set_epoch(epoch)
             net_g.train()
             net_d.train()
-            for i, (phone, phone_lengths, pitch, pitchf, spec, spec_lengths, wave, wave_lengths, sid) in enumerate(loader):
-                y_hat, ids_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(
-                    phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid)
-                mel = spec_to_mel_torch(spec, H.data.filter_length, H.data.n_mel_channels, H.data.sampling_rate,
-                                        H.data.mel_fmin, H.data.mel_fmax)
+            for i, batch_data in enumerate(loader):
+                if gpu:
+                    batch_data = [t.to(dev, non_blocking=True) for t in batch_data]
+                phone, phone_lengths, pitch, pitchf, spec, spec_lengths, wave, wave_lengths, sid = batch_data
+                # GPU: RVC's own mixed-precision recipe (train/train.py); CPU: fp32 G, optional bf16 D
+                with torch.autocast("cuda", enabled=amp) if gpu else torch.autocast("cpu", enabled=False):
+                    y_hat, ids_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(
+                        phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid)
+                    mel = spec_to_mel_torch(spec, H.data.filter_length, H.data.n_mel_channels, H.data.sampling_rate,
+                                            H.data.mel_fmin, H.data.mel_fmax)
                 y_mel = commons.slice_segments(mel, ids_slice, seg)
                 y_hat_mel = mel_spectrogram_torch(y_hat.float().squeeze(1), H.data.filter_length, H.data.n_mel_channels,
                                                   H.data.sampling_rate, H.data.hop_length, H.data.win_length,
                                                   H.data.mel_fmin, H.data.mel_fmax)
                 wave = commons.slice_segments(wave, ids_slice * H.data.hop_length, H.train.segment_size)
-                with torch.autocast("cpu", dtype=torch.bfloat16, enabled=d_bf16):
+                with (torch.autocast("cuda", enabled=amp) if gpu
+                      else torch.autocast("cpu", dtype=torch.bfloat16, enabled=d_bf16)):
                     y_d_hat_r, y_d_hat_g, _, _ = net_d(wave, y_hat.detach())
                 loss_disc, _, _ = discriminator_loss([t.float() for t in y_d_hat_r], [t.float() for t in y_d_hat_g])
                 optim_d.zero_grad()
-                loss_disc.backward()
-                optim_d.step()
-                with torch.autocast("cpu", dtype=torch.bfloat16, enabled=d_bf16):
+                scaler.scale(loss_disc).backward()
+                scaler.step(optim_d)
+                with (torch.autocast("cuda", enabled=amp) if gpu
+                      else torch.autocast("cpu", dtype=torch.bfloat16, enabled=d_bf16)):
                     y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(wave, y_hat)
-                loss_mel = F.l1_loss(y_mel, y_hat_mel) * H.train.c_mel
-                loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * H.train.c_kl
+                loss_mel = F.l1_loss(y_mel.float(), y_hat_mel) * H.train.c_mel
+                loss_kl = kl_loss(z_p.float(), logs_q.float(), m_p.float(), logs_p.float(), z_mask) * H.train.c_kl
                 loss_fm = feature_loss([[t.float() for t in a] for a in fmap_r], [[t.float() for t in a] for a in fmap_g])
                 loss_gen, _ = generator_loss([t.float() for t in y_d_hat_g])
                 loss_all = loss_gen + loss_fm + loss_mel + loss_kl
                 optim_g.zero_grad()
-                loss_all.backward()
-                optim_g.step()
+                scaler.scale(loss_all).backward()
+                scaler.step(optim_g)
+                scaler.update()
 
                 t = time.time()
                 dt, t_last = t - t_last, t
                 ema = dt if ema is None else 0.9 * ema + 0.1 * dt
-                if i % 3 == 0:
+                if governor is not None and i % 3 == 0:
                     new = governor.choose(threads)
                     if new != threads:
                         threads = new
@@ -754,7 +803,8 @@ def cmd_train(args):
                     live = dict(voice=name, epoch=epoch, step=i + 1, steps_per_epoch=steps_per_epoch, s_per_step=ema,
                                 batch=batch, threads=threads, d_bf16=d_bf16, min_epochs=v["min_epochs"],
                                 max_epochs=v["max_epochs"], eta_min_s=eta(v["min_epochs"]), eta_max_s=eta(v["max_epochs"]),
-                                rss_gb=rss_gb(), mem_limit_gb=v["mem_limit_gb"], time=now(), pid=os.getpid(),
+                                rss_gb=rss_gb(), mem_limit_gb=0.0 if gpu else v["mem_limit_gb"], time=now(), pid=os.getpid(),
+                                device="GPU %s%s" % (torch.cuda.get_device_name(0), ", fp16 mixed precision" if amp else "") if gpu else "CPU",
                                 losses="disc %.3f gen %.3f fm %.3f mel %.3f kl %.3f" % (
                                     float(loss_disc), float(loss_gen), float(loss_fm), float(loss_mel), float(loss_kl)))
                     save_json(w.live_path, live)
@@ -771,11 +821,13 @@ def cmd_train(args):
             sched_g.step()
             sched_d.step()
             lr = optim_g.param_groups[0]["lr"]
-            save_ckpt(net_d, optim_d, lr, epoch, d_path)
-            save_ckpt(net_g, optim_g, lr, epoch, g_path)
-            w.update_state(name, epoch_done=epoch, batch=batch)
+            evaluating = epoch % v["eval_every"] == 0 or epoch == v["max_epochs"]
+            if evaluating or epoch % max(1, int(v["ckpt_every"])) == 0:
+                save_ckpt(net_d, optim_d, lr, epoch, d_path)
+                save_ckpt(net_g, optim_g, lr, epoch, g_path)
+                w.update_state(name, epoch_done=epoch, batch=batch)
             print("[%s] epoch %d done (%.2f s/step, %d threads, mel %.3f)" % (now(), epoch, ema, threads, float(loss_mel)), flush=True)
-            if epoch % v["eval_every"] == 0 or epoch == v["max_epochs"]:
+            if evaluating:
                 # the supervisor evaluates while this process is gone (never both in memory)
                 save_small(net_g, hps, os.path.join(ckpt_dir, "%s_e%d.pth" % (name, epoch)), epoch)
                 print("[%s] epoch %d: checkpoint for evaluation saved" % (now(), epoch), flush=True)
@@ -802,9 +854,7 @@ def cmd_eval(args):
     w = Work(args.work, args.queue)
     cfg, v = w.cfg(), w.voice(args.voice)
     lock = voice_lock(w, cfg, v["name"])
-    import resource
-    limit = int(v["mem_limit_gb"] * 1e9)
-    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    limit_memory(cfg, v)
     be_first_oom_victim()
     import numpy as np
     import torch
@@ -813,6 +863,8 @@ def cmd_eval(args):
     sys.path.insert(0, HERE)
     import export_onnx
     net, info = export_onnx.load_model(args.pth, rvc)
+    dev = torch.device("cuda" if on_gpu(cfg) and torch.cuda.is_available() else "cpu")
+    net.to(dev)
     rvc_imports(rvc)
     from train.data_utils import TextAudioLoaderMultiNSFsid
     from train.mel_processing import mel_spectrogram_torch
@@ -821,7 +873,7 @@ def cmd_eval(args):
     from types import SimpleNamespace
     ns = lambda d: SimpleNamespace(**{k: ns(x) if isinstance(x, dict) else x for k, x in d.items()})
     H = ns(hps)
-    sid = torch.LongTensor([0])
+    sid = torch.LongTensor([0]).to(dev)
 
     def mel(y):
         return mel_spectrogram_torch(y, H.data.filter_length, H.data.n_mel_channels, H.data.sampling_rate,
@@ -833,7 +885,8 @@ def cmd_eval(args):
         for k in range(len(val)):
             spec, wav, phone, pitch, pitchf, _ = val[k]
             torch.manual_seed(k)
-            y = net.infer(phone[None], torch.LongTensor([phone.shape[0]]), pitch[None], pitchf[None], sid)[0][0]
+            y = net.infer(phone[None].to(dev), torch.LongTensor([phone.shape[0]]).to(dev), pitch[None].to(dev),
+                          pitchf[None].to(dev), sid)[0][0].float().cpu()
             n = min(y.shape[-1], wav.shape[-1])
             dists.append(float(torch.mean(torch.abs(mel(y[:, :n]) - mel(wav[:, :n])))))
     ecapa = load_ecapa(w)
@@ -852,8 +905,9 @@ def cmd_eval(args):
         coarse = np.clip(np.rint(np.where(f0 > 0, (mel_f0 - lo) * 254 / (hi - lo) + 1, 1)), 1, 255).astype(np.int64)
         torch.manual_seed(0)
         with torch.no_grad():
-            y = net.infer(phone, torch.LongTensor([n]), torch.from_numpy(coarse)[None], torch.from_numpy(f0)[None], sid)[0]
-        y = y.reshape(-1).numpy()
+            y = net.infer(phone.to(dev), torch.LongTensor([n]).to(dev), torch.from_numpy(coarse)[None].to(dev),
+                          torch.from_numpy(f0)[None].to(dev), sid)[0]
+        y = y.reshape(-1).float().cpu().numpy()
         g = math.gcd(info["sample_rate"], 16000)
         y16 = sps.resample_poly(y, 16000 // g, info["sample_rate"] // g).astype(np.float32)
         sims.append(float(np.dot(embed(ecapa, y16), cent)))
@@ -906,11 +960,12 @@ def cmd_finalize(args):
     subprocess.run(cmd, check=True)
     user = os.path.expanduser(cfg.get("voxaversa_user_dir", "~/.config/VoxaVersa"))
     inst = os.path.join(user, "Voices", pack_id)
-    shutil.rmtree(inst, ignore_errors=True)
-    os.makedirs(inst)
-    with zipfile.ZipFile(pack) as z:
-        z.extractall(inst)
-    if cfg.get("encoder"):
+    if cfg.get("install", True):     # false (Colab): only the .vxpack, imported in VoxaVersa later
+        shutil.rmtree(inst, ignore_errors=True)
+        os.makedirs(inst)
+        with zipfile.ZipFile(pack) as z:
+            z.extractall(inst)
+    if cfg.get("install", True) and cfg.get("encoder"):
         enc_dst = os.path.join(user, "Encoders", "contentvec-768.onnx")
         if not os.path.exists(enc_dst):
             os.makedirs(os.path.dirname(enc_dst), exist_ok=True)
@@ -925,7 +980,25 @@ def cmd_finalize(args):
     render = cfg.get("render")
     listen = os.path.join(w.dir, "listen", name)
     os.makedirs(listen, exist_ok=True)
-    if render and os.path.exists(render):
+    use_render = bool(render and os.path.exists(render))
+    encoder = cfg.get("encoder")
+
+    def convert(path, transpose, out):
+        """The test recording through the finished voice: VoxaVersa itself when VoxaVersaRender is configured,
+        else try_voice.py (the same ONNX generator + encoder path as VoxaVersa's offline engine)."""
+        if use_render:
+            env = dict(os.environ, VOXAVERSA_AI_THREADS=str(v["threads"]))
+            p = subprocess.run([render, path, out, "--voice", "user-" + pack_id, "--set", "aiEngine=1",
+                                "--set", "pitch=%d" % transpose], capture_output=True, text=True, env=env)
+            speed = next((l.strip() for l in p.stdout.splitlines() if l.strip().startswith("voice ") and "real time" in l), "?")
+            return p.returncode == 0 and os.path.exists(out), speed.split("|")[-1].strip(), (p.stderr or p.stdout)[-200:]
+        t0 = time.time()
+        p = subprocess.run([cfg["python"], os.path.join(HERE, "try_voice.py"), "--model", onnx_path, "--encoder", encoder,
+                            "--input", path, "--out", out, "--transpose", str(transpose), "--rvc-dir", cfg["rvc_dir"]],
+                           capture_output=True, text=True)
+        return p.returncode == 0 and os.path.exists(out), "try_voice.py %.0f s" % (time.time() - t0), (p.stderr or p.stdout)[-200:]
+
+    if use_render or (encoder and os.path.exists(encoder)):
         rvc_imports(cfg["rvc_dir"])
         import torch
         torch.set_num_threads(v["threads"])
@@ -939,12 +1012,9 @@ def cmd_finalize(args):
         for i, (path, transpose) in enumerate(v["tests"]):
             base = "%d_%s" % (i + 1, os.path.splitext(os.path.basename(path))[0])
             out = os.path.join(outdir, base + "_converted.wav")
-            env = dict(os.environ, VOXAVERSA_AI_THREADS=str(v["threads"]))
-            p = subprocess.run([render, path, out, "--voice", "user-" + pack_id, "--set", "aiEngine=1",
-                                "--set", "pitch=%d" % transpose], capture_output=True, text=True, env=env)
-            speed = next((l.strip() for l in p.stdout.splitlines() if l.strip().startswith("voice ") and "real time" in l), "?")
-            if p.returncode != 0 or not os.path.exists(out):
-                lines.append("| %s | %+d | render failed: %s | | | | |" % (base, transpose, (p.stderr or p.stdout)[-200:]))
+            ok, speed, err = convert(path, transpose, out)
+            if not ok:
+                lines.append("| %s | %+d | conversion failed: %s | | | | |" % (base, transpose, err))
                 continue
             xi, xo = load_audio(path, 16000), load_audio(out, 16000)
             n = min(len(xi), len(xo))
@@ -958,7 +1028,7 @@ def cmd_finalize(args):
             c = np.abs(1200 * np.log2(fo[:m][both] / fi[:m][both])) if both.any() else np.array([0.0])
             lines.append("| %s | %+d | %.3f (%.3f) | %.1f cents | %.0f %% | %.0f %% | %s |" % (
                 base, transpose, so, si, float(np.median(c)), 100 * float(np.mean(c < 50)),
-                100 * both.sum() / max(1, (fi[:m] > 0).sum()), speed.split("|")[-1].strip()))
+                100 * both.sum() / max(1, (fi[:m] > 0).sum()), speed))
             a = load_audio(path, 44100)[: 44100 * 20]
             b = load_audio(out, 44100)[: 44100 * 20]
             mp3(a, 44100, os.path.join(listen, base + "_1_before.mp3"))
@@ -988,6 +1058,15 @@ def cmd_finalize(args):
     with open(os.path.join(outdir, "report.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     w.update_state(name, pack=pack, final_summary=summary, report=os.path.join(outdir, "report.md"), factory_voices=mine)
+    if cfg.get("cleanup_finished"):
+        # keep the .vxpack and the chosen small checkpoint, drop what only training needs (~1.8 GB per voice)
+        for f in ["G_2333333.pth", "D_2333333.pth"] + glob.glob(os.path.join(exp, "voxaversa_ckpt", name + "_e*.pth")):
+            if os.path.exists(os.path.join(exp, f)) and os.path.abspath(os.path.join(exp, f)) != os.path.abspath(small):
+                os.remove(os.path.join(exp, f))
+        for d in ("0_gt_wavs", "1_16k_wavs", "2a_f0", "2b-f0nsf", "3_feature768"):
+            shutil.rmtree(os.path.join(exp, d), ignore_errors=True)
+        if os.path.exists(onnx_path):
+            os.remove(onnx_path)     # it is inside the .vxpack
     print("finalized", name, summary, flush=True)
 
 

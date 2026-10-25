@@ -204,7 +204,7 @@ def stage_dataset(dataset, exp_dir):
     return flat
 
 
-def stage_f0(rvc, exp_dir, device, unvoiced, threads):
+def stage_f0(rvc, exp_dir, device, unvoiced, threads, half=True):
     """RMVPE f0 for every 16 kHz piece -> 2a_f0 (coarse 1..255) and 2b-f0nsf (Hz)."""
     import numpy as np
     sys.path.insert(0, rvc)
@@ -226,7 +226,7 @@ def stage_f0(rvc, exp_dir, device, unvoiced, threads):
         if not todo:
             return
         use_cuda = device != "cpu" and torch.cuda.is_available()
-        model = RMVPE("assets/rmvpe/rmvpe.pt", is_half=use_cuda, device="cuda" if use_cuda else "cpu")
+        model = RMVPE("assets/rmvpe/rmvpe.pt", is_half=use_cuda and half, device="cuda" if use_cuda else "cpu")
         mel_min, mel_max = 1127 * np.log(1 + 50 / 700), 1127 * np.log(1 + 1100 / 700)
         for i, n in enumerate(todo):
             x = load_audio(os.path.join(src, n), 16000)
@@ -297,11 +297,13 @@ def cmd_train(args):
         log("1/5 preprocess")
         run([py, "train/preprocess.py", data, str(sr_hz), workers, exp_dir, "False", "3.7"], rvc, env)
     log("2/5 f0 (RMVPE, unvoiced = %s)" % args.f0_unvoiced)
-    run([py, os.path.abspath(__file__), "_f0", rvc, exp_dir, args.device, args.f0_unvoiced, str(args.threads or 0)], rvc, env)
+    run([py, os.path.abspath(__file__), "_f0", rvc, exp_dir, args.device, args.f0_unvoiced, str(args.threads or 0),
+         "full" if args.full_precision else "half"], rvc, env)
     log("3/5 features (HuBERT/ContentVec layer 12)")
     use_cuda = args.device != "cpu" and _cuda_available()
     if use_cuda:
-        run([py, "train/dataset/extract_hubert_feature.py", "cuda:0", "1", "0", "0", exp_dir, "v2", "true"], rvc, env)
+        run([py, "train/dataset/extract_hubert_feature.py", "cuda:0", "1", "0", "0", exp_dir, "v2",
+             "false" if args.full_precision else "true"], rvc, env)
     else:
         run([py, "train/dataset/extract_hubert_feature.py", "cpu", "1", "0", exp_dir, "v2", "false"], rvc, env)
     n = write_filelist(rvc, exp_dir, args.sr)
@@ -359,7 +361,8 @@ def cmd_export(args):
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "_f0":                  # internal: f0 stage in its own process
         rvc, exp_dir, device, unvoiced, threads = sys.argv[2:7]
-        stage_f0(rvc, exp_dir, device, unvoiced, int(threads) or None)
+        precision = sys.argv[7] if len(sys.argv) > 7 else "half"
+        stage_f0(rvc, exp_dir, device, unvoiced, int(threads) or None, half=precision != "full")
         return
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -386,6 +389,8 @@ def main():
     t.add_argument("--f0-unvoiced", default="zero", choices=["zero", "interpolate"])
     t.add_argument("--python", help="Python interpreter for the RVC scripts (default: this one)")
     t.add_argument("--prepare-only", action="store_true", help="stop after stage 4 (for other trainers, e.g. train_queue.py)")
+    t.add_argument("--full-precision", action="store_true",
+                   help="on a GPU, extract f0 and features in fp32 (as on the CPU) instead of fp16")
     e = sub.add_parser("export", help="write the trained generator as ONNX for VoxaVersa")
     e.add_argument("--rvc-dir", required=True)
     e.add_argument("--name", help="experiment name (uses the newest saved model)")
