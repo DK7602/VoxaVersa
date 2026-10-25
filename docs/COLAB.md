@@ -29,8 +29,11 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
 3. Menu **Runtime > Run all**. When asked, allow access to your Google Drive (choose your account, tick
    "See, edit, create and delete all of your Google Drive files": the notebook only uses the VoxaVersa
    folder).
-4. Wait for step 6. The first time, steps 3 - 5 take about 30 - 50 minutes (software, base models and
-   downloading and cleaning the free VocalSet singers; every step shows its progress). Later sessions start in about 5 minutes.
+4. Wait for step 6. The first time, steps 3 - 4 take about 5 - 10 minutes (software and base models). Step 5
+   takes seconds: training starts with the Cymatics singers while the 20 free VocalSet singers download and are
+   cleaned in the background (~30 - 60 minutes; the line "VocalSet singers:" in step 6 shows how far it is).
+   They join the queue by themselves when ready. If that download fails, training simply carries on and the
+   next Run all tries again. Later sessions start in about 5 minutes.
 5. Step 6 refreshes every 2 minutes: which singer is training, its epoch, the speed, and the time left.
    Leave the browser tab open.
 

@@ -17,6 +17,7 @@ fetched with fetch_vocalset.py and cleaned with prepare_dataset.py exactly as fo
 """
 
 import argparse
+import glob
 import json
 import os
 import shutil
@@ -89,41 +90,129 @@ def cmd_data(args):
     log("data kit ready: %d voices in voices.json" % len(voices))
 
     if args.vocalset:
-        out = os.path.join(data, "datasets_vocalset")
-        if os.path.exists(os.path.join(out, "report.json")):
+        if os.path.exists(os.path.join(data, "datasets_vocalset", ".ready")):
             log("VocalSet already prepared")
-            return
-        raw = os.path.join(args.scratch, "vocalset")
-        manifest = os.path.join(args.scratch, "vocalset.csv")
-        log("downloading VocalSet (CC BY 4.0, 6 GB archive), ~5 - 20 minutes")
-        archive = os.path.join(args.scratch, "VocalSet1-2.zip")
+        elif vocalset_job_running(args.work):
+            log("VocalSet is still being prepared in the background (progress: step 6)")
+        else:
+            # In the background, so training starts at once with the singers in the kit; the queue picks the
+            # VocalSet singers up when they are ready (and a failure here never blocks training).
+            os.makedirs(os.path.join(args.work, "colab_logs"), exist_ok=True)
+            logf = open(os.path.join(args.work, "colab_logs", "vocalset.log"), "a")
+            p = subprocess.Popen([sys.executable, os.path.abspath(__file__), "vocalset", "--work", args.work,
+                                  "--python", args.python, "--scratch", args.scratch],
+                                 stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+            with open(os.path.join(args.work, "colab_logs", "vocalset.pid"), "w") as f:
+                f.write(str(p.pid))
+            set_vocalset_status(args.work, "starting the download")
+            log("VocalSet (20 free singers) is being downloaded and cleaned in the background, ~30 - 60 minutes; "
+                "training starts now with the singers in the kit")
+
+
+def vocalset_job_running(work):
+    try:
+        pid = int(open(os.path.join(work, "colab_logs", "vocalset.pid")).read().strip())
+        os.kill(pid, 0)
+        return b"colab_queue.py" in open("/proc/%d/cmdline" % pid, "rb").read()
+    except (OSError, ValueError):
+        return False
+
+
+def set_vocalset_status(work, text):
+    """One line shown in the training status (QUEUE_STATUS.md / notebook step 6)."""
+    path = os.path.join(work, "colab_vocalset_status.txt")
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+
+
+def cmd_vocalset(args):
+    """Background job: download + clean VocalSet, then add its singers to queue.json."""
+    import threading
+    import traceback
+    work, data = args.work, os.path.join(args.work, "data")
+    out = os.path.join(data, "datasets_vocalset")
+    raw = os.path.join(args.scratch, "vocalset")
+    local = os.path.join(args.scratch, "datasets_vocalset")
+    manifest = os.path.join(args.scratch, "vocalset.csv")
+    stage = {"text": "downloading"}
+    done = threading.Event()
+
+    def progress():
+        while not done.wait(30):
+            n = len(glob.glob(os.path.join(raw, "*", "*", "*", "*.wav")))
+            c = len(glob.glob(os.path.join(local, "*", "*.wav")))
+            detail = "%d of ~2900 recordings" % n if stage["text"] == "downloading" else "%d clips so far" % c
+            set_vocalset_status(work, "%s (%s)" % (stage["text"], detail))
+
+    threading.Thread(target=progress, daemon=True).start()
+    try:
+        log("downloading VocalSet")
         subprocess.run([sys.executable, os.path.join(HERE, "fetch_vocalset.py"), "--out", raw, "--manifest", manifest,
-                        "--zip", archive, "--workers", "4"], check=True)
-        os.remove(archive)
-        log("cleaning VocalSet with prepare_dataset.py, ~15 minutes")
-        tmp = out + ".part"
-        shutil.rmtree(tmp, ignore_errors=True)
-        subprocess.run([args.python, os.path.join(HERE, "prepare_dataset.py"), "--manifest", manifest, "--out", tmp],
+                        "--workers", "16"] + (["--singers"] + args.singers if args.singers else []), check=True)
+        stage["text"] = "cleaning"
+        log("cleaning VocalSet")
+        shutil.rmtree(local, ignore_errors=True)
+        subprocess.run([args.python, os.path.join(HERE, "prepare_dataset.py"), "--manifest", manifest, "--out", local],
                        check=True)
+        stage["text"] = "copying to Google Drive"
+        log("copying to Google Drive")
         shutil.rmtree(out, ignore_errors=True)
-        os.replace(tmp, out)
+        shutil.copytree(local, out)
+        open(os.path.join(out, ".ready"), "w").write("ok")
+        done.set()
         shutil.rmtree(raw, ignore_errors=True)
+        qargs = load(os.path.join(work, "colab_queue_args.json"))
+        if qargs:
+            write_queue(argparse.Namespace(**qargs))
+            subprocess.run([qargs["python"], os.path.join(HERE, "train_queue.py"), "resume", "--work", work])
+        set_vocalset_status(work, "ready - its singers are in the queue")
         log("VocalSet ready")
+    except BaseException as e:
+        done.set()
+        traceback.print_exc()
+        set_vocalset_status(work, "failed (%s) - training continues with the other singers; details in "
+                                  "My Drive/VoxaVersa/queue/colab_logs/vocalset.log" % str(e).strip()[-160:])
+        sys.exit(1)
+
+
+def load(path):
+    try:
+        return json.load(open(path))
+    except (OSError, ValueError):
+        return None
 
 
 def cmd_queue(args):
+    with open(os.path.join(args.work, "colab_queue_args.json"), "w") as f:
+        json.dump({k: v for k, v in vars(args).items() if k != "cmd"}, f)
+    write_queue(args)
+
+
+def write_queue(args):
     data = os.path.join(args.work, "data")
     voices = json.load(open(os.path.join(data, "voices.json")))["voices"]
-    if not args.vocalset:
-        voices = [v for v in voices if not v["dataset"].startswith("datasets_vocalset/")]
+    vocalset_ready = os.path.exists(os.path.join(data, "datasets_vocalset", ".ready"))
+
+    def available(v):
+        if v["dataset"].startswith("datasets_vocalset/"):
+            return args.vocalset and vocalset_ready and os.path.isdir(os.path.join(data, v["dataset"]))
+        return os.path.isdir(os.path.join(data, v["dataset"]))
+
+    voices = [v for v in voices if available(v)]
     if args.only:
         voices = [v for v in voices if v["name"] in args.only]
+    # voices already started keep going first, so adding singers later never interrupts one
+    state = load(os.path.join(args.work, "queue_state.json")) or {}
+    started = [v for v in voices if state.get(v["name"], {}).get("status") not in (None, "pending")]
+    voices = started + [v for v in voices if v not in started]
     q = {
         "rvc_dir": args.rvc, "python": args.python, "device": "cuda", "amp": args.precision == "mixed",
         "batch": args.batch, "threads": 2, "max_threads": 2, "ckpt_every": args.ckpt_every,
         "min_epochs": 100, "max_epochs": 300, "eval_every": 10, "patience": 3,
         "encoder": os.path.join(args.work, "contentvec-768.onnx"), "data_root": data,
-        "install": False, "cleanup_finished": True, "ecapa_dir": "/content/ecapa_model", "voices": voices,
+        "install": False, "cleanup_finished": True, "ecapa_dir": "/content/ecapa_model",
+        "status_extra": os.path.join(args.work, "colab_vocalset_status.txt"), "voices": voices,
     }
     path = os.path.join(args.work, "queue.json")
     tmp = path + ".tmp"
@@ -146,6 +235,11 @@ def main():
     d.add_argument("--vocalset", action="store_true")
     d.add_argument("--python", default=sys.executable, help="interpreter with numpy/scipy/soundfile (prepare_dataset.py)")
     d.add_argument("--scratch", default="/content/scratch", help="local (not Drive) folder for the raw download")
+    vs = sub.add_parser("vocalset", help="(internal) background VocalSet download + cleaning")
+    vs.add_argument("--work", required=True)
+    vs.add_argument("--python", default=sys.executable)
+    vs.add_argument("--scratch", default="/content/scratch")
+    vs.add_argument("--singers", nargs="*", help="(testing) only these VocalSet singers")
     q = sub.add_parser("queue")
     q.add_argument("--work", required=True)
     q.add_argument("--rvc", required=True)
@@ -156,7 +250,7 @@ def main():
     q.add_argument("--ckpt-every", type=int, default=5)
     q.add_argument("--only", nargs="*", help="train only these voices (names from voices.json)")
     args = p.parse_args()
-    {"setup": cmd_setup, "data": cmd_data, "queue": cmd_queue}[args.cmd](args)
+    {"setup": cmd_setup, "data": cmd_data, "queue": cmd_queue, "vocalset": cmd_vocalset}[args.cmd](args)
 
 
 if __name__ == "__main__":

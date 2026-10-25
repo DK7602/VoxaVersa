@@ -209,8 +209,8 @@ def main():
             if os.path.exists(out) and os.path.getsize(out) == info.file_size:
                 continue
             os.makedirs(os.path.dirname(out), exist_ok=True)
-            with z.open(info) as src, open(out + ".part", "wb") as dst:
-                dst.write(src.read())
+            with z.open(info) as fin, open(out + ".part", "wb") as dst:
+                dst.write(fin.read())
             os.replace(out + ".part", out)
             done += 1
         return done
