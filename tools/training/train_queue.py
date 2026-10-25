@@ -1021,7 +1021,7 @@ def apply_factory_voices(w, cfg, current):
             continue
         pack_id = v.get("id", v["name"].replace("_", "-"))
         fvs = data["factory_voices"].get(v["name"], [])
-        listed = bool(v.get("listed", True))
+        listed = bool(v.get("listed", True)) or not fvs   # a pack that powers no built-in voice stays visible
         manifest = os.path.join(user, "Voices", pack_id, "voice.json")
         j = load_json(manifest)
         if j is not None:

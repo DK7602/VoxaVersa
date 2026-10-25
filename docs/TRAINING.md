@@ -374,6 +374,25 @@ sources.
   sample rate in the metadata) and patches two `int()` casts in RVC's relative attention that would
   otherwise freeze the traced length. With the excitation noise switched off on both sides, ONNX matches
   PyTorch within ~1e-4.
+* **What the engine does to a trained voice (measured).** Same model (Cymatics Male A, epoch 6), two
+  25 s test inputs (another male singer, and a female singer shifted down an octave), controlled
+  ONNX runs that change one thing at a time, scored by ECAPA similarity to the target singer:
+  * *Real-time encoder context* matters most. VoxaVersa's real-time chunks give the content encoder
+    0.4 s of new audio, 0.09 s ahead and `streamContextMs` (default 300 ms) behind. Those features have a
+    median cosine of only 0.61 - 0.67 to full-context ones, and similarity drops from 0.669 / 0.646
+    (offline) to 0.642 / 0.616. 1 s of context gives 0.656 / 0.651, 2 s gives 0.672 / 0.665 (offline
+    level). `"streamContextMs"` is a per-pack setting (`"model"` object of `voice.json`); more context costs
+    encoder time per chunk, not generator time. Offline renders use 10 s pieces and are not affected.
+  * *f0 source.* Feeding a YIN-style f0 instead of RMVPE (which the voice was trained with) roughly
+    doubles the output's frame-to-frame pitch deviation from the input contour (2.3 - 2.8 to 4.0 - 5.4
+    cents per 10 ms); similarity, periodicity and high-frequency noise are unchanged, and smoothing the
+    YIN track (5-frame median + 25 Hz low-pass) does not remove it. The plugin render sits in between
+    (3.6 - 3.9 cents). YIN's extra voiced frames are below audible level, so it causes no consonant buzz.
+  * *Feature retrieval* (RVC's index, k = 8, rate 0.75, protect 0.33) adds only 0.014 - 0.017 similarity,
+    so packs do not need an index.
+  * *Watermark.* Renders with and without VoxaVersa's AI watermark differ by 0.002 in similarity and
+    0.5 cents in median pitch error, less than two renders of the same file differ; the queue's
+    stop-rule evaluations run outside the plugin and never contain it.
 * **Pinned versions.** RVC commit `81eed5e8f68b6bed1789f682fe78cdd324495afc`, Hugging Face revision
   `e6d0c1a17da07c33557852f9dfa2bd44cc75737d`, PyTorch 2.7.1 (GPU) / 2.4.1 (tested CPU), transformers 4.49.0,
   NumPy 1.26.4, librosa 0.10.2.post1, onnx 1.17.0, onnxruntime 1.20.1.
