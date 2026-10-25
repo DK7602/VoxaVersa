@@ -190,13 +190,16 @@ def stage_dataset(dataset, exp_dir):
         with zipfile.ZipFile(dataset) as z:
             for info in z.infolist():
                 name = os.path.basename(info.filename)
-                if info.is_dir() or not name.lower().endswith(AUDIO_EXT) or name.startswith("."):
+                if info.is_dir() or not name.lower().endswith(AUDIO_EXT) or name.startswith(".") \
+                        or "__MACOSX" in info.filename:
                     continue
+                name = info.filename.strip("/").replace("/", "_")
                 with z.open(info) as fi, open(os.path.join(flat, name), "wb") as fo:
                     shutil.copyfileobj(fi, fo)
     else:
-        for f in src:
-            shutil.copy2(f, os.path.join(flat, os.path.basename(f)))
+        for f in src:   # sub/folder/x.wav -> sub_folder_x.wav (RVC's preprocess reads one flat folder)
+            rel = os.path.relpath(f, dataset).replace(os.sep, "_")
+            shutil.copy2(f, os.path.join(flat, rel))
     log("dataset: %d files" % len(os.listdir(flat)))
     return flat
 
