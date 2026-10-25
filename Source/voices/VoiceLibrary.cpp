@@ -341,9 +341,8 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
     sendChangeMessage();
 }
 
-bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& error)
+static bool installPack (const juce::File& source, const juce::File& voicesDir, juce::String& error, juce::String& name)
 {
-    const auto voicesDir = getUserVoicesDirectory();
     if (! voicesDir.createDirectory())
     {
         error = "Could not create " + voicesDir.getFullPathName();
@@ -397,14 +396,132 @@ bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& erro
     }
 
     VoiceProfile p;
-    if (! loadVoicePack (installed, p, error))
+    if (! VoiceLibrary::loadVoicePack (installed, p, error))
     {
         installed.deleteRecursively();
         return false;
     }
 
+    name = p.name;
+    return true;
+}
+
+bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& error)
+{
+    juce::String name;
+    if (! installPack (source, getUserVoicesDirectory(), error, name))
+        return false;
+
     rescanUserVoices();
     return true;
+}
+
+static bool isEncoderFile (const juce::String& fileName)
+{
+    const auto n = fileName.toLowerCase();
+    return n == "contentvec-768.onnx" || n == "vec-768-layer-12.onnx" || n == "contentvec-256.onnx" || n == "vec-256-layer-9.onnx";
+}
+
+juce::String VoiceLibrary::ImportResult::summary() const
+{
+    juce::String s;
+    if (installed.size() == 1)
+        s << "Voice installed: " << installed[0];
+    else if (installed.size() > 1)
+        s << installed.size() << " voices installed";
+    if (encoderInstalled)
+        s << (s.isEmpty() ? "AI content encoder installed" : " + AI content encoder");
+    if (errors.size() > 0)
+        s << (s.isEmpty() ? "Import failed: " : " (") << errors[0]
+          << (errors.size() > 1 ? " and " + juce::String (errors.size() - 1) + " more" : juce::String())
+          << (succeeded() ? ")" : "");
+    return s.isEmpty() ? juce::String ("No voice packs (.vxpack) or AI encoder found there") : s;
+}
+
+VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source, const juce::File& userDataDirectory)
+{
+    ImportResult r;
+    const auto voicesDir = userDataDirectory.getChildFile ("Voices");
+    const auto encodersDir = userDataDirectory.getChildFile ("Encoders");
+
+    auto pack = [&] (const juce::File& f)
+    {
+        juce::String error, name;
+        if (installPack (f, voicesDir, error, name))
+            r.installed.add (name);
+        else
+            r.errors.add (f.getFileName() + ": " + error);
+    };
+
+    auto encoder = [&] (const juce::File& f)
+    {
+        const auto dest = encodersDir.getChildFile (f.getFileName());
+        if (encodersDir.createDirectory() && (dest == f || f.copyFileTo (dest)))
+            r.encoderInstalled = true;
+        else
+            r.errors.add ("Could not copy " + f.getFileName() + " to " + encodersDir.getFullPathName());
+    };
+
+    auto scan = [&] (const juce::File& dir)
+    {
+        for (const auto& f : dir.findChildFiles (juce::File::findFiles, true, "*"))
+        {
+            if (f.hasFileExtension ("vxpack"))
+                pack (f);
+            else if (f.getFileName() == "voice.json")
+                pack (f.getParentDirectory());
+            else if (isEncoderFile (f.getFileName()))
+                encoder (f);
+        }
+    };
+
+    if (source.isDirectory())
+    {
+        if (source.getChildFile ("voice.json").existsAsFile())
+            pack (source);
+        else
+            scan (source);
+    }
+    else if (isEncoderFile (source.getFileName()))
+    {
+        encoder (source);
+    }
+    else
+    {
+        juce::ZipFile zip (source);
+        juce::Array<int> wanted;
+        for (int i = 0; i < zip.getNumEntries(); ++i)
+        {
+            const auto entryName = zip.getEntry (i)->filename;
+            const auto base = entryName.fromLastOccurrenceOf ("/", false, false);
+            if (base.endsWithIgnoreCase (".vxpack") || isEncoderFile (base))
+                wanted.add (i);
+        }
+
+        if (zip.getNumEntries() == 0)
+        {
+            r.errors.add (source.getFileName() + ": not a voice pack or zip archive");
+        }
+        else if (wanted.isEmpty())
+        {
+            pack (source);    // a single voice pack
+        }
+        else
+        {
+            // A collection: unpack only the packs and the encoder, then install them.
+            auto temp = userDataDirectory.getChildFile ("ImportTemp");
+            temp.deleteRecursively();
+            for (int i : wanted)
+                if (auto result = zip.uncompressEntry (i, temp, true); result.failed())
+                    r.errors.add (result.getErrorMessage());
+            scan (temp);
+            temp.deleteRecursively();
+        }
+    }
+
+    if (r.installed.size() > 0)
+        rescanUserVoices (voicesDir);
+    return r;
 }
 
 } // namespace voxa

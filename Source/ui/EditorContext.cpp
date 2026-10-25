@@ -128,4 +128,26 @@ void EditorContext::chooseFile (const juce::String& title, const juce::String& p
     });
 }
 
+void EditorContext::chooseFiles (const juce::String& title, const juce::String& patterns, bool directoriesToo,
+                                 std::function<void (const juce::Array<juce::File>&)> onChosen)
+{
+    chooser = std::make_unique<juce::FileChooser> (title, lastFolder, patterns, true);
+
+    int flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+              | juce::FileBrowserComponent::canSelectMultipleItems;
+    if (directoriesToo)
+        flags |= juce::FileBrowserComponent::canSelectDirectories;
+
+    chooser->launchAsync (flags, [this, cb = std::move (onChosen)] (const juce::FileChooser& fc)
+    {
+        const auto results = fc.getResults();
+        if (! results.isEmpty())
+        {
+            lastFolder = results.getFirst().getParentDirectory();
+            if (cb)
+                cb (results);
+        }
+    });
+}
+
 } // namespace voxa::ui

@@ -50,6 +50,22 @@ public:
     /** Installs a voice pack folder or .zip/.vxpack archive into the user voices directory. */
     bool importVoicePack (const juce::File& folderOrArchive, juce::String& errorMessage);
 
+    struct ImportResult
+    {
+        juce::StringArray installed;     // names of the voices installed
+        bool encoderInstalled = false;   // a content encoder (e.g. contentvec-768.onnx) was copied to Encoders/
+        juce::StringArray errors;
+
+        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled; }
+        juce::String summary() const;
+    };
+
+    /** Imports one voice pack, or a folder / .zip holding any number of .vxpack files and optionally the
+        content encoder: e.g. Google Drive's download of the training "voices" folder (+ contentvec-768.onnx).
+        Only the packs and the encoder are taken from a big archive; everything else in it is ignored. */
+    ImportResult importVoices (const juce::File& folderOrArchive)   { return importVoices (folderOrArchive, getUserDataDirectory()); }
+    ImportResult importVoices (const juce::File& folderOrArchive, const juce::File& userDataDirectory);
+
     /** Parses a voice pack directory (containing voice.json). Returns false if invalid. */
     static bool loadVoicePack (const juce::File& directory, VoiceProfile& result, juce::String& errorMessage);
 

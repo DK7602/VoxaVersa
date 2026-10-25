@@ -59,6 +59,9 @@ public:
     /** Async file chooser (kept alive by the context). */
     void chooseFile (const juce::String& title, const juce::String& patterns, bool directoriesToo,
                      std::function<void (const juce::File&)> onChosen, bool saveMode = false);
+    /** Like chooseFile, but several files (or folders) can be picked at once. */
+    void chooseFiles (const juce::String& title, const juce::String& patterns, bool directoriesToo,
+                      std::function<void (const juce::Array<juce::File>&)> onChosen);
 
     /** Last folder used by file choosers. */
     juce::File lastFolder;

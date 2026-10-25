@@ -397,17 +397,23 @@ void HeaderBar::importPreset()
 
 void HeaderBar::importVoicePack()
 {
-    ctx.chooseFile ("Import Voice Pack (folder, .zip or .vxpack)", "*.zip;*.vxpack;voice.json", true, [this] (const juce::File& chosen)
+    // Packs (.vxpack), a folder or .zip of many packs (e.g. Google Drive's download of the trained voices),
+    // and the AI content encoder (contentvec-768.onnx) - one or several at once.
+    ctx.chooseFiles ("Import Voices (.vxpack, a .zip or folder of voices, contentvec-768.onnx)",
+                     "*.zip;*.vxpack;*.onnx;voice.json", true, [this] (const juce::Array<juce::File>& chosen)
     {
-        auto f = chosen;
-        if (f.getFileName() == "voice.json")
-            f = f.getParentDirectory();
-
-        juce::String error;
-        if (ctx.processor.getVoiceLibrary().importVoicePack (f, error))
-            ctx.toast ("Voice pack installed: " + f.getFileNameWithoutExtension(), ToastKind::Success);
-        else
-            ctx.toast ("Voice pack import failed: " + error, ToastKind::Error);
+        VoiceLibrary::ImportResult total;
+        for (auto f : chosen)
+        {
+            if (f.getFileName() == "voice.json")
+                f = f.getParentDirectory();
+            const auto r = ctx.processor.getVoiceLibrary().importVoices (f);
+            total.installed.addArray (r.installed);
+            total.encoderInstalled = total.encoderInstalled || r.encoderInstalled;
+            total.errors.addArray (r.errors);
+        }
+        ctx.toast (total.summary(), total.errors.isEmpty() ? ToastKind::Success
+                                                           : (total.succeeded() ? ToastKind::Info : ToastKind::Error));
     });
 }
 
@@ -472,7 +478,7 @@ void HeaderBar::showSettingsMenu()
     menu.addSectionHeader ("AI Voice Engine");
     menu.addItem (aiToggle, "Use AI Voice Engine", true, ctx.getBool (ParamID::aiEngine));
     menu.addItem (-1, "Status: " + ctx.processor.getNeuralStatusMessage(), false, false);
-    menu.addItem (importVoices, "Import Voice Pack...");
+    menu.addItem (importVoices, "Import Voices...");
     menu.addItem (openVoices, "Open Voices Folder");
     menu.addItem (rescanVoices, "Rescan Voices");
     menu.addSeparator();
