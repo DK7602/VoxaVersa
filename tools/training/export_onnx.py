@@ -57,13 +57,35 @@ def _import_rvc(rvc_dir):
     return models
 
 
+def from_training_checkpoint(cpt, pth):
+    """A G_<step>.pth training checkpoint (+ config.json in the same folder) -> inference model dict,
+    like RVC's process_ckpt.savee, so a model can be exported while training is still running."""
+    import json
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(pth)), "config.json")
+    if not os.path.exists(cfg_path):
+        raise SystemExit("%s is a training checkpoint but %s is missing" % (pth, cfg_path))
+    hps = json.load(open(cfg_path, encoding="utf-8"))
+    m, d = hps["model"], hps["data"]
+    weight = {k: v for k, v in cpt["model"].items() if "enc_q" not in k}
+    config = [d["filter_length"] // 2 + 1, 32, m["inter_channels"], m["hidden_channels"], m["filter_channels"],
+              m["n_heads"], m["n_layers"], m["kernel_size"], m["p_dropout"], m["resblock"], m["resblock_kernel_sizes"],
+              m["resblock_dilation_sizes"], m["upsample_rates"], m["upsample_initial_channel"],
+              m["upsample_kernel_sizes"], m["spk_embed_dim"], m["gin_channels"], d["sampling_rate"]]
+    version = "v2" if weight["enc_p.emb_phone.weight"].shape[1] == 768 else "v1"
+    f0 = 1 if "enc_p.emb_pitch.weight" in weight else 0
+    return {"weight": weight, "config": config, "version": version, "f0": f0,
+            "info": "%sepoch (training checkpoint)" % cpt.get("iteration", "?")}
+
+
 def load_model(pth, rvc_dir):
     import torch
     models = _import_rvc(rvc_dir)
     cpt = torch.load(pth, map_location="cpu", weights_only=False)
+    if "weight" not in cpt and "model" in cpt:
+        cpt = from_training_checkpoint(cpt, pth)
     if "weight" not in cpt or "config" not in cpt:
-        raise SystemExit("%s is not an RVC model (expected the small inference model with 'weight' and 'config', "
-                         "e.g. assets/weights/<name>.pth, not a G_*.pth training checkpoint)" % pth)
+        raise SystemExit("%s is not an RVC model (expected an inference model with 'weight' and 'config', e.g. "
+                         "assets/weights/<name>.pth, or a G_*.pth checkpoint next to its config.json)" % pth)
     config = list(cpt["config"])
     config[-3] = cpt["weight"]["emb_g.weight"].shape[0]
     version = cpt.get("version", "v1")

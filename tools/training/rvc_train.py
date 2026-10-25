@@ -68,9 +68,36 @@ def run(cmd, cwd, env=None):
         sys.exit("command failed (exit code %d): %s" % (p.returncode, " ".join(cmd)))
 
 
-def rvc_env(rvc_dir, threads=None, device="auto"):
+SITECUSTOMIZE = """# written by VoxaVersa rvc_train.py --loader-workers: caps the data loader processes of RVC's
+# train.py (it starts 4, each holding ~0.4 GB) on machines with little memory.
+import os
+_n = os.environ.get("VOXAVERSA_LOADER_WORKERS")
+if _n:
+    import torch.utils.data as _data
+    _init = _data.DataLoader.__init__
+    def _capped(self, *a, **k):
+        if k.get("num_workers", 0) > int(_n):
+            k["num_workers"] = int(_n)
+            if int(_n) == 0:
+                k.pop("prefetch_factor", None)
+                k["persistent_workers"] = False
+            elif k.get("prefetch_factor"):
+                k["prefetch_factor"] = min(k["prefetch_factor"], 2)
+        _init(self, *a, **k)
+    _data.DataLoader.__init__ = _capped
+"""
+
+
+def rvc_env(rvc_dir, threads=None, device="auto", loader_workers=None):
     env = os.environ.copy()
     env["PYTHONPATH"] = rvc_dir + os.pathsep + env.get("PYTHONPATH", "")
+    if loader_workers is not None:
+        hook_dir = os.path.join(rvc_dir, ".voxaversa")
+        os.makedirs(hook_dir, exist_ok=True)
+        with open(os.path.join(hook_dir, "sitecustomize.py"), "w") as f:
+            f.write(SITECUSTOMIZE)
+        env["PYTHONPATH"] = hook_dir + os.pathsep + env["PYTHONPATH"]
+        env["VOXAVERSA_LOADER_WORKERS"] = str(loader_workers)
     # The scripts are started as train/<script>.py; without this, Python would put train/ first on the
     # module path and train/train.py would shadow the 'train' package (needs Python 3.11+).
     env["PYTHONSAFEPATH"] = "1"
@@ -82,6 +109,11 @@ def rvc_env(rvc_dir, threads=None, device="auto"):
             env[k] = str(threads)
     if device == "cpu":
         env["CUDA_VISIBLE_DEVICES"] = ""
+        # glibc keeps freed tensor memory in its heap when the shapes change from step to step; on the
+        # CPU this made RSS grow past 6 GB at batch 2. A fixed mmap threshold returns it (stable ~4 GB).
+        env.setdefault("MALLOC_MMAP_THRESHOLD_", "131072")
+        env.setdefault("MALLOC_TRIM_THRESHOLD_", "131072")
+        env.setdefault("MALLOC_ARENA_MAX", "2")
     return env
 
 
@@ -250,7 +282,7 @@ def cmd_train(args):
     exp_dir = os.path.join(rvc, "logs", args.name)
     os.makedirs(exp_dir, exist_ok=True)
     sr_hz = {"32k": 32000, "40k": 40000, "48k": 48000}[args.sr]
-    env = rvc_env(rvc, args.threads, args.device)
+    env = rvc_env(rvc, args.threads, args.device, args.loader_workers)
     workers = str(args.workers or max(1, min(4, os.cpu_count() or 1)))
 
     with open(os.path.join(exp_dir, "voxaversa_train.json"), "w") as f:
@@ -262,7 +294,7 @@ def cmd_train(args):
         log("1/5 preprocess")
         run([py, "train/preprocess.py", data, str(sr_hz), workers, exp_dir, "False", "3.7"], rvc, env)
     log("2/5 f0 (RMVPE, unvoiced = %s)" % args.f0_unvoiced)
-    stage_f0(rvc, exp_dir, args.device, args.f0_unvoiced, args.threads)
+    run([py, os.path.abspath(__file__), "_f0", rvc, exp_dir, args.device, args.f0_unvoiced, str(args.threads or 0)], rvc, env)
     log("3/5 features (HuBERT/ContentVec layer 12)")
     use_cuda = args.device != "cpu" and _cuda_available()
     if use_cuda:
@@ -320,6 +352,10 @@ def cmd_export(args):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "_f0":                  # internal: f0 stage in its own process
+        rvc, exp_dir, device, unvoiced, threads = sys.argv[2:7]
+        stage_f0(rvc, exp_dir, device, unvoiced, int(threads) or None)
+        return
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("setup", help="get the pinned RVC code and the base models")
@@ -339,6 +375,8 @@ def main():
     t.add_argument("--device", default="auto", choices=["auto", "cpu"])
     t.add_argument("--threads", type=int, default=None, help="CPU threads (default: all)")
     t.add_argument("--workers", type=int, default=None, help="preprocessing processes")
+    t.add_argument("--loader-workers", type=int, default=None,
+                   help="limit RVC's data loader processes (default 4, ~0.4 GB each) on machines with little RAM")
     t.add_argument("--cache-gpu", action="store_true", help="keep the dataset in GPU memory (small datasets)")
     t.add_argument("--f0-unvoiced", default="zero", choices=["zero", "interpolate"])
     t.add_argument("--python", help="Python interpreter for the RVC scripts (default: this one)")
