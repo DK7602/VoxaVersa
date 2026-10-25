@@ -58,7 +58,8 @@ image was reviewed and anything resembling a recognisable person was rejected.
   the generation scripts, not in the product.
 - **Post-processing tools (not shipped):** the YuNet face detector from the OpenCV model zoo
   (MIT) to frame each face consistently, and the IS-Net `isnet-general-use` segmentation model
-  (Apache-2.0) to cut the person out and place them on the shared navy/indigo starry backdrop
-  with a blue rim light. Images are exported as 256 x 280 JPEGs.
+  (Apache-2.0) together with the U^2-Net `u2net_human_seg` human-segmentation model (Apache-2.0)
+  to cut the person out and place them on the shared navy/indigo starry backdrop with a blue rim
+  light. Images are exported as 256 x 280 JPEGs.
 
 The model weights are not redistributed with VoxaVersa; only the generated images are.
