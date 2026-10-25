@@ -138,23 +138,42 @@ def cmd_vocalset(args):
     stage = {"text": "downloading"}
     done = threading.Event()
 
+    def step(cmd):
+        """Runs a tool, copying its output to this job's log; fails with the tool's last message."""
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+        last = []
+        for line in p.stdout:
+            print(line, end="", flush=True)
+            if line.strip():
+                last = (last + [line.strip()])[-3:]
+        if p.wait() != 0:
+            raise RuntimeError(" | ".join(last) or "exit code %d" % p.returncode)
+
     def progress():
         while not done.wait(30):
             n = len(glob.glob(os.path.join(raw, "*", "*", "*", "*.wav")))
             c = len(glob.glob(os.path.join(local, "*", "*.wav")))
-            detail = "%d of ~2900 recordings" % n if stage["text"] == "downloading" else "%d clips so far" % c
+            part = os.path.join(args.scratch, "VocalSet1-2.zip.part")
+            if stage["text"] == "downloading" and os.path.exists(part):
+                detail = "%.1f of 6.0 GB" % (os.path.getsize(part) / 1e9)
+            elif stage["text"] == "downloading":
+                detail = "%d of ~2900 recordings unpacked" % n
+            else:
+                detail = "%d clips so far" % c
             set_vocalset_status(work, "%s (%s)" % (stage["text"], detail))
 
     threading.Thread(target=progress, daemon=True).start()
     try:
         log("downloading VocalSet")
-        subprocess.run([sys.executable, os.path.join(HERE, "fetch_vocalset.py"), "--out", raw, "--manifest", manifest,
-                        "--workers", "16"] + (["--singers"] + args.singers if args.singers else []), check=True)
+        archive = os.path.join(args.scratch, "VocalSet1-2.zip")
+        step([sys.executable, os.path.join(HERE, "fetch_vocalset.py"), "--out", raw, "--manifest", manifest,
+              "--zip", archive, "--workers", "4"] + (["--singers"] + args.singers if args.singers else []))
+        if os.path.exists(archive):
+            os.remove(archive)
         stage["text"] = "cleaning"
         log("cleaning VocalSet")
         shutil.rmtree(local, ignore_errors=True)
-        subprocess.run([args.python, os.path.join(HERE, "prepare_dataset.py"), "--manifest", manifest, "--out", local],
-                       check=True)
+        step([args.python, os.path.join(HERE, "prepare_dataset.py"), "--manifest", manifest, "--out", local])
         stage["text"] = "copying to Google Drive"
         log("copying to Google Drive")
         shutil.rmtree(out, ignore_errors=True)
