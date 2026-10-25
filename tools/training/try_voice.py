@@ -107,17 +107,15 @@ def main():
         y = gen.run(["audio"], feeds)[0].reshape(-1)
         hop = len(y) // n
         out_sr = hop * 100
-        y = y[(start - a) * hop:(min(frames, start + seg) - a) * hop]
+        fade = 5 * hop                                   # 50 ms, taken from the right context
+        end = min(frames, start + seg)
+        y = y[(start - a) * hop:min(len(y), (end - a) * hop + fade)]
         pieces.append(y)
-    fade = int(0.05 * out_sr)
+    # consecutive pieces overlap by `fade` samples (same time span): crossfade them
     out = pieces[0]
-    for y in pieces[1:]:
-        r = np.linspace(0, 1, fade)
-        if len(out) > fade and len(y) > fade:
-            joint = out[-fade:] * (1 - r) + y[:fade] * r
-            out = np.concatenate([out[:-fade], joint, y[fade:]])
-        else:
-            out = np.concatenate([out, y])
+    for y in pieces[1:]:      # every piece but the last ends with `fade` samples of right context
+        r = np.linspace(0, 1, fade, dtype=np.float32)
+        out = np.concatenate([out[:-fade], out[-fade:] * (1 - r) + y[:fade] * r, y[fade:]])
     out = out[: int(len(x) / sr * out_sr)]
     sf.write(args.out, out, out_sr, subtype="PCM_16")
     voiced = f0[f0 > 0]
