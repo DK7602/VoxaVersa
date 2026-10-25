@@ -61,24 +61,17 @@ checkpoint are all that stay.
 
 ## 3. Installing the voices in VoxaVersa
 
-Once (on your computer):
-
-1. **ONNX Runtime**, the engine VoxaVersa uses for AI voices: see [NEURAL_ENGINE.md, section 3](NEURAL_ENGINE.md#3-installing-onnx-runtime).
-2. **The content encoder:** download `contentvec-768.onnx` from *My Drive > VoxaVersa > queue* and put it in
-   VoxaVersa's `Encoders` folder:
-   * Windows: `%APPDATA%\VoxaVersa\Encoders\`
-   * macOS: `~/Library/Application Support/VoxaVersa/Encoders/`
-   * Linux: `~/.config/VoxaVersa/Encoders/`
-
-For each finished singer:
-
-3. Download its `.vxpack` from *My Drive > VoxaVersa > queue > voices > (singer)*.
-4. In VoxaVersa: menu (top right) > **Import Voice Pack...** and pick the `.vxpack`.
+1. Install VoxaVersa with its installer ([INSTALL.md](INSTALL.md)). It includes the AI engine.
+2. In Google Drive, open *My Drive > VoxaVersa > queue*. Select the **voices** folder and the file
+   **contentvec-768.onnx** (Ctrl-click both), then right-click > **Download**. Drive zips them into one file (or
+   a few, for very large downloads).
+3. In VoxaVersa: menu (top right) > **Import Voices...** and pick the downloaded zip (several at once is fine).
+   VoxaVersa installs every voice pack and the AI content encoder from it and ignores everything else.
 
 Each pack already lists the built-in genre voices it powers (for example Female Pop and Female EDM). Those
 voices show an **AI** badge and use the trained singer whenever *Use AI Voice Engine* is on. Packs that only
 power built-in voices don't appear as voices of their own. When more singers finish, the assignment can
-change: import the newest `.vxpack` files again (they replace the old ones).
+change: download and import the voices folder again (newer packs replace older ones).
 
 The notebook's step 7 plays a before/after sample for every finished singer and shows which built-in voices
 it powers.

@@ -46,6 +46,39 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
+      - name: Get ONNX Runtime (bundled AI voice engine)
+        shell: bash
+        env:
+          ORT_VERSION: "1.20.1"
+          DML_VERSION: "1.15.2"   # the DirectML version ONNX Runtime 1.20.1's DirectML build requires
+        run: |
+          set -euo pipefail
+          mkdir -p ort && cd ort
+          base="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}"
+          case "${{ runner.os }}" in
+            Linux)
+              curl -fsSL -o ort.tgz "$base/onnxruntime-linux-x64-${ORT_VERSION}.tgz"
+              tar xzf ort.tgz
+              dir="$PWD/onnxruntime-linux-x64-${ORT_VERSION}" ;;
+            macOS)
+              curl -fsSL -o ort.tgz "$base/onnxruntime-osx-universal2-${ORT_VERSION}.tgz"
+              tar xzf ort.tgz
+              dir="$PWD/onnxruntime-osx-universal2-${ORT_VERSION}" ;;
+            Windows)
+              # DirectML build: GPU acceleration on any DirectX 12 graphics card, CPU otherwise
+              nuget="https://api.nuget.org/v3-flatcontainer"
+              curl -fsSL -o ort.zip "$nuget/microsoft.ml.onnxruntime.directml/${ORT_VERSION}/microsoft.ml.onnxruntime.directml.${ORT_VERSION}.nupkg"
+              curl -fsSL -o dml.zip "$nuget/microsoft.ai.directml/${DML_VERSION}/microsoft.ai.directml.${DML_VERSION}.nupkg"
+              7z x -y -oort-pkg ort.zip > /dev/null
+              7z x -y -odml-pkg dml.zip > /dev/null
+              mkdir -p win/lib
+              cp ort-pkg/runtimes/win-x64/native/onnxruntime.dll win/lib/
+              cp dml-pkg/bin/x64-win/DirectML.dll win/lib/
+              dir="$(cygpath -m "$PWD/win")" ;;
+          esac
+          ls -la "$dir" "$dir/lib" || true
+          echo "ORT_DIR=$dir" >> "$GITHUB_ENV"
+
       - name: Cache JUCE download
         uses: actions/cache@v4
         with:
@@ -53,7 +86,7 @@ jobs:
           key: juce-8.0.9-${{ runner.os }}
 
       - name: Configure
-        run: cmake -S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release -DVOXAVERSA_ONNXRUNTIME_DIR="${{ env.ORT_DIR }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel 4
@@ -83,6 +116,11 @@ jobs:
               fi
             done
           done
+          # Copying ONNX Runtime into a bundle invalidates its (ad-hoc) signature: sign again.
+          if [ "${{ runner.os }}" = macOS ]; then
+            find dist -maxdepth 2 \( -name "*.vst3" -o -name "*.component" -o -name "*.app" \) \
+              -exec codesign --force --deep --sign - {} \;
+          fi
           ls -R dist | head -50
 
       - name: Upload artefacts
@@ -90,4 +128,35 @@ jobs:
         with:
           name: VoxaVersa-${{ matrix.name }}
           path: dist
+          if-no-files-found: error
+
+      - name: Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force installer/windows/redist | Out-Null
+          Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile installer/windows/redist/vc_redist.x64.exe
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(VoxaVersa VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $icon = Get-ChildItem -Path build -Recurse -Filter icon.ico -ErrorAction SilentlyContinue | Select-Object -First 1
+          $isccArgs = @("/DAppVersion=$version", "/DSourceDir=$PWD\dist", "/DRedistDir=$PWD\installer\windows\redist", "/O$PWD\installer-out")
+          if ($icon) { $isccArgs += "/DIconFile=$($icon.FullName)" }
+          & $iscc @isccArgs installer\windows\VoxaVersa.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem installer-out
+
+      - name: macOS installer
+        if: runner.os == 'macOS'
+        run: |
+          version=$(sed -n 's/^project(VoxaVersa VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          mkdir -p installer-out
+          bash installer/macos/build_pkg.sh dist "$version" "installer-out/VoxaVersa-$version-macOS.pkg"
+
+      - name: Upload installer
+        if: runner.os != 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoxaVersa-${{ matrix.name }}-Installer
+          path: installer-out/*
           if-no-files-found: error

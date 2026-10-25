@@ -63,3 +63,12 @@ image was reviewed and anything resembling a recognisable person was rejected.
   navy/indigo starry backdrop with a thin blue rim light. Images are exported as 256 x 280 JPEGs.
 
 The model weights are not redistributed with VoxaVersa; only the generated images are.
+
+## Bundled with the installers (not part of the source code)
+
+| Component | Use | Licence |
+|---|---|---|
+| [ONNX Runtime](https://github.com/microsoft/onnxruntime) 1.20.1 (Windows: DirectML build) | runs the AI voice models | MIT |
+| [DirectML](https://www.nuget.org/packages/Microsoft.AI.DirectML) 1.15.2 (Windows) | GPU acceleration for ONNX Runtime | Microsoft DirectML licence (redistributable) |
+| Microsoft Visual C++ Redistributable (Windows installer) | C++ runtime needed by ONNX Runtime | Microsoft Visual Studio redistributable terms |
+

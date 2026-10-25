@@ -19,3 +19,8 @@ reports/
 tools/training/**/*.wav
 tools/training/**/*.mp3
 tools/training/**/*.zip
+
+# CI / installer build outputs
+ort/
+installer-out/
+installer/windows/redist/
