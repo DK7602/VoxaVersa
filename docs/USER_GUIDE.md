@@ -69,7 +69,8 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
    lyrics as MIDI lyric events). In a DAW the take also plays in sync from the start of the song (bar 1).
 
 The voice's register, formants, breathiness, vibrato and phrasing come from the selected voice, and all
-Voice Character / FX controls still apply.
+Voice Character / FX controls still apply. When an AI singer sings the take, the melody is written in the range
+that singer actually sang (from the voice assignment), where the model sounds natural.
 
 ## 4. Routing MIDI to the effect version
 

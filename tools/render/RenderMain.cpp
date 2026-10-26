@@ -6,7 +6,7 @@
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //   VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice <id>] [--bpm 120] [--seed 1]
-//                   [--segments <plan.tsv>] [--chain <voiced.wav>]
+//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai]]
 //                                             Text to Sing with an automatic melody: the plain guide vocal,
 //                                             its phoneme plan (one row per segment) and, with --chain, the
 //                                             take rendered through the voice chain exactly as Generate +
@@ -62,6 +62,8 @@ namespace
         }
         juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
         auto voice = processor.getSelectedVoice();
+        if (args.contains ("--ai") && voice.hasNeuralModel())
+            voice.traits = voice.traits.withAiSingingRange();   // as the plug-in composes for its AI singer
 
         // --trait name=value overrides a voice trait of the guide (for experiments; not used by --chain).
         for (int i = 3; i + 1 < args.size(); ++i)
@@ -136,8 +138,10 @@ namespace
         set (voxa::ParamID::melodySource, 1.0f);   // Auto Melody
         set (voxa::ParamID::singTempo, (float) bpm);
         set (voxa::ParamID::key, 0.0f);            // automatic
-        set (voxa::ParamID::aiEngine, 0.0f);
+        set (voxa::ParamID::aiEngine, args.contains ("--ai") ? 1.0f : 0.0f);   // --ai: the AI singer sings the take
         processor.setPlayConfigDetails (2, 2, sr, 512);
+        for (int i = 0; i < 1200 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
         processor.prepareToPlay (sr, 512);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 

@@ -15,6 +15,11 @@ VoiceTraits VoiceTraits::blend (const VoiceTraits& a, const VoiceTraits& b, floa
     r.rangeHighMidi = lerpi (a.rangeHighMidi, b.rangeHighMidi);
     r.aiCentreMidi = a.aiCentreMidi > 0.0f && b.aiCentreMidi > 0.0f ? lerp (a.aiCentreMidi, b.aiCentreMidi)
                                                                        : (t < 0.5f ? a.aiCentreMidi : b.aiCentreMidi);
+    if (a.aiLowMidi > 0 && b.aiLowMidi > 0)
+    {
+        r.aiLowMidi = lerpi (a.aiLowMidi, b.aiLowMidi);
+        r.aiHighMidi = lerpi (a.aiHighMidi, b.aiHighMidi);
+    }
     r.formantSemis = lerp (a.formantSemis, b.formantSemis);
     r.tiltDb = lerp (a.tiltDb, b.tiltDb);
     r.warmthDb = lerp (a.warmthDb, b.warmthDb);
@@ -254,6 +259,8 @@ bool VoiceLibrary::loadVoicePack (const juce::File& directory, VoiceProfile& p, 
         t.rangeLowMidi = (int) (*range)[0];
         t.rangeHighMidi = (int) (*range)[1];
         t.aiCentreMidi = 0.5f * (float) (t.rangeLowMidi + t.rangeHighMidi);   // the singer's own range
+        t.aiLowMidi = t.rangeLowMidi;
+        t.aiHighMidi = t.rangeHighMidi;
     }
     else
     {
@@ -357,6 +364,8 @@ static void applyAssignment (VoiceProfile& p, const juce::var& entry)
         p.traits.rangeHighMidi = (int) (*range)[1];
         p.traits.aiCentreMidi = obj->hasProperty ("median") ? (float) (double) obj->getProperty ("median")
                                                             : 0.5f * (float) (p.traits.rangeLowMidi + p.traits.rangeHighMidi);
+        p.traits.aiLowMidi = p.traits.rangeLowMidi;
+        p.traits.aiHighMidi = p.traits.rangeHighMidi;
     }
 
     if (auto* ids = obj->getProperty ("factoryVoices").getArray())
@@ -378,6 +387,7 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         v.neuralSampleRate = 0;
         v.aiPackName.clear();
         v.traits.aiCentreMidi = 0.0f;
+        v.traits.aiLowMidi = v.traits.aiHighMidi = 0;
     }
 
     if (dir.isDirectory())
@@ -394,6 +404,8 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
             v.neuralSampleRate = singer.neuralSampleRate;
             v.aiPackName = singer.name;
             v.traits.aiCentreMidi = singer.traits.aiCentreMidi;
+            v.traits.aiLowMidi = singer.traits.aiLowMidi;
+            v.traits.aiHighMidi = singer.traits.aiHighMidi;
         };
         std::vector<VoiceProfile> singers;   // packs made to power built-in voices
 

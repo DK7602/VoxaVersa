@@ -1416,6 +1416,9 @@ void VoxaVersaProcessor::generateSinging()
     request.scale = (ScaleType) juce::jlimit (0, (int) ScaleType::NumScales - 1, ParamCache::idx (p.scale));
     request.bpm = (ParamCache::on (p.singSyncHost) && hostBpm.load() > 0.0) ? hostBpm.load() : (double) ParamCache::v (p.singTempo);
     request.voice = getSelectedVoice();
+    // An AI singer sounds natural only on the notes they sang: the melody is written in their range.
+    if (request.voice.hasNeuralModel() && ParamCache::on (p.aiEngine))
+        request.voice.traits = request.voice.traits.withAiSingingRange();
     request.seed = impl->singSeed++;
     request.sampleRate = currentSampleRate;
 

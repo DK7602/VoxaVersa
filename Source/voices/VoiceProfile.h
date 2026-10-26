@@ -22,6 +22,8 @@ struct VoiceTraits
     // Centre of the range the voice's AI model was trained on (0 = unknown / no AI model). An AI model
     // only sounds right near the notes its singer sang: while it is active, octave placement aims here.
     float aiCentreMidi = 0.0f;
+    // The notes that singer sang (0 = unknown): Text to Sing writes the melody here while the AI model sings.
+    int aiLowMidi = 0, aiHighMidi = 0;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift
@@ -65,6 +67,19 @@ struct VoiceTraits
     static VoiceTraits blend (const VoiceTraits& a, const VoiceTraits& b, float t) noexcept;
 
     int centreMidi() const noexcept { return (rangeLowMidi + rangeHighMidi) / 2; }
+
+    /** For a melody the AI singer will sing: the register of the notes that singer sang, when known (an AI model
+        sounds natural only there). */
+    VoiceTraits withAiSingingRange() const noexcept
+    {
+        auto t = *this;
+        if (aiLowMidi > 0)
+        {
+            t.rangeLowMidi = aiLowMidi;
+            t.rangeHighMidi = juce::jmax (aiLowMidi + 9, aiHighMidi);
+        }
+        return t;
+    }
 };
 
 /** A voice in the library: DSP traits plus presentation metadata and an optional neural model. */
