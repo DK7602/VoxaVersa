@@ -43,7 +43,14 @@ namespace
         float duration = -1.0f;   // seconds, negative = until replaced
         bool aspirated = true;
         bool released = true;
+        bool afterPause = false;  // first onset consonant of a fresh (non-legato) note
     };
+
+    bool frontsFollowingU (Ph p) noexcept
+    {
+        return p == Ph::Y || p == Ph::T || p == Ph::D || p == Ph::N || p == Ph::S || p == Ph::Z || p == Ph::SH
+            || p == Ph::ZH || p == Ph::CH || p == Ph::JH || p == Ph::TH || p == Ph::DH;
+    }
 
     float smoothstep (float x) noexcept
     {
@@ -265,6 +272,8 @@ struct LiveSinger::Impl
             queuePos = 0;
             phaseTime = 0.0f;
             appendCluster (item.onset.data(), item.numOnset, Role::Onset, 0.7f, 0.09f);
+            if (item.numOnset > 0)
+                queue[0].afterPause = true;
             pushPhase ({ item.nucleus, Role::Hold, -1.0f });
             currentItem = item;
 
@@ -502,8 +511,22 @@ struct LiveSinger::Impl
         e.duration = phase.duration > 0.0f ? phase.duration : 10.0f;
         e.aspirated = phase.aspirated;
         e.released = phase.released;
+        e.afterPause = phase.afterPause;
+        e.coda = phase.role == Role::Coda;
         e.syllabic = vowelRole && ! isVowel (phase.ph);
-        if (phase.role == Role::Release && isDiphthong (phase.ph))
+        if (vowelRole)
+        {
+            const auto& item = currentItem;
+            const bool nasalCoda = item.numCoda > 0 && phonemeInfo (item.coda[0]).manner == Manner::Nasal;
+            e.contextual = (phase.ph == Ph::UW && item.numOnset > 0 && frontsFollowingU (item.onset[(size_t) item.numOnset - 1]))
+                        || (phase.ph == Ph::AE && nasalCoda);
+
+            // No lookahead while the key is held: an R / L colours the vowel as it is released.
+            if (phase.role == Role::Release && isVowel (phase.ph) && ! isDiphthong (phase.ph) && item.numCoda > 0
+                && (item.coda[0] == Ph::R || item.coda[0] == Ph::L))
+                e.liquidCoda = item.coda[0];
+        }
+        if (phase.role == Role::Release && (isDiphthong (phase.ph) || e.liquidCoda != Ph::Sil))
         {
             e.glideStart = 0.0f;
             e.glideTime = juce::jmax (0.04f, 0.9f * phase.duration);

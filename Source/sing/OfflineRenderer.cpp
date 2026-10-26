@@ -93,6 +93,28 @@ namespace
         const auto m = phonemeInfo (p).manner;
         return m == Manner::Stop || m == Manner::Affricate;
     }
+
+    /** Consonants after which American /u/ is fronted ("you", "to", "do", "new", "choose"). */
+    bool frontsFollowingU (Ph p) noexcept
+    {
+        return p == Ph::Y || p == Ph::T || p == Ph::D || p == Ph::N || p == Ph::S || p == Ph::Z || p == Ph::SH
+            || p == Ph::ZH || p == Ph::CH || p == Ph::JH || p == Ph::TH || p == Ph::DH;
+    }
+
+    bool isYouWord (const juce::String& word)
+    {
+        static const juce::StringArray words { "you", "your", "you're", "yours", "yourself", "you'll", "you've", "you'd", "ya" };
+        return words.contains (g2p::normaliseWord (word));
+    }
+
+    /** Off-glide timing of a sung diphthong, or of a vowel colouring into a coda R / L: the nucleus is
+        held and the glide comes late, but it completes a little before the vowel ends so that the
+        off-glide target is actually reached before the consonant transition takes over. */
+    void setOffGlide (PhoneEvent& e)
+    {
+        e.glideTime = juce::jlimit (0.07f, 0.18f, 0.2f * e.duration + 0.04f);
+        e.glideStart = juce::jmax (0.0f, e.duration - 1.15f * e.glideTime);
+    }
 }
 
 //==============================================================================
@@ -127,17 +149,6 @@ void OfflineRenderer::plan()
         return;
 
     // Syllable occurrences: a syllable plus the melisma notes it is held through.
-    struct Occurrence
-    {
-        int syllable = -1;
-        int firstNote = 0, lastNote = 0;
-        double vowelStart = 0.0, noteEnd = 0.0;
-        bool breathBefore = false;
-        bool connected = false;           // flows into the next syllable without a rest
-        std::vector<float> onset, onsetMin, coda, codaMin;
-        double onsetStart = 0.0, vowelEnd = 0.0, codaEnd = 0.0;
-    };
-
     std::vector<Occurrence> occ;
     for (int i = 0; i < (int) score.notes.size(); ++i)
     {
@@ -151,6 +162,7 @@ void OfflineRenderer::plan()
 
         Occurrence o;
         o.syllable = juce::jlimit (0, (int) script.syllables.size() - 1, n.syllable);
+        o.sung = script.syllables[(size_t) o.syllable];
         o.firstNote = o.lastNote = i;
         o.vowelStart = notes[(size_t) i].start;
         o.noteEnd = notes[(size_t) i].end;
@@ -166,23 +178,27 @@ void OfflineRenderer::plan()
         occ[(size_t) i].connected = ! occ[(size_t) i + 1].breathBefore
                                     && occ[(size_t) i + 1].vowelStart - occ[(size_t) i].noteEnd < 0.06;
 
-    // Nominal consonant durations.
+    applyConnectedSpeech (occ);
+
+    // Nominal consonant durations (a flap is a single quick tap).
+    constexpr float tapSeconds = 0.028f, tapMinimum = 0.018f;
     for (auto& o : occ)
     {
-        const auto& syl = script.syllables[(size_t) o.syllable];
+        const auto& syl = o.sung;
         const float onsetCluster = syl.onset.size() >= 2 ? 0.85f : 1.0f;
         const float codaCluster = syl.coda.size() >= 2 ? 0.85f : 1.0f;
         for (auto p : syl.onset)
         {
             const auto& info = phonemeInfo (p);
-            o.onset.push_back (info.onsetMs * 0.001f * tempoScale * onsetCluster);
-            o.onsetMin.push_back (info.minMs * 0.001f);
+            o.onset.push_back (o.onsetTap ? tapSeconds : info.onsetMs * 0.001f * tempoScale * onsetCluster);
+            o.onsetMin.push_back (o.onsetTap ? tapMinimum : info.minMs * 0.001f);
         }
-        for (auto p : syl.coda)
+        for (size_t k = 0; k < syl.coda.size(); ++k)
         {
-            const auto& info = phonemeInfo (p);
-            o.coda.push_back (info.codaMs * 0.001f * tempoScale * codaCluster);
-            o.codaMin.push_back (info.minMs * 0.001f);
+            const auto& info = phonemeInfo (syl.coda[k]);
+            const bool tap = o.codaTap && k + 1 == syl.coda.size();
+            o.coda.push_back (tap ? tapSeconds : info.codaMs * 0.001f * tempoScale * codaCluster);
+            o.codaMin.push_back (tap ? tapMinimum : info.minMs * 0.001f);
         }
     }
 
@@ -197,7 +213,13 @@ void OfflineRenderer::plan()
             auto& next = occ[(size_t) i + 1];
             const double ioi = next.vowelStart - o.vowelStart;
             const double minVowel = juce::jmax (0.045, 0.4 * ioi);
-            const double gap = (1.0 - setup.legato) * (1.0 - setup.legato) * juce::jmin (0.3 * lastNoteLength, 0.12);
+
+            // Detached singing leaves a little gap between words - but never inside a word ("ne-ver"
+            // broken by silence sounds syllable-timed), a flap, or where a final consonant (or the vowel
+            // itself) links into a vowel-initial word: English links those without a break.
+            const bool linking = next.sung.wordIndex == o.sung.wordIndex || next.sung.onset.empty()
+                              || next.onsetTap || o.codaTap;
+            const double gap = linking ? 0.0 : (1.0 - setup.legato) * (1.0 - setup.legato) * juce::jmin (0.3 * lastNoteLength, 0.12);
             const double window = juce::jmax (0.01, ioi - minVowel - gap);
 
             std::vector<float> joint (o.coda), jointMin (o.codaMin);
@@ -256,7 +278,7 @@ void OfflineRenderer::plan()
     for (int i = 0; i < numOcc; ++i)
     {
         const auto& o = occ[(size_t) i];
-        const auto& syl = script.syllables[(size_t) o.syllable];
+        const auto& syl = o.sung;
         const bool previousConnected = i > 0 && occ[(size_t) i - 1].connected;
 
         if (o.breathBefore)
@@ -284,8 +306,12 @@ void OfflineRenderer::plan()
             s.event.ph = syl.onset[k];
             s.event.contextVowel = isVowel (syl.nucleus) ? syl.nucleus : Ph::AX;
             s.event.duration = o.onset[k];
-            s.event.aspirated = ! (k > 0 && syl.onset[k - 1] == Ph::S);
+            // Voiceless stops are aspirated at the start of stressed syllables and words ("tea", "today"),
+            // not after S ("stay") or inside a word before an unstressed vowel ("happy").
+            s.event.aspirated = ! (k > 0 && syl.onset[k - 1] == Ph::S) && (syl.stress >= 1 || syl.wordStart);
             s.event.released = true;
+            s.event.tap = o.onsetTap;
+            s.event.afterPause = k == 0 && ! previousConnected;
             s.start = t;
             s.end = t + o.onset[k];
             s.note = o.firstNote;
@@ -303,15 +329,30 @@ void OfflineRenderer::plan()
         v.event.duration = (float) (v.end - v.start);
         v.note = o.firstNote;
         v.level = setup.vowelLoudnessCompensation (syl.nucleus, music::midiToHz (notes[(size_t) o.firstNote].midi));
-        if (isDiphthong (syl.nucleus))
+        const bool nasalCoda = ! syl.coda.empty() && phonemeInfo (syl.coda.front()).manner == Manner::Nasal;
+        v.event.contextual = (syl.nucleus == Ph::UW && ! syl.onset.empty() && frontsFollowingU (syl.onset.back()))
+                          || (syl.nucleus == Ph::AE && nasalCoda);
+        if (! isDiphthong (syl.nucleus) && isVowel (syl.nucleus) && ! syl.coda.empty()
+            && (syl.coda.front() == Ph::R || syl.coda.front() == Ph::L))
+            v.event.liquidCoda = syl.coda.front();
+
+        if (isDiphthong (syl.nucleus) || v.event.liquidCoda != Ph::Sil)
+            setOffGlide (v.event);
+        if (syl.nucleus == Ph::AX && v.event.liquidCoda == Ph::L)
         {
-            v.event.glideTime = juce::jlimit (0.06f, 0.16f, 0.25f * v.event.duration);
-            v.event.glideStart = v.event.duration - v.event.glideTime;
+            // An unstressed schwa before L ("lit-tle", "beau-ti-ful") is dark L-coloured throughout.
+            v.event.glideStart = 0.0f;
+            v.event.glideTime = juce::jmin (0.1f, 0.5f * v.event.duration);
         }
 
         // Attack: how voicing begins at the vowel.
         const float velocity = notes[(size_t) o.firstNote].velocity;
-        if (! syl.onset.empty())
+        if (o.onsetTap)
+        {
+            v.attack = 0.008f;   // the voice runs on through the flap
+            v.attackFloor = 0.6f;
+        }
+        else if (! syl.onset.empty())
         {
             const auto last = syl.onset.back();
             if (isSonorant (last) || (isVoiced (last) && phonemeInfo (last).manner == Manner::Fricative))
@@ -347,14 +388,24 @@ void OfflineRenderer::plan()
             s.event.contextVowel = isVowel (syl.nucleus) ? syl.nucleus : Ph::AX;
             s.event.duration = o.coda[k];
             s.event.aspirated = false;
+            s.event.coda = true;
 
-            // Stops directly followed by another stop are not released ("kept", "good time").
+            // English final stops are unreleased before another consonant ("kept", "good night", "hold
+            // me"), released into a following vowel or glide ("hold on", "hold you"), and released softly
+            // before a pause.
             Ph following = Ph::Sil;
-            if (k + 1 < syl.coda.size())
+            const bool last = k + 1 == syl.coda.size();
+            if (! last)
                 following = syl.coda[k + 1];
-            else if (o.connected && ! script.syllables[(size_t) occ[(size_t) i + 1].syllable].onset.empty())
-                following = script.syllables[(size_t) occ[(size_t) i + 1].syllable].onset.front();
-            s.event.released = ! (isStopLike (syl.coda[k]) && isStopLike (following));
+            else if (o.connected)
+            {
+                const auto& next = occ[(size_t) i + 1].sung;
+                following = next.onset.empty() ? next.nucleus : next.onset.front();
+            }
+            s.event.linked = last && o.connected && isVowel (following);
+            s.event.released = ! (isStopLike (syl.coda[k]) && isConsonant (following)
+                                  && following != Ph::W && following != Ph::Y);
+            s.event.tap = last && o.codaTap;
 
             s.start = t;
             s.end = t + o.coda[k];
@@ -400,6 +451,74 @@ void OfflineRenderer::plan()
     for (const auto& o : occ)
         end = juce::jmax (end, o.codaEnd);
     durationSeconds = end + 0.4;
+}
+
+//==============================================================================
+void OfflineRenderer::applyConnectedSpeech (std::vector<Occurrence>& occ) const
+{
+    // American English connected speech. Sung without these, lyrics sound read out word by word in
+    // careful "textbook" English - one of the clearest marks of a non-native singer.
+    const int n = (int) occ.size();
+
+    // Weak forms of function words on short notes that run on into the next word ("to the" [tə ðə],
+    // "for you" [fɚ ju]). Long, held or phrase-final notes keep the full vowel, as singers do.
+    constexpr double weakFormLongestNote = 0.42;
+    for (int i = 0; i + 1 < n; ++i)
+    {
+        auto& o = occ[(size_t) i];
+        if (! o.sung.hasWeakForm || ! o.connected || o.sung.pauseAfter || o.lastNote != o.firstNote
+            || o.noteEnd - o.vowelStart > weakFormLongestNote)
+            continue;
+
+        if (o.sung.weakOnlyBeforeConsonant && occ[(size_t) i + 1].sung.onset.empty())
+            continue;
+
+        o.sung.nucleus = o.sung.weakNucleus;
+        o.sung.coda = o.sung.weakCoda;
+    }
+
+    // Yod coalescence: "don't you" -> don'-chu, "hold you" -> hol-ju.
+    for (int i = 0; i + 1 < n; ++i)
+    {
+        auto& o = occ[(size_t) i];
+        auto& next = occ[(size_t) i + 1];
+        if (! o.connected || o.sung.coda.empty() || ! o.sung.wordEnd || next.sung.onset.size() != 1
+            || next.sung.onset.front() != Ph::Y || ! isYouWord (script.words[next.sung.wordIndex]))
+            continue;
+
+        const auto last = o.sung.coda.back();
+        if (last == Ph::T || last == Ph::D)
+        {
+            o.sung.coda.pop_back();
+            next.sung.onset.front() = last == Ph::T ? Ph::CH : Ph::JH;
+        }
+    }
+
+    // Flapping: T / D between a vowel (or R) and an unstressed vowel inside a word ("better", "city",
+    // "party"), and a final T / D before a vowel-initial word ("got it", "what about").
+    for (int i = 0; i < n; ++i)
+    {
+        auto& o = occ[(size_t) i];
+        const auto& s = o.sung;
+        auto isTD = [] (Ph p) { return p == Ph::T || p == Ph::D; };
+
+        if (i > 0 && s.onset.size() == 1 && isTD (s.onset.front()) && s.stress == 0 && ! s.wordStart
+            && isVowel (s.nucleus))
+        {
+            const auto& prev = occ[(size_t) i - 1];
+            if (prev.connected && prev.sung.wordIndex == s.wordIndex && isVowel (prev.sung.nucleus)
+                && (prev.sung.coda.empty() || (prev.sung.coda.size() == 1 && prev.sung.coda.front() == Ph::R)))
+                o.onsetTap = true;
+        }
+
+        if (i + 1 < n && o.connected && s.wordEnd && ! s.coda.empty() && isTD (s.coda.back()) && isVowel (s.nucleus)
+            && (s.coda.size() == 1 || (s.coda.size() == 2 && s.coda.front() == Ph::R)))
+        {
+            const auto& next = occ[(size_t) i + 1].sung;
+            if (next.wordStart && next.onset.empty() && isVowel (next.nucleus))
+                o.codaTap = true;
+        }
+    }
 }
 
 //==============================================================================
@@ -657,7 +776,7 @@ bool OfflineRenderer::render (const std::atomic<bool>* cancel, const std::functi
             const auto& info = phonemeInfo (c.event.ph);
             switch (info.manner)
             {
-                case Manner::Stop:      return (! info.voiced && c.event.aspirated && c.event.released) ? 0.0 : 0.016;
+                case Manner::Stop:      return (c.event.tap || (! info.voiced && c.event.aspirated && c.event.released)) ? 0.0 : 0.016;
                 case Manner::Affricate: return 0.012;
                 case Manner::Nasal:     return 0.014;
                 case Manner::Fricative: return 0.010;

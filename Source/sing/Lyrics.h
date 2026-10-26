@@ -19,6 +19,13 @@ struct SungSyllable
     bool wordEnd = true;
     bool functionWord = false;
     bool pauseAfter = false;      // punctuation such as a comma follows this syllable
+
+    // Weak form of a function word, sung on short unaccented notes ("to" [tə], "for" [fɚ], "and" [ən]).
+    // The dictionary gives the citation form; singing that on every quick pickup note sounds foreign.
+    bool hasWeakForm = false;
+    Ph weakNucleus = Ph::AX;
+    std::vector<Ph> weakCoda;
+    bool weakOnlyBeforeConsonant = false;   // "to" stays [tu] and "and" keeps its D before a vowel
 };
 
 struct LyricEvent
@@ -64,5 +71,9 @@ juce::StringArray splitWordText (const juce::String& word, int numSyllables);
 
 /** True for unstressed grammatical words (the, a, of, to, and, ...). */
 bool isFunctionWord (const juce::String& lowerCaseWord);
+
+/** Fills in the weak form of a one-syllable function word whose dictionary (strong) form is in `s`.
+    Returns false (and leaves `s` alone) for words without one. */
+bool setWeakForm (const juce::String& lowerCaseWord, SungSyllable& s);
 
 } // namespace voxa::sing
