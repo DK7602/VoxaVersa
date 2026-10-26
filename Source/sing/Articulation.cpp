@@ -629,14 +629,13 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
         }
     }
 
-    // Formant tuning (F1 raised above a high f0) belongs to vowels. A consonant constriction pulls F1
-    // down whatever the pitch, and at soprano pitches that dip is what is left of the cue for stops,
-    // flaps and nasals; approximants are half vowel-like.
+    // Formant tuning (F1 raised above a high f0) is for sonorants. An obstruent constriction pulls F1
+    // down whatever the pitch, and at soprano pitches that dip is what is left of the transition cue
+    // for stops, flaps and fricatives. (Nasals keep the tuning: with F1 below f0 their murmur would
+    // all but vanish on high notes.)
     const auto manner = info.manner;
-    if (manner == Manner::Stop || manner == Manner::Affricate || manner == Manner::Fricative || manner == Manner::Nasal)
+    if (manner == Manner::Stop || manner == Manner::Affricate || manner == Manner::Fricative)
         v[apF1Tuning] = 0.0f;
-    else if (manner == Manner::Liquid || manner == Manner::Glide)
-        v[apF1Tuning] = 0.5f;
 }
 
 void makeSynthFrame (const ArticFrame& a, const VoiceSetup& vs, float f0, float rd, SynthFrame& out) noexcept
