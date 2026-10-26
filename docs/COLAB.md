@@ -70,7 +70,9 @@ checkpoint are all that stay.
    VoxaVersa installs every voice pack, the voice assignment (`voice_assignment.json`: which built-in voices
    each singer powers, and the singers' names) and the AI content encoder from it and ignores everything else.
    Downloading only some singers' folders works too; then also download `voices/voice_assignment.json` and
-   import it, or the new singers show up as voices of their own until it is imported.
+   import it, or the new singers show up as voices of their own until it is imported. After an import the
+   message names the installed singers the assignment placed in the built-in voices; a singer is found by its
+   pack id, its folder name or its name ("VocalSet Male 3").
 
 Each pack already lists the built-in genre voices it powers (for example Female Pop and Female EDM). Those
 voices show an **AI** badge and use the trained singer whenever *Use AI Voice Engine* is on. Packs that only

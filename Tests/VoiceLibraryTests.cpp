@@ -194,6 +194,22 @@ public:
             expect (library.findById ("female-jazz")->aiPackName == "Studio Female A", "borrowed: the only female singer");
             expect (! library.findById ("male-jazz")->hasNeuralModel());
 
+            // a pack whose id was spelled differently by an older training run is still found (by its name)
+            auto other = work.getChildFile ("src-m3");
+            other.createDirectory();
+            other.getChildFile ("model.onnx").replaceWithText ("model");
+            other.getChildFile ("voice.json").replaceWithText (R"({ "name": "VocalSet Male 3", "gender": "male",
+                                                                     "model": { "file": "model.onnx", "sampleRate": 40000 } })");
+            expect (library.importVoices (other, user).installed.size() == 1);
+            expect (library.findById ("user-vocalset-male-3") != nullptr);
+            auto m3 = work.getChildFile ("voice_assignment (2).json");
+            m3.replaceWithText (R"({ "packs": { "vocalset-male3": { "name": "VocalSet Male 3", "listed": false,
+                                                                    "factoryVoices": ["male-jazz", "male-blues"] } } })");
+            const auto r3 = library.importVoices (m3, user);
+            expect (r3.summary().contains ("Placed in the built-in voices: VocalSet Male 3"), r3.summary());
+            expect (library.findById ("user-vocalset-male-3") == nullptr, "assigned pack is hidden");
+            expect (library.findById ("male-jazz")->aiPackName == "VocalSet Male 3");
+
             // not an assignment
             auto bogus = work.getChildFile ("voice_assignment.json");
             bogus.replaceWithText ("[1, 2]");

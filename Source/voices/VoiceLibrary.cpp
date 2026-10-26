@@ -305,16 +305,34 @@ static juce::var readAssignment (const juce::File& file)
 }
 
 /** The assignment entry for a pack, matched by its id (as in voice.json) or its folder name. */
+/** Letters and digits only, lower case: "VocalSet Male 3", "vocalset_male3" and "vocalset-male3" all agree. */
+static juce::String looseName (const juce::String& s)
+{
+    return s.toLowerCase().retainCharacters ("abcdefghijklmnopqrstuvwxyz0123456789");
+}
+
 static const juce::var* findAssignment (const juce::var& packs, const VoiceProfile& p)
 {
     auto* obj = packs.getDynamicObject();
     if (obj == nullptr)
         return nullptr;
 
+    // by pack id or folder name; then, for a pack whose id was written differently, by id or name spelled loosely
     for (const auto& entry : obj->getProperties())
     {
         const auto key = entry.name.toString();
         if ("user-" + key.toLowerCase().replaceCharacters (" _/\\", "----") == p.id || key == p.packDirectory.getFileName())
+            return &entry.value;
+    }
+
+    const auto id = looseName (p.id.fromFirstOccurrenceOf ("user-", false, false));
+    const auto folder = looseName (p.packDirectory.getFileName());
+    const auto name = looseName (p.name);
+    for (const auto& entry : obj->getProperties())
+    {
+        const auto key = looseName (entry.name.toString());
+        const auto entryName = looseName (entry.value.getProperty ("name", {}).toString());
+        if (key == id || key == folder || (name.isNotEmpty() && (key == name || entryName == name)))
             return &entry.value;
     }
 
@@ -559,8 +577,16 @@ juce::String VoiceLibrary::ImportResult::summary() const
     if (encoderInstalled)
         s << (s.isEmpty() ? "AI content encoder installed" : " + AI content encoder");
     if (assignedPacks > 0)
+    {
         s << (s.isEmpty() ? "Voice assignment updated" : " + voice assignment") << " (" << assignedPacks
           << (assignedPacks == 1 ? " singer)" : " singers)");
+        auto names = placed;
+        names.removeDuplicates (true);
+        const int shown = juce::jmin (3, names.size());
+        s << (names.isEmpty() ? juce::String (". None of them is installed here yet: import their voice folders too")
+                              : ". Placed in the built-in voices: " + juce::StringArray (names.begin(), shown).joinIntoString (", ")
+                                  + (names.size() > shown ? " and " + juce::String (names.size() - shown) + " more" : juce::String()));
+    }
     if (errors.size() > 0)
         s << (s.isEmpty() ? "Import failed: " : " (") << errors[0]
           << (errors.size() > 1 ? " and " + juce::String (errors.size() - 1) + " more" : juce::String())
@@ -598,10 +624,23 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
     auto assignment = [&] (const juce::File& f)
     {
         const int n = mergeAssignment (f, voicesDir);
-        if (n >= 0)
-            r.assignedPacks += n;
-        else
+        if (n < 0)
+        {
             r.errors.add (f.getFileName() + ": not a valid voice assignment");
+            return;
+        }
+        r.assignedPacks += n;
+
+        const auto incoming = readAssignment (f);
+        for (const auto& dir : voicesDir.findChildFiles (juce::File::findDirectories, false))
+        {
+            VoiceProfile p;
+            juce::String error;
+            if (loadVoicePack (dir, p, error))
+                if (const auto* entry = findAssignment (incoming, p))
+                    if (entry->getProperty ("factoryVoices", {}).size() > 0)
+                        r.placed.addIfNotAlreadyThere (entry->getProperty ("name", p.name).toString());
+        }
     };
 
     auto scan = [&] (const juce::File& dir)

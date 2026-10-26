@@ -413,6 +413,7 @@ void HeaderBar::importVoicePack()
             total.installed.addArray (r.installed);
             total.encoderInstalled = total.encoderInstalled || r.encoderInstalled;
             total.assignedPacks += r.assignedPacks;
+            total.placed.addArray (r.placed);
             total.errors.addArray (r.errors);
         }
         ctx.toast (total.summary(), total.errors.isEmpty() ? ToastKind::Success
