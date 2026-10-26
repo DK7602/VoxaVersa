@@ -425,6 +425,10 @@ bool OrtModelSession::run (const InputTensor* inputTensors, size_t numInputs,
                            const char* const* outputNames, OutputTensor* outputTensors, size_t numOutputs,
                            bool shrinkArena, juce::String& error) const
 {
+    std::unique_lock<std::mutex> serialised (runLock, std::defer_lock);
+    if (provider != "CPU")
+        serialised.lock();
+
     constexpr size_t maxTensors = 16;
 
     if (numInputs > maxTensors || numOutputs > maxTensors)

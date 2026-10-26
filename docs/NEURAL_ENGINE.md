@@ -81,7 +81,7 @@ Contents
   That full context is always used while the host renders offline. **Live** playback uses the longest
   context this computer converts comfortably in real time: when the model loads, chunks with 1 s, 0.6 s,
   0.3 s and 0.15 s of context are timed, and live playback starts with the first one that needs at most
-  half of the 200 ms budget. If chunks still keep missing their deadline (3 within 8 s, e.g. a busier
+  half of the 350 ms budget. If chunks still keep missing their deadline (3 within 8 s, e.g. a busier
   session), the stream continues with the next shorter one. All shapes are primed at load time, so
   ONNX Runtime reuses its memory plan for each. The generator's cost does not depend on the context, so
   this helps less than it might seem (on a 4-core 2.8 GHz cloud VM the generator takes ~75% of a chunk).
@@ -130,21 +130,22 @@ so the host's delay compensation stays valid when the voice changes:
 
 ```
 latency = chunk (0.4 s) + crossfade (60 ms) + SOLA search / 2 (6.25 ms) + resampler lookahead (~1 ms)
-        + one host block + inference headroom (200 ms) + worker polling interval (2 ms)
+        + one host block + inference headroom (350 ms) + worker polling interval (2 ms)
 ```
 
 | Host rate | Block 128 | Block 512 | Block 1024 |
 |---|---|---|---|
-| 44.1 kHz | 29 648 samples (672 ms) | 30 032 samples (681 ms) | 30 544 samples (693 ms) |
-| 48 kHz | 32 259 samples (672 ms) | 32 643 samples (680 ms) | 33 155 samples (691 ms) |
+| 44.1 kHz | 36 263 samples (822 ms) | 36 647 samples (831 ms) | 37 159 samples (843 ms) |
+| 48 kHz | 39 459 samples (822 ms) | 39 843 samples (830 ms) | 40 355 samples (841 ms) |
 
 This is typical for RVC-style real-time conversion; the AI engine is meant for tracking/monitoring with
 latency compensation and for rendering, not for zero-latency live monitoring (the DSP engine covers that).
 
 **CPU budget.** Every 0.4 s the worker runs the encoder on 1.5 s and the generator on 0.69 s of audio
-and must finish within the 200 ms headroom. When a model is loaded it is timed on this computer;
+and must finish within the 350 ms headroom (a new chunk starts every 0.4 s, so that is nearly all the time
+there is; the extra latency only matters for live monitoring, the host compensates it during playback). When a model is loaded it is timed on this computer;
 `NeuralVoiceModel::getDescription()` then ends with "real-time load NN%" (time per chunk relative to the
-200 ms budget), "live context NNN ms" when live playback needs a shorter context than configured, and
+350 ms budget), "live context NNN ms" when live playback needs a shorter context than configured, and
 "too slow for live playback on this computer, exports are complete" above 80%. For reference, the community
 `vec-768-layer-12.onnx` ContentVec encoder alone takes about 80 ms per chunk with 2 threads on a 2.1 GHz
 Xeon cloud VM (≈ 0.08× real time offline); the RVC generator adds to that, so a full-size RVC v2 model
@@ -215,9 +216,11 @@ bundle (see *Bundling*). DAWs that load third-party plugins allow this already.
 
 ### Accelerators and threads
 
-On Windows the default is `auto` (the installer ships the DirectML build, which runs on any DirectX 12
-graphics card); elsewhere it is the CPU. *Settings > AI Device* switches between **Automatic** (`auto`) and
-**CPU only** and remembers the choice. Other values (`cpu`, `auto`, `cuda`, `directml`, `coreml`) can be set:
+The CPU is the default. *Settings > AI Device* switches between **CPU** and **Graphics card (GPU),
+experimental** (`auto`; the Windows installer ships the DirectML build, which runs on any DirectX 12 card) and
+remembers the choice. Through DirectML the RVC generator's output had broadband noise ("static") on a user's
+machine, so the GPU stays opt-in until that is solved. Other values (`cpu`, `auto`, `cuda`, `directml`,
+`coreml`) can be set:
 
 * environment variable `VOXAVERSA_AI_ACCELERATOR=auto`, or
 * in `<user data>/settings.xml`: `<VoxaVersaSettings> <NeuralEngine accelerator="auto" threads="3"/> … </VoxaVersaSettings>`
@@ -227,7 +230,8 @@ load or run is loaded on the CPU instead, and a GPU that is too slow for live pl
 80% or more; some integrated GPUs run these small chunks slower than the CPU) is compared with the CPU and
 the faster one is kept. The status line names the device ("DirectML GPU" or "CPU"). `threads` (or
 `VOXAVERSA_AI_THREADS`) sets the size of the shared inference thread pool (default
-`min(4, physical cores / 2)`).
+`min(4, physical cores / 2)`). GPU sessions serialise their `Run()` calls (DirectML doesn't allow concurrent
+runs on one session, and content-encoder sessions are shared).
 
 ### Bundling ONNX Runtime with your build
 
@@ -459,7 +463,7 @@ models and resets while streaming, and offline bounces.
 
 ## 8. Known limitations
 
-* **Latency** is ~0.68 s in real time (see above). It is constant and reported to the host.
+* **Latency** is ~0.83 s in real time (see above). It is constant and reported to the host.
 * **Feature retrieval** (RVC's `.index` / faiss step) and RVC's `protect` and `rms_mix_rate` options are
   not implemented; the generator receives the raw content features.
 * **Pitch** must be supplied by the caller (target f0); the engine does not estimate pitch.

@@ -481,9 +481,9 @@ void HeaderBar::showSettingsMenu()
     {
         const bool cpuOnly = ctx.processor.isNeuralCpuOnly();
         juce::PopupMenu device;
-        device.addItem (deviceAuto, "Automatic: graphics card (GPU) when it is faster", true, ! cpuOnly);
-        device.addItem (deviceCpu, "CPU only", true, cpuOnly);
-        menu.addSubMenu (juce::String ("AI Device: ") + (cpuOnly ? "CPU only" : "Automatic"), device);
+        device.addItem (deviceCpu, "CPU (recommended)", true, cpuOnly);
+        device.addItem (deviceAuto, "Graphics card (GPU) - experimental, may add noise", true, ! cpuOnly);
+        menu.addSubMenu (juce::String ("AI Device: ") + (cpuOnly ? "CPU" : "GPU (experimental)"), device);
     }
     menu.addItem (-1, "Status: " + ctx.processor.getNeuralStatusMessage(), false, false);
     menu.addItem (importVoices, "Import Voices...");

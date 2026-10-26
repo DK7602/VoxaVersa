@@ -17,7 +17,9 @@ namespace streaming
     inline constexpr int generatorContextFrames = 20;     // left context the generator gets (the encoder gets more)
     inline constexpr double crossfadeSeconds = 0.06;
     inline constexpr double searchSeconds = 0.0125;       // SOLA search (>= one period of an 80 Hz voice)
-    inline constexpr double headroomSeconds = 0.2;        // inference time budget per chunk
+    inline constexpr double headroomSeconds = 0.35;       // inference time budget per chunk (a new chunk starts
+                                                          // every 0.4 s, so up to ~0.35 s keeps up; the host
+                                                          // compensates the latency it adds during playback)
     inline constexpr double pollSeconds = 0.002;          // worker polling interval
 
     /** Live playback uses the longest left context whose chunk inference takes at most this fraction of the

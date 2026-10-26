@@ -91,7 +91,8 @@ public:
     juce::String getNeuralStatusMessage() const;
     /** AI voice chunks that live playback could not convert in time so far (the DSP voice filled them in). */
     uint32_t getNeuralMissedChunks() const noexcept;
-    /** AI engine device: false = automatic (the GPU when there is one and it is faster), true = CPU only.
+    /** AI engine device: true = CPU (the default), false = the GPU when there is one and it is faster
+        (experimental).
         The choice is saved for the next sessions; the current voice's model is reloaded. Message thread. */
     bool isNeuralCpuOnly() const;
     void setNeuralCpuOnly (bool cpuOnly);

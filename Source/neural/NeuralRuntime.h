@@ -89,6 +89,9 @@ private:
     OrtMemoryInfo* memoryInfo = nullptr;
     std::vector<TensorInfo> inputs, outputs;
     juce::String provider { "CPU" };
+    // GPU providers (DirectML) don't allow concurrent Run() calls on one session; shared sessions (content
+    // encoders) are used by the stream worker and by a model loading or rendering at the same time.
+    mutable std::mutex runLock;
     juce::File file;
 
     JUCE_DECLARE_NON_COPYABLE (OrtModelSession)
@@ -149,13 +152,9 @@ private:
     OrtEnv* env = nullptr;
     bool globalThreadPool = false;
     int numThreads = 2;
-   #if JUCE_WINDOWS
-    // the Windows build ships the DirectML runtime: use the GPU (a model it can't run, or runs slower than the
-    // CPU, falls back to the CPU - NeuralVoiceModel::load)
-    Accelerator accelerator = Accelerator::automatic;
-   #else
+    // The CPU unless chosen otherwise: through DirectML the RVC generator's output had broadband noise
+    // ("static") on a user's machine, so GPUs stay an explicit, experimental choice.
     Accelerator accelerator = Accelerator::cpu;
-   #endif
     juce::StringArray availableProviders;
     juce::String version, status;
     juce::File libraryFile;
