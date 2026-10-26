@@ -216,10 +216,11 @@ void OfflineRenderer::plan()
             const double minVowel = juce::jmax (0.045, 0.4 * ioi);
 
             // Detached singing leaves a little gap between words - but never inside a word ("ne-ver"
-            // broken by silence sounds syllable-timed), a flap, or where a final consonant (or the vowel
-            // itself) links into a vowel-initial word: English links those without a break.
-            const bool linking = next.sung.wordIndex == o.sung.wordIndex || next.sung.onset.empty()
-                              || next.onsetTap || o.codaTap;
+            // broken by silence sounds syllable-timed), at a flap, or where a final consonant links into
+            // a vowel-initial word ("hold on"). (Vowel to vowel across words keeps the gap: a soft
+            // glottal onset, "day [ʔ]a", where a seamless glide would sound like a consonant.)
+            const bool linking = next.sung.wordIndex == o.sung.wordIndex || next.onsetTap || o.codaTap
+                              || (next.sung.onset.empty() && ! o.sung.coda.empty());
             const double gap = linking ? 0.0 : (1.0 - setup.legato) * (1.0 - setup.legato) * juce::jmin (0.3 * lastNoteLength, 0.12);
             const double window = juce::jmax (0.01, ioi - minVowel - gap);
 

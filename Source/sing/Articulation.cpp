@@ -387,9 +387,11 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
 
     const auto& info = phonemeInfo (e.ph);
 
-    // Velar consonants take their place from the neighbouring vowel ("velar pinch").
+    // Velar consonants take their place from the neighbouring vowel, with F2 and F3 drawn together
+    // ("velar pinch": F3 starts at most ~600 Hz above F2 - without it a /g/ before a back vowel is
+    // heard as /b/ or /d/).
     const float velarF2 = juce::jlimit (1100.0f * cs, 2450.0f * cs, context[1] + 150.0f * cs);
-    const float velarF3 = juce::jmax (velarF2 + 300.0f * cs, context[2] - 200.0f * cs);
+    const float velarF3 = juce::jmax (velarF2 + 300.0f * cs, juce::jmin (context[2] - 200.0f * cs, velarF2 + 600.0f * cs));
 
     auto setLocus = [&] (Place place)
     {
