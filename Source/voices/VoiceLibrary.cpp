@@ -469,8 +469,8 @@ bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& erro
 
 static bool isAssignmentFile (const juce::String& fileName)
 {
-    // browsers rename repeated downloads ("voice_assignment (1).json")
-    return fileName.startsWithIgnoreCase ("voice_assignment") && fileName.endsWithIgnoreCase (".json");
+    // inside folders and archives; browsers rename repeated downloads ("voice_assignment (1).json")
+    return fileName.containsIgnoreCase ("assignment") && fileName.endsWithIgnoreCase (".json");
 }
 
 /** Merges an imported assignment into <Voices>/voice_assignment.json (newer entries replace older ones).
@@ -589,9 +589,9 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
     {
         encoder (source);
     }
-    else if (isAssignmentFile (source.getFileName()))
+    else if (source.hasFileExtension ("json") && source.getFileName() != "voice.json")
     {
-        assignment (source);
+        assignment (source);   // a voice assignment picked on its own, whatever the download called it
     }
     else
     {

@@ -2,6 +2,7 @@
 #include "VoxaAssets.h"
 #include "../core/MusicTheory.h"
 
+#include <atomic>
 #include <cmath>
 #include <map>
 #include <vector>
@@ -52,8 +53,18 @@ juce::Typeface::Ptr getTypeface (Weight weight)
     return FontSet::getInstance()->get (weight);
 }
 
+static std::atomic<float> minimumTextHeight { 0.0f };
+
+void setMinimumTextHeight (float designHeight) noexcept
+{
+    minimumTextHeight.store (designHeight, std::memory_order_relaxed);
+}
+
 juce::Font font (float height, Weight weight)
 {
+    if (const float minimum = minimumTextHeight.load (std::memory_order_relaxed); height < minimum)
+        height = juce::jmin (minimum, height * 1.45f);
+
     auto* set = FontSet::getInstance();
     const int key = juce::roundToInt (height * 16.0f) * 8 + (int) weight;
 
@@ -234,7 +245,11 @@ void drawGlassControl (juce::Graphics& g, juce::Rectangle<float> area, float cor
 void drawText (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area,
                const juce::Font& f, juce::Colour colour, juce::Justification just)
 {
-    g.setFont (f);
+    // text that doesn't fit (e.g. enlarged for a small window) is condensed a little before it is cut off
+    const float width = textWidth (f, text);
+    g.setFont (width > area.getWidth() && width > 0.0f
+                   ? f.withHorizontalScale (f.getHorizontalScale() * juce::jmax (0.72f, area.getWidth() / width))
+                   : f);
     g.setColour (colour);
     g.drawText (text, area, just, true);
 }

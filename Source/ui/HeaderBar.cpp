@@ -400,7 +400,7 @@ void HeaderBar::importVoicePack()
     // Packs (.vxpack), a folder or .zip of many packs (e.g. Google Drive's download of the trained voices),
     // the voice assignment and the AI content encoder (contentvec-768.onnx) - one or several at once.
     ctx.chooseFiles ("Import Voices (.vxpack, a .zip or folder of voices, contentvec-768.onnx)",
-                     "*.zip;*.vxpack;*.onnx;voice.json;voice_assignment*.json", true, [this] (const juce::Array<juce::File>& chosen)
+                     "*.zip;*.vxpack;*.onnx;*.json", true, [this] (const juce::Array<juce::File>& chosen)
     {
         VoiceLibrary::ImportResult total;
         for (auto f : chosen)

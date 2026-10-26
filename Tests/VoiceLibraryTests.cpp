@@ -154,8 +154,8 @@ public:
             expect (library.findById ("user-pack-a") != nullptr, "unassigned pack is listed");
             expect (! library.findById ("female-jazz")->hasNeuralModel());
 
-            // the assignment, downloaded on its own (and renamed by the browser)
-            auto assignmentFile = work.getChildFile ("voice_assignment (1).json");
+            // the assignment, downloaded on its own (and renamed by the download)
+            auto assignmentFile = work.getChildFile ("687e842a-9204-4293-a1e5-90c01c44df9a.json");
             assignmentFile.replaceWithText (R"({ "packs": { "pack-a": { "name": "Studio Female A", "listed": false,
                                                                         "description": "RVC v2 voice trained on dry studio vocals",
                                                                         "factoryVoices": ["female-jazz", "female-rock"] } } })");

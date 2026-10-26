@@ -197,6 +197,8 @@ void VoxaVersaEditor::resized()
     const float scale = (float) getWidth() / (float) ui::MainView::designWidth;
     view->setTransform (juce::AffineTransform::scale (scale));
     lookAndFeel->setUiScale (scale);
+    ui::setMinimumTextHeight (10.5f / scale);   // at least ~10.5 px on screen
+    view->repaint();
     view->setBounds (0, 0, ui::MainView::designWidth, ui::MainView::designHeight);
     view->noteScaleChanged();
 

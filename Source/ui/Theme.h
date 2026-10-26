@@ -46,6 +46,10 @@ enum class Weight { Regular, Medium, SemiBold, Title };
 
 /** Embedded Barlow fonts (see docs/UI_FONTS.md). */
 juce::Font font (float height, Weight weight = Weight::Regular);
+
+/** Text asked for smaller than this (in design pixels) is drawn larger, up to 1.45x, so that it stays
+    readable on screen when the editor is scaled down. The editor sets it from its scale. */
+void setMinimumTextHeight (float designHeight) noexcept;
 juce::Typeface::Ptr getTypeface (Weight weight);
 
 //==============================================================================
