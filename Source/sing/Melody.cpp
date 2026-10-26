@@ -1155,11 +1155,13 @@ Score fitProvided (const LyricScript& script, const std::vector<Note>& melodyIn,
             case LyricEvent::Type::Syllable:
             {
                 const auto& n = mel[next++];
+                // A played melody knows nothing of the lyric's stress; singers still sing unstressed
+                // syllables a little softer (about 1 dB) - equal weight on every syllable sounds foreign.
                 ScoreNote sn;
                 sn.startBeat = n.startBeat;
                 sn.lengthBeats = n.lengthBeats;
                 sn.midiNote = n.midiNote;
-                sn.velocity = n.velocity;
+                sn.velocity = n.velocity * (script.syllables[(size_t) e.syllable].stress == 0 ? 0.92f : 1.0f);
                 sn.syllable = e.syllable;
                 sn.breathBefore = pendingBreath || score.notes.empty();
                 pendingBreath = false;

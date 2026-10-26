@@ -180,12 +180,13 @@ void OfflineRenderer::plan()
 
     applyConnectedSpeech (occ);
 
-    // Nominal consonant durations (a flap is a single quick tap).
+    // Nominal consonant durations (a flap is a single quick tap). Consonants of unstressed syllables
+    // are shorter in English (Klatt's duration rules: ~70 %; a little less shortening for singing).
     constexpr float tapSeconds = 0.028f, tapMinimum = 0.018f;
     for (auto& o : occ)
     {
         const auto& syl = o.sung;
-        const float onsetCluster = syl.onset.size() >= 2 ? 0.85f : 1.0f;
+        const float onsetCluster = (syl.onset.size() >= 2 ? 0.85f : 1.0f) * (syl.stress == 0 ? 0.8f : 1.0f);
         const float codaCluster = syl.coda.size() >= 2 ? 0.85f : 1.0f;
         for (auto p : syl.onset)
         {
