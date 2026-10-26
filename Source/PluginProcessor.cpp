@@ -6,6 +6,7 @@
 #include "dsp/VoiceChain.h"
 #include "dsp/VoiceGenderEstimator.h"
 #include "neural/NeuralVoice.h"
+#include "neural/NeuralRuntime.h"
 
 namespace voxa
 {
@@ -870,6 +871,23 @@ juce::String VoxaVersaProcessor::getNeuralStatusMessage() const
 uint32_t VoxaVersaProcessor::getNeuralMissedChunks() const noexcept
 {
     return impl->neuralStream.getNumMissedChunks();
+}
+
+bool VoxaVersaProcessor::isNeuralCpuOnly() const
+{
+    auto& runtime = neural::OnnxRuntime::getInstance();
+    return ! runtime.ensureLoaded() || runtime.getImpl().getAccelerator() == neural::Accelerator::cpu;
+}
+
+void VoxaVersaProcessor::setNeuralCpuOnly (bool cpuOnly)
+{
+    auto& runtime = neural::OnnxRuntime::getInstance();
+    if (! runtime.ensureLoaded())
+        return;
+
+    runtime.getImpl().setAndSaveAccelerator (cpuOnly ? neural::Accelerator::cpu : neural::Accelerator::automatic);
+    impl->currentModelVoiceId.clear();   // reload the model on the chosen device
+    updateNeuralModel();
 }
 
 void VoxaVersaProcessor::updateNeuralModel()

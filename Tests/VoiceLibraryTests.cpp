@@ -98,9 +98,9 @@ public:
             auto driveZip = work.getChildFile ("voices-20261025T190000Z-001.zip");
             {
                 juce::ZipFile::Builder zb;
-                zb.addFile (a, 0, "voices/cymatics_female_a/singer-a.vxpack");
-                zb.addFile (noise, 9, "voices/cymatics_female_a/report.md");
-                zb.addFile (b, 0, "voices/cymatics_female_b/singer-b.vxpack");
+                zb.addFile (a, 0, "voices/studio_female_a/singer-a.vxpack");
+                zb.addFile (noise, 9, "voices/studio_female_a/report.md");
+                zb.addFile (b, 0, "voices/studio_female_b/singer-b.vxpack");
                 zb.addFile (encoderFile, 9, "contentvec-768.onnx");
                 juce::FileOutputStream os (driveZip);
                 zb.writeToStream (os, nullptr);
@@ -134,6 +134,65 @@ public:
             // Nothing usable: a clear message, nothing installed.
             const auto r4 = library.importVoices (noise, work.getChildFile ("user4"));
             expect (! r4.succeeded(), r4.summary());
+            library.rescanUserVoices (root.getChildFile ("none"));
+        }
+
+        beginTest ("A voice assignment decides which built-in voices a pack powers and how it is shown");
+        {
+            auto work = root.getChildFile ("assignment");
+            auto user = work.getChildFile ("user");
+            auto src = work.getChildFile ("src");
+            src.createDirectory();
+
+            // a pack as the training produced it before: no assignment inside, so it shows up as its own voice
+            src.getChildFile ("model.onnx").replaceWithText ("model");
+            src.getChildFile ("voice.json").replaceWithText (R"({ "name": "Old Name A", "id": "pack-a", "gender": "female",
+                                                                   "description": "old description",
+                                                                   "model": { "file": "model.onnx", "sampleRate": 40000 } })");
+            VoiceLibrary library;
+            expect (library.importVoices (src, user).installed.size() == 1);
+            expect (library.findById ("user-pack-a") != nullptr, "unassigned pack is listed");
+            expect (! library.findById ("female-jazz")->hasNeuralModel());
+
+            // the assignment, downloaded on its own (and renamed by the browser)
+            auto assignmentFile = work.getChildFile ("voice_assignment (1).json");
+            assignmentFile.replaceWithText (R"({ "packs": { "pack-a": { "name": "Studio Female A", "listed": false,
+                                                                        "description": "RVC v2 voice trained on dry studio vocals",
+                                                                        "factoryVoices": ["female-jazz", "female-rock"] } } })");
+            const auto r = library.importVoices (assignmentFile, user);
+            expectEquals (r.assignedPacks, 1, r.summary());
+            expect (r.succeeded() && r.summary().contains ("Voice assignment updated"), r.summary());
+            expect (user.getChildFile ("Voices").getChildFile (VoiceLibrary::assignmentFileName).existsAsFile());
+            expect (library.findById ("user-pack-a") == nullptr, "assigned pack is hidden");
+            expect (library.findById ("female-jazz")->hasNeuralModel());
+            expect (library.findById ("female-jazz")->aiPackName == "Studio Female A", library.findById ("female-jazz")->aiPackName);
+            expect (library.findById ("female-rock")->hasNeuralModel());
+
+            // it also applies to packs installed later (re-downloading a pack doesn't undo it) ...
+            expect (library.importVoices (src, user).installed.size() == 1);
+            expect (library.findById ("female-jazz")->aiPackName == "Studio Female A");
+            expect (library.findById ("user-pack-a") == nullptr);
+
+            // ... and a newer assignment (in Google Drive's zip of the voices folder) replaces it
+            auto newer = work.getChildFile ("newer.json");
+            newer.replaceWithText (R"({ "packs": { "pack-a": { "name": "Studio Female A", "listed": false, "factoryVoices": ["female-pop"] } } })");
+            auto driveZip = work.getChildFile ("voices-002.zip");
+            {
+                juce::ZipFile::Builder zb;
+                zb.addFile (newer, 9, "voices/voice_assignment.json");
+                zb.addFile (src.getChildFile ("voice.json"), 9, "voices/notes/readme.json");
+                juce::FileOutputStream os (driveZip);
+                zb.writeToStream (os, nullptr);
+            }
+            const auto r2 = library.importVoices (driveZip, user);
+            expectEquals (r2.assignedPacks, 1, r2.summary());
+            expect (library.findById ("female-pop")->hasNeuralModel());
+            expect (! library.findById ("female-jazz")->hasNeuralModel());
+
+            // not an assignment
+            auto bogus = work.getChildFile ("voice_assignment.json");
+            bogus.replaceWithText ("[1, 2]");
+            expect (! library.importVoices (bogus, user).succeeded());
             library.rescanUserVoices (root.getChildFile ("none"));
         }
 

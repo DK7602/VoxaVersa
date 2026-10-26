@@ -1,12 +1,12 @@
 {
  "assignment": {
   "male-theatre": "vocalset_male1",
-  "male-kpop": "cymatics_male_a",
+  "male-kpop": "studio_male_a",
   "male-blues": "vocalset_male2",
   "male-afrobeats": "vocalset_male4",
   "male-trap": "vocalset_male3",
   "male-reggae": "vocalset_male6",
-  "male-rnb": "cymatics_male_a",
+  "male-rnb": "studio_male_a",
   "male-latin": "vocalset_male7",
   "male-country": "vocalset_male1",
   "male-jazz": "vocalset_male8",
@@ -22,8 +22,8 @@
   "male-metal": "vocalset_male6",
   "male-lofi": "vocalset_male10",
   "female-theatre": "vocalset_female9",
-  "female-blues": "cymatics_female_b",
-  "female-smoky-alto": "cymatics_female_blend",
+  "female-blues": "studio_female_b",
+  "female-smoky-alto": "studio_female_blend",
   "female-latin": "vocalset_female3",
   "female-pop": "vocalset_female6",
   "female-afrobeats": "vocalset_female5",
@@ -34,15 +34,15 @@
   "female-country": "vocalset_female3",
   "female-soul": "vocalset_female7",
   "female-gospel": "vocalset_female6",
-  "female-rap": "cymatics_female_b",
+  "female-rap": "studio_female_b",
   "female-jazz": "vocalset_female4",
-  "female-trap": "cymatics_female_blend",
+  "female-trap": "studio_female_blend",
   "female-kpop": "vocalset_female1",
   "female-rnb": "vocalset_female3",
   "female-metal": "vocalset_female7",
   "female-angelic": "vocalset_female5",
-  "female-indie": "cymatics_female_a",
-  "female-lofi": "cymatics_female_blend",
+  "female-indie": "studio_female_a",
+  "female-lofi": "studio_female_blend",
   "neutral-whisper": "vocalset_male11"
  },
  "costs": {
@@ -93,7 +93,7 @@
  },
  "singers": [
   {
-   "dataset": "datasets/cymatics_female_a",
+   "dataset": "datasets/studio_female_a",
    "gender": "female",
    "seconds": 393.6,
    "median_midi": 63.14,
@@ -109,12 +109,12 @@
    "bright": -18.552,
    "breath": 0.0287,
    "power": -13.145,
-   "name": "cymatics_female_a",
-   "corpus": "cymatics",
+   "name": "studio_female_a",
+   "corpus": "studio",
    "style": "contemporary"
   },
   {
-   "dataset": "datasets/cymatics_female_b",
+   "dataset": "datasets/studio_female_b",
    "gender": "female",
    "seconds": 377.1,
    "median_midi": 61.84,
@@ -130,12 +130,12 @@
    "bright": -21.578,
    "breath": 0.013,
    "power": -12.093,
-   "name": "cymatics_female_b",
-   "corpus": "cymatics",
+   "name": "studio_female_b",
+   "corpus": "studio",
    "style": "contemporary"
   },
   {
-   "dataset": "datasets/cymatics_female_blend",
+   "dataset": "datasets/studio_female_blend",
    "gender": "female",
    "seconds": 1033.6,
    "median_midi": 62.15,
@@ -151,12 +151,12 @@
    "bright": -19.306,
    "breath": 0.0199,
    "power": -13.624,
-   "name": "cymatics_female_blend",
-   "corpus": "cymatics",
+   "name": "studio_female_blend",
+   "corpus": "studio",
    "style": "contemporary"
   },
   {
-   "dataset": "datasets/cymatics_male_a",
+   "dataset": "datasets/studio_male_a",
    "gender": "male",
    "seconds": 866.6,
    "median_midi": 56.94,
@@ -172,8 +172,8 @@
    "bright": -17.169,
    "breath": 0.0362,
    "power": -10.562,
-   "name": "cymatics_male_a",
-   "corpus": "cymatics",
+   "name": "studio_male_a",
+   "corpus": "studio",
    "style": "contemporary"
   },
   {
@@ -598,19 +598,19 @@
   }
  ],
  "factory_voices": {
-  "cymatics_female_a": [
+  "studio_female_a": [
    "female-indie"
   ],
-  "cymatics_female_b": [
+  "studio_female_b": [
    "female-blues",
    "female-rap"
   ],
-  "cymatics_female_blend": [
+  "studio_female_blend": [
    "female-lofi",
    "female-smoky-alto",
    "female-trap"
   ],
-  "cymatics_male_a": [
+  "studio_male_a": [
    "male-kpop",
    "male-rnb"
   ],

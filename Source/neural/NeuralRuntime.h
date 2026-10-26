@@ -59,8 +59,10 @@ class OrtModelSession
 public:
     ~OrtModelSession();
 
-    /** Loads a model file. Requires OnnxRuntime::getInstance().isAvailable(). */
-    static std::unique_ptr<OrtModelSession> create (const juce::File& modelFile, juce::String& error);
+    /** Loads a model file. Requires OnnxRuntime::getInstance().isAvailable(). With `allowAccelerator` the
+        runtime's accelerator (GPU) is tried first, falling back to the CPU if it can't load the model. */
+    static std::unique_ptr<OrtModelSession> create (const juce::File& modelFile, juce::String& error,
+                                                    bool allowAccelerator = true);
 
     const std::vector<TensorInfo>& getInputs() const noexcept   { return inputs; }
     const std::vector<TensorInfo>& getOutputs() const noexcept  { return outputs; }
@@ -119,9 +121,12 @@ struct OnnxRuntime::Impl
         attribute of <NeuralEngine> in VoxaVersa's settings.xml (cpu / auto / cuda / directml / coreml). */
     void setAccelerator (Accelerator);
     Accelerator getAccelerator() const;
+    /** setAccelerator() and remembers the choice in settings.xml for the next sessions. */
+    void setAndSaveAccelerator (Accelerator);
 
     /** Session for a model file that may be shared between voices (content encoders are large). */
-    std::shared_ptr<OrtModelSession> getSharedSession (const juce::File& modelFile, juce::String& error);
+    std::shared_ptr<OrtModelSession> getSharedSession (const juce::File& modelFile, juce::String& error,
+                                                       bool allowAccelerator = true);
 
     /** Creates session options. `acceleratorUsed` receives the provider actually appended ("CPU" if none). */
     OrtSessionOptions* createSessionOptions (bool tryAccelerator, bool useGlobalThreadPool,
@@ -144,7 +149,13 @@ private:
     OrtEnv* env = nullptr;
     bool globalThreadPool = false;
     int numThreads = 2;
+   #if JUCE_WINDOWS
+    // the Windows build ships the DirectML runtime: use the GPU (a model it can't run, or runs slower than the
+    // CPU, falls back to the CPU - NeuralVoiceModel::load)
+    Accelerator accelerator = Accelerator::automatic;
+   #else
     Accelerator accelerator = Accelerator::cpu;
+   #endif
     juce::StringArray availableProviders;
     juce::String version, status;
     juce::File libraryFile;

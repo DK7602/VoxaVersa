@@ -11,6 +11,9 @@ class HeaderBar : public juce::Component,
                   private juce::ChangeListener
 {
 public:
+    /** Window widths offered by Settings > UI Size (3:2). */
+    static constexpr int uiWidths[] = { 900, 1050, 1200, 1350, 1536, 1728, 1920 };
+
     explicit HeaderBar (EditorContext&);
     ~HeaderBar() override;
 

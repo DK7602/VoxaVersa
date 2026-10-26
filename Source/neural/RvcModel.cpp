@@ -222,7 +222,7 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
         return false;
     }
 
-    generator = OrtModelSession::create (config.generatorFile, error);
+    generator = OrtModelSession::create (config.generatorFile, error, config.allowAccelerator);
 
     if (generator == nullptr)
         return false;
@@ -240,7 +240,7 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
     {
         if (f.existsAsFile())
         {
-            encoder = OnnxRuntime::getInstance().getImpl().getSharedSession (f, encoderError);
+            encoder = OnnxRuntime::getInstance().getImpl().getSharedSession (f, encoderError, config.allowAccelerator);
             break;
         }
     }
@@ -280,11 +280,10 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
         return false;
 
     juce::StringArray parts;
-    parts.add (juce::String (featureChannels) + "-d features");
-    parts.add (usesF0 ? "pitch-guided" : "no pitch input");
     parts.add (juce::String (sampleRate / 1000.0, sampleRate % 1000 == 0 ? 0 : 1) + " kHz");
-    parts.add ("encoder " + encoder->getFile().getFileName());
-    parts.add (generator->getExecutionProvider());
+    parts.add (usesF0 ? "pitch-guided" : "no pitch input");
+    const auto device = generator->getExecutionProvider();
+    parts.add (device == "CPU" ? device : device + " GPU");
     if (liveContexts.front() < getStreamContextFrames())
         parts.add ("live context " + juce::String (liveContexts.front() * 10) + " ms");
     parts.add ("real-time load " + juce::String (juce::roundToInt (getRealTimeLoad() * 100.0)) + "%"
@@ -557,6 +556,12 @@ bool NeuralVoiceModel::Impl::warmUp (juce::String& error)
     liveContexts.assign (candidates.begin() + (std::ptrdiff_t) chosen, candidates.end());
     chunkInferenceSeconds = seconds[chosen];
     return true;
+}
+
+bool NeuralVoiceModel::Impl::usesAccelerator() const noexcept
+{
+    return (generator != nullptr && generator->getExecutionProvider() != "CPU")
+        || (encoder != nullptr && encoder->getExecutionProvider() != "CPU");
 }
 
 double NeuralVoiceModel::Impl::getRealTimeLoad() const noexcept

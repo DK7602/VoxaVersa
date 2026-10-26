@@ -35,7 +35,9 @@ Per voice:
               best similarity.
   5. finalize ONNX export (export_onnx.py), .vxpack (package_voice.py), install into VoxaVersa's user
               folder, renders through VoxaVersa (VoxaVersaRender, if configured) and before/after MP3s with
-              measured similarity and pitch accuracy.
+              measured similarity and pitch accuracy; then the built-in voices are re-assigned over all
+              finished singers (factory_voices.py) into voices/voice_assignment.json, which VoxaVersa imports
+              with the packs. `assign` re-writes that file on its own.
 
 On a GPU (Google Colab: tools/training/VoxaVersa_Queue_Colab.ipynb, docs/COLAB.md) set "device": "cuda" in
 queue.json: same steps, stop rule and checkpoint choice; training uses RVC's standard fp16 mixed precision
@@ -949,7 +951,7 @@ def cmd_finalize(args):
     import export_onnx
     onnx_path = os.path.join(outdir, "%s_e%d.onnx" % (name, best["epoch"]))
     export_onnx.export(small, onnx_path, rvc_dir=cfg["rvc_dir"], check=True)
-    pack_id = v.get("id", name.replace("_", "-"))
+    pack_id = pack_id_of(v)
     pack = os.path.join(outdir, pack_id + ".vxpack")
     rng = load_json(os.path.join(os.path.dirname(v["dataset"].rstrip("/")), "report.json"), {}) or {}
     vrange = rng.get("voices", {}).get(os.path.basename(v["dataset"].rstrip("/")), {}).get("range_midi")
@@ -1041,8 +1043,12 @@ def cmd_finalize(args):
                 os.path.join(listen, base + "_3_before_then_after.mp3"))
         if sims:
             summary += ", similarity of conversions %.3f" % float(np.mean(sims))
-    # built-in voices: measure this singer, re-assign all finished singers, update every installed pack
-    assignment = apply_factory_voices(w, cfg, name)
+    # built-in voices: measure this singer, re-assign all finished singers (voices/voice_assignment.json)
+    try:
+        assignment = apply_factory_voices(w, cfg, name)
+    except Exception as e:      # never lose a finished voice over it; the next finalize or queue start retries
+        print("built-in voice assignment failed: %r" % e, flush=True)
+        assignment = {}
     mine = assignment.get("factory_voices", {}).get(name, [])
     lines += ["", "Built-in voices powered by this singer: %s (see %s)" % (", ".join(mine) or "none",
                                                                        os.path.join(w.dir, "factory_assignment.md"))]
@@ -1073,9 +1079,19 @@ def cmd_finalize(args):
     print("finalized", name, summary, flush=True)
 
 
-def apply_factory_voices(w, cfg, current):
-    """Measures `current`'s timbre, assigns the built-in voices over all finished singers (+ current) and
-    writes "factoryVoices" / "listed" into every installed pack and its .vxpack."""
+def pack_id_of(v):
+    return v.get("id", v["name"].replace("_", "-"))
+
+
+def apply_factory_voices(w, cfg, current=None):
+    """Assigns the built-in voices over all finished singers (+ `current`, which is being finalized) from
+    measurements of their datasets, and writes the result as voices/voice_assignment.json next to the packs:
+    per pack id the built-in voices it powers ("factoryVoices"), whether it is also a voice of its own
+    ("listed") and its name, description and licence. VoxaVersa imports it with the packs (Google Drive's
+    download of the voices folder) and applies it to every installed pack, so no pack is ever rewritten when
+    the assignment changes (on Google Drive every rewrite of a ~85 MB pack is kept as a revision and filled
+    the Drive). A queue that installs into VoxaVersa itself also updates <user>/Voices/voice_assignment.json.
+    A singer whose dataset can't be measured is left out."""
     sys.path.insert(0, HERE)
     import factory_voices as fv
     tdir = os.path.join(w.dir, "timbre")
@@ -1089,41 +1105,51 @@ def apply_factory_voices(w, cfg, current):
         tpath = os.path.join(tdir, v["name"] + ".json")
         t = load_json(tpath)
         if not t:
-            t = fv.measure(v["dataset"], v["gender"])
+            try:
+                t = fv.measure(v["dataset"], v["gender"])
+            except Exception as e:
+                print("built-in voices: cannot measure %s (%r) - left out" % (v["name"], e), flush=True)
+                continue
             t["name"] = v["name"]
             save_json(tpath, t)
         t["corpus"], t["style"] = v.get("corpus"), v.get("style", "contemporary")
         singers.append(t)
+    if not singers:
+        return {}
     voices = fv.factory_voices()
     result, costs = fv.assign(singers, voices)
     data = fv.write_table(singers, voices, result, costs, os.path.join(w.dir, "factory_assignment"))
-    user = os.path.expanduser(cfg.get("voxaversa_user_dir", "~/.config/VoxaVersa"))
+    packs = {}
     for v in cfg["voices"]:
-        if v["name"] not in names:
+        if v["name"] not in data["factory_voices"]:
             continue
-        pack_id = v.get("id", v["name"].replace("_", "-"))
-        fvs = data["factory_voices"].get(v["name"], [])
-        listed = bool(v.get("listed", True)) or not fvs   # a pack that powers no built-in voice stays visible
-        manifest = os.path.join(user, "Voices", pack_id, "voice.json")
-        j = load_json(manifest)
-        if j is not None:
-            j["factoryVoices"] = fvs
-            j["listed"] = listed
-            save_json(manifest, j)
-        pack = os.path.join(w.dir, "voices", v["name"], pack_id + ".vxpack")
-        if os.path.exists(pack):
-            tmp = pack + ".tmp"
-            with zipfile.ZipFile(pack) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zout:
-                for item in zin.infolist():
-                    if item.filename == "voice.json":
-                        jj = json.loads(zin.read(item))
-                        jj["factoryVoices"] = fvs
-                        jj["listed"] = listed
-                        zout.writestr("voice.json", json.dumps(jj, indent=2, ensure_ascii=False))
-                    else:
-                        zout.writestr(item, zin.read(item))
-            os.replace(tmp, pack)
+        fvs = data["factory_voices"][v["name"]]
+        epoch = (st.get(v["name"], {}).get("best") or {}).get("epoch")
+        packs[pack_id_of(v)] = {
+            "name": v.get("display_name", v["name"]),
+            "description": v.get("description", "") + (" (epoch %d)" % epoch if epoch else ""),
+            "license": v.get("license", ""),
+            "factoryVoices": fvs,
+            "listed": bool(v.get("listed", True)) or not fvs,   # a pack that powers no built-in voice stays visible
+        }
+    os.makedirs(os.path.join(w.dir, "voices"), exist_ok=True)
+    save_json(os.path.join(w.dir, "voices", "voice_assignment.json"), {"packs": packs})
+    if cfg.get("install", True):
+        user = os.path.expanduser(cfg.get("voxaversa_user_dir", "~/.config/VoxaVersa"))
+        installed = os.path.join(user, "Voices", "voice_assignment.json")
+        merged = (load_json(installed) or {}).get("packs", {})
+        merged.update(packs)
+        os.makedirs(os.path.dirname(installed), exist_ok=True)
+        save_json(installed, {"packs": merged})
     return data
+
+
+def cmd_assign(args):
+    """Re-writes voices/voice_assignment.json for the finished singers (e.g. after their names changed)."""
+    w = Work(args.work, args.queue)
+    data = apply_factory_voices(w, w.cfg())
+    print("voice assignment: %d singers -> %s" % (len(data.get("factory_voices", {})),
+                                                   os.path.join(w.dir, "voices", "voice_assignment.json")))
 
 
 def example_queue():
@@ -1138,7 +1164,7 @@ def example_queue():
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("cmd", choices=["resume", "run", "status", "stop", "example", "_prepare", "_train", "_eval", "_finalize"])
+    p.add_argument("cmd", choices=["resume", "run", "status", "stop", "assign", "example", "_prepare", "_train", "_eval", "_finalize"])
     p.add_argument("voice", nargs="?")
     p.add_argument("--work", help="work folder (queue.json, state, status, logs, results)")
     p.add_argument("--queue", help="queue file (default WORK/queue.json)")
@@ -1150,7 +1176,7 @@ def main():
         return
     if not args.work:
         sys.exit("--work is required")
-    fn = {"resume": cmd_resume, "run": cmd_run, "status": cmd_status, "stop": cmd_stop, "_prepare": cmd_prepare,
+    fn = {"resume": cmd_resume, "run": cmd_run, "status": cmd_status, "stop": cmd_stop, "assign": cmd_assign, "_prepare": cmd_prepare,
           "_train": cmd_train, "_eval": cmd_eval, "_finalize": cmd_finalize}[args.cmd]
     rc = fn(args)
     sys.exit(rc or 0)

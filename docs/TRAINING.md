@@ -13,7 +13,7 @@ Contents
 5. [Training on your own GPU or a rented one](#5-training-on-your-own-gpu-or-a-rented-one)
 6. [Installing the voice in VoxaVersa](#6-installing-the-voice-in-voxaversa)
 7. [Troubleshooting](#7-troubleshooting)
-8. [Example: the Cymatics vocal packs](#8-example-the-cymatics-vocal-packs)
+8. [Example: studio vocal sample packs](#8-example-studio-vocal-sample-packs)
 9. [VocalSet](#9-vocalset)
 10. [Licences of the tools and models](#10-licences-of-the-tools-and-models)
 11. [How it works (for developers)](#11-how-it-works-for-developers)
@@ -243,10 +243,13 @@ choice from the data:
 
 The result for all queued singers is kept in
 [`tools/training/factory_voice_assignment.md`](../tools/training/factory_voice_assignment.md). The training
-queue applies it to the singers that are *finished*: after every voice it re-measures, re-assigns and
-rewrites `factoryVoices` (and `"listed"`: packs that only power built-in voices are hidden) in every
-installed pack, so with one finished singer per gender that singer powers all of that gender's voices, and
-the voices spread out as more singers finish.
+queue applies it to the singers that are *finished*: after every voice it re-measures and re-assigns, and
+writes `voices/voice_assignment.json` next to the packs: per pack id `factoryVoices`, `"listed"` (packs that
+only power built-in voices are hidden) and the name, description and licence. VoxaVersa's *Import Voices...*
+takes it along with the packs (Google Drive's download of the voices folder) and applies it to every
+installed pack, so packs are never rewritten when the assignment changes. With one finished singer per
+gender that singer powers all of that gender's voices; the voices spread out as more singers finish.
+`train_queue.py assign --work W` re-writes the file on its own (the Colab notebook does it at every start).
 
 ## 6. Installing the voice in VoxaVersa
 
@@ -286,35 +289,33 @@ Test renders from the command line (developer build with `-DVOXAVERSA_BUILD_TOOL
 | "too slow for real time on this computer" | Expected on slower CPUs: the AI engine still works for offline renders/bounces; for live use set a GPU accelerator ([NEURAL_ENGINE.md](NEURAL_ENGINE.md#accelerators-and-threads)). |
 | `package_voice.py`: "not an RVC ONNX export" | Export with `export_onnx.py` (RVC 2.3 removed its own ONNX export). |
 
-## 8. Example: the Cymatics vocal packs
+## 8. Example: studio vocal sample packs
 
-How the first VoxaVersa voices were prepared from the Cymatics vocal sample packs the owner licensed for AI
-training (the audio itself is never committed):
+How the first VoxaVersa voices were prepared from licence-free vocal sample packs in the owner's library
+(the audio itself is never committed). `Vendor` stands for the packs' file-name prefix:
 
 ```
 # all dry single-voice stems; full acapellas are mixes of the part stems, wet/flanged stems have effects
-python3 tools/training/prepare_dataset.py infinity/ cymatics/ uploads/ --out clean --name pool \
-    --include '*dry*' --exclude '*wet*' --exclude '*flanged*' --exclude '*acapella-dry*' --exclude '*Cymatics_-_Acapella_-_*'
+python3 tools/training/prepare_dataset.py pack1/ pack2/ uploads/ --out clean --name pool \
+    --include '*dry*' --exclude '*wet*' --exclude '*flanged*' --exclude '*acapella-dry*' --exclude '*_-_Acapella_-_*'
 python3 tools/training/cluster_singers.py clean/pool --report clean/report.json --out clusters \
-    --group '^Cymatics_-_(?:Hook_)?((?!Deluxe|Euphoria)[^-]+?)_-_|^((?!Cymatics)[A-Za-z_]+?)_(?:lead|background|harmon|ad-libs|adlib|low-voice|hook)'
+    --group '^Vendor_-_(?:Hook_)?([^-]+?)_-_|^((?!Vendor)[A-Za-z_]+?)_(?:lead|background|harmon|ad-libs|adlib|low-voice|hook)'
 python3 tools/training/prepare_dataset.py --manifest voices.csv --out datasets --zip
 ```
 
 Findings (39.8 minutes of clean dry singing from about 200 stems):
 
-* The ten male *Infinity* songs are one singer (song-to-song similarity 0.6 - 0.86, against at most 0.46
-  between clearly different singers); the Euphoria acapella *Leave This Place* matches him too: **14.4 min**.
-* The five female *Infinity* songs are one singer: **6.6 min**.
-* *Blame*, *Found My Way* and most *Deluxe* female phrases are one singer; *On My Way* and *Time* are close
-  to her (possibly the same): together **6.3 min**.
-* The hooks, the *Light* lead, the *Deluxe* male phrases and the *Euphoria* phrases come from several other
-  singers with 0.1 - 2.7 minutes each.
-* Datasets: `cymatics_male_a` (14.4 min, one singer), `cymatics_female_a` (6.6), `cymatics_female_b` (6.3)
-  and `cymatics_female_blend` (17.2 min, all female singers with at least a minute).
+* The ten male songs of one pack are one singer (song-to-song similarity 0.6 - 0.86, against at most 0.46
+  between clearly different singers); an acapella from another pack matches him too: **14.4 min**.
+* The five female songs of the same pack are one singer: **6.6 min**.
+* Five female songs from the other packs are one singer, or two very close ones: together **6.3 min**.
+* The hooks and the remaining phrases come from several other singers with 0.1 - 2.7 minutes each.
+* Datasets (VoxaVersa names): *Studio Male A* (14.4 min, one singer), *Studio Female A* (6.6),
+  *Studio Female B* (6.3) and *Studio Female Blend* (17.2 min, all female singers with at least a minute).
 
 The MP3 transcodes (LAME V5) are usable but the original WAVs are better; with only 6 - 15 minutes per
-singer these voices are at the low end of the quality scale. More dry material of the same singers (other
-packs credited to them, or the vendor's full vocal sessions) is what would improve them most.
+singer these voices are at the low end of the quality scale. More dry material of the same singers is what
+would improve them most.
 
 ## 9. VocalSet
 
@@ -380,7 +381,7 @@ sources.
   sample rate in the metadata) and patches two `int()` casts in RVC's relative attention that would
   otherwise freeze the traced length. With the excitation noise switched off on both sides, ONNX matches
   PyTorch within ~1e-4.
-* **What the engine does to a trained voice (measured).** Same model (Cymatics Male A, epoch 6), two
+* **What the engine does to a trained voice (measured).** Same model (Studio Male A, epoch 6), two
   25 s test inputs (another male singer, and a female singer shifted down an octave), controlled
   ONNX runs that change one thing at a time, scored by ECAPA similarity to the target singer:
   * *Real-time encoder context* matters most. VoxaVersa's real-time chunks give the content encoder

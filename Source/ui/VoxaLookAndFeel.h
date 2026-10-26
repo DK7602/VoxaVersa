@@ -80,11 +80,19 @@ public:
     void drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics&, const juce::Path&, juce::Image&) override;
     void drawCornerResizer (juce::Graphics&, int w, int h, bool isMouseOver, bool isMouseDragging) override;
 
+    /** The editor's scale (window width / design width). Menus and tooltips are scaled with the window like
+        everything else; their text keeps a readable size on screen however small the window is. */
+    void setUiScale (float scale) noexcept   { uiScale = juce::jlimit (0.2f, 4.0f, scale); }
+
 private:
     const juce::TextLayout& getTooltipLayout (const juce::String& text);
+    /** A design-space font height that is at least `minOnScreen` pixels tall at the current scale. */
+    float readable (float designHeight, float minOnScreen) const noexcept   { return juce::jmax (designHeight, minOnScreen / uiScale); }
 
     std::map<int, juce::Image> chromeCaps;
+    float uiScale = 1.0f;
     juce::String tooltipText;
+    float tooltipTextScale = 0.0f;
     juce::TextLayout tooltipLayout;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoxaLookAndFeel)

@@ -54,15 +54,26 @@ public:
     {
         juce::StringArray installed;     // names of the voices installed
         bool encoderInstalled = false;   // a content encoder (e.g. contentvec-768.onnx) was copied to Encoders/
+        int assignedPacks = 0;           // packs described by an imported voice assignment
         juce::StringArray errors;
 
-        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled; }
+        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled || assignedPacks > 0; }
         juce::String summary() const;
     };
 
+    /** A voice assignment (voice_assignment.json, written by the training queue next to its packs) says, per
+        pack id, which built-in voices the pack powers and how it is presented, overriding its voice.json:
+
+            { "packs": { "<pack id>": { "factoryVoices": ["female-pop", ...], "listed": false,
+                                        "name": "...", "description": "...", "license": "..." } } }
+
+        Imported assignments are merged (by pack id) into <Voices>/voice_assignment.json, which every rescan
+        applies, so a pack never has to be rewritten when more singers finish and the assignment changes. */
+    static constexpr const char* assignmentFileName = "voice_assignment.json";
+
     /** Imports one voice pack, or a folder / .zip holding any number of .vxpack files and optionally the
-        content encoder: e.g. Google Drive's download of the training "voices" folder (+ contentvec-768.onnx).
-        Only the packs and the encoder are taken from a big archive; everything else in it is ignored. */
+        content encoder and a voice assignment: e.g. Google Drive's download of the training "voices" folder
+        (+ contentvec-768.onnx). Only those are taken from a big archive; everything else in it is ignored. */
     ImportResult importVoices (const juce::File& folderOrArchive)   { return importVoices (folderOrArchive, getUserDataDirectory()); }
     ImportResult importVoices (const juce::File& folderOrArchive, const juce::File& userDataDirectory);
 

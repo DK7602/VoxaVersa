@@ -7,6 +7,9 @@ namespace voxa
 
 namespace
 {
+    // window width in the plug-in state and in settings.xml (<Ui editorWidth="...">)
+    constexpr const char* sizeKey = "editorWidth";
+
     juce::File getSettingsFile()
     {
         return VoiceLibrary::getUserDataDirectory().getChildFile ("settings.xml");
@@ -193,11 +196,12 @@ void VoxaVersaEditor::resized()
 
     const float scale = (float) getWidth() / (float) ui::MainView::designWidth;
     view->setTransform (juce::AffineTransform::scale (scale));
+    lookAndFeel->setUiScale (scale);
     view->setBounds (0, 0, ui::MainView::designWidth, ui::MainView::designHeight);
     view->noteScaleChanged();
 
     if (snapshot == nullptr)
-        processor.getState().state.setProperty ("uiWidth", getWidth(), nullptr);
+        processor.getState().state.setProperty (sizeKey, getWidth(), nullptr);
 }
 
 void VoxaVersaEditor::setUiWidth (int w)
@@ -207,17 +211,34 @@ void VoxaVersaEditor::setUiWidth (int w)
     saveWidthToSettings();
 }
 
+int VoxaVersaEditor::defaultWidthForScreen()
+{
+    const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+    if (display == nullptr)
+        return defaultWidth;
+
+    // room for the host's window frame and title bar
+    const int fitting = (display->userArea.getHeight() - 80) * 3 / 2;
+    int width = minWidth;
+    for (int w : ui::HeaderBar::uiWidths)
+        if (w <= fitting && w <= ui::MainView::designWidth)
+            width = w;
+    return width;
+}
+
 int VoxaVersaEditor::loadSavedWidth() const
 {
-    const auto stored = processor.getState().state.getProperty ("uiWidth");
+    // Sizes saved by earlier builds ("uiWidth" / "width") are ignored: many had the minimum size saved,
+    // where the text is too small to read.
+    const auto stored = processor.getState().state.getProperty (sizeKey);
     if (! stored.isVoid() && (int) stored > 0)
         return juce::jlimit (minWidth, maxWidth, (int) stored);
 
     if (auto xml = juce::parseXML (getSettingsFile()))
-        if (auto* ui = xml->getChildByName ("Ui"))
-            return juce::jlimit (minWidth, maxWidth, ui->getIntAttribute ("width", defaultWidth));
+        if (auto* ui = xml->getChildByName ("Ui"); ui != nullptr && ui->hasAttribute (sizeKey))
+            return juce::jlimit (minWidth, maxWidth, ui->getIntAttribute (sizeKey, defaultWidth));
 
-    return defaultWidth;
+    return defaultWidthForScreen();
 }
 
 void VoxaVersaEditor::saveWidthToSettings() const
@@ -234,10 +255,11 @@ void VoxaVersaEditor::saveWidthToSettings() const
     if (ui == nullptr)
         ui = xml->createNewChildElement ("Ui");
 
-    if (ui->getIntAttribute ("width") == getWidth())
+    if (ui->getIntAttribute (sizeKey) == getWidth())
         return;
 
-    ui->setAttribute ("width", getWidth());
+    ui->removeAttribute ("width");
+    ui->setAttribute (sizeKey, getWidth());
     file.getParentDirectory().createDirectory();
     xml->writeTo (file);
 }

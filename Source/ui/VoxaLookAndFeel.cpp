@@ -504,7 +504,7 @@ void VoxaLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangl
 
     if (shortcutKeyText.isNotEmpty())
     {
-        g.setFont (font (13.0f));
+        g.setFont (font (readable (13.0f, 12.0f)));
         g.setColour (Palette::textDim);
         g.drawText (shortcutKeyText, content, juce::Justification::centredRight, true);
     }
@@ -513,7 +513,7 @@ void VoxaLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangl
 void VoxaLookAndFeel::drawPopupMenuSectionHeader (juce::Graphics& g, const juce::Rectangle<int>& area, const juce::String& text)
 {
     auto r = area.toFloat().reduced (10.0f, 0.0f);
-    g.setFont (font (12.5f, Weight::SemiBold));
+    g.setFont (font (readable (12.5f, 12.0f), Weight::SemiBold));
     g.setColour (Palette::glowBright.withAlpha (0.85f));
     g.drawText (text.toUpperCase(), r.withTrimmedTop (4.0f), juce::Justification::centredLeft, true);
     g.setColour (Palette::panelBorder.withAlpha (0.15f));
@@ -522,7 +522,7 @@ void VoxaLookAndFeel::drawPopupMenuSectionHeader (juce::Graphics& g, const juce:
 
 juce::Font VoxaLookAndFeel::getPopupMenuFont()
 {
-    return font (15.5f, Weight::Regular);
+    return font (readable (15.5f, 14.0f), Weight::Regular);
 }
 
 void VoxaLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int standardMenuItemHeight,
@@ -535,14 +535,15 @@ void VoxaLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool 
         return;
     }
 
-    idealHeight = standardMenuItemHeight > 0 ? standardMenuItemHeight : 27;
-    idealWidth = juce::roundToInt (textWidth (getPopupMenuFont(), text)) + 60;
+    const auto menuFont = getPopupMenuFont();
+    idealHeight = juce::jmax (standardMenuItemHeight > 0 ? standardMenuItemHeight : 27, juce::roundToInt (menuFont.getHeight() * 1.75f));
+    idealWidth = juce::roundToInt (textWidth (menuFont, text)) + 60;
 }
 
 //==============================================================================
 namespace
 {
-    juce::TextLayout layoutTooltip (const juce::String& text, float maxWidth)
+    juce::TextLayout layoutTooltip (const juce::String& text, float maxWidth, float textScale)
     {
         juce::AttributedString s;
         s.setJustification (juce::Justification::topLeft);
@@ -553,7 +554,7 @@ namespace
         {
             const bool first = i == 0 && lines.size() > 1;
             s.append (lines[i] + (i < lines.size() - 1 ? "\n" : ""),
-                      first ? font (15.0f, Weight::SemiBold) : font (14.0f),
+                      first ? font (15.0f * textScale, Weight::SemiBold) : font (14.0f * textScale),
                       first ? juce::Colours::white : Palette::textSoft);
         }
 
@@ -565,10 +566,13 @@ namespace
 
 const juce::TextLayout& VoxaLookAndFeel::getTooltipLayout (const juce::String& text)
 {
-    if (text != tooltipText || tooltipLayout.getNumLines() == 0)
+    const float textScale = readable (14.0f, 13.0f) / 14.0f;
+
+    if (text != tooltipText || textScale != tooltipTextScale || tooltipLayout.getNumLines() == 0)
     {
         tooltipText = text;
-        tooltipLayout = layoutTooltip (text, 300.0f);
+        tooltipTextScale = textScale;
+        tooltipLayout = layoutTooltip (text, 300.0f * textScale, textScale);
     }
     return tooltipLayout;
 }

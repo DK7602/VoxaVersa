@@ -225,7 +225,8 @@ OrtModelSession::~OrtModelSession()
     }
 }
 
-std::unique_ptr<OrtModelSession> OrtModelSession::create (const juce::File& modelFile, juce::String& error)
+std::unique_ptr<OrtModelSession> OrtModelSession::create (const juce::File& modelFile, juce::String& error,
+                                                          bool allowAccelerator)
 {
     auto& runtime = OnnxRuntime::getInstance().getImpl();
 
@@ -256,7 +257,7 @@ std::unique_ptr<OrtModelSession> OrtModelSession::create (const juce::File& mode
     // Preferred configuration first; then without the accelerator, then with per-session thread pools
     // (needed if another module in this process created the OrtEnv without global thread pools).
     struct Attempt { bool accelerator, globalPool; };
-    const bool wantAccelerator = runtime.getAccelerator() != Accelerator::cpu;
+    const bool wantAccelerator = allowAccelerator && runtime.getAccelerator() != Accelerator::cpu;
     std::vector<Attempt> attempts;
 
     if (wantAccelerator)
@@ -804,6 +805,24 @@ void OnnxRuntime::Impl::setAccelerator (Accelerator a)
         status = describeReady();
 }
 
+void OnnxRuntime::Impl::setAndSaveAccelerator (Accelerator a)
+{
+    setAccelerator (a);
+
+    const auto file = VoiceLibrary::getUserDataDirectory().getChildFile ("settings.xml");
+    std::unique_ptr<juce::XmlElement> xml (juce::parseXML (file));
+    if (xml == nullptr || ! xml->hasTagName ("VoxaVersaSettings"))
+        xml = std::make_unique<juce::XmlElement> ("VoxaVersaSettings");
+
+    auto* e = xml->getChildByName ("NeuralEngine");
+    if (e == nullptr)
+        e = xml->createNewChildElement ("NeuralEngine");
+
+    e->setAttribute ("accelerator", a == Accelerator::automatic ? juce::String ("auto") : getAcceleratorName (a).toLowerCase());
+    file.getParentDirectory().createDirectory();
+    xml->writeTo (file);
+}
+
 Accelerator OnnxRuntime::Impl::getAccelerator() const
 {
     const std::lock_guard<std::mutex> sl (lock);
@@ -940,17 +959,19 @@ OrtSessionOptions* OnnxRuntime::Impl::createSessionOptions (bool tryAccelerator,
     return options;
 }
 
-std::shared_ptr<OrtModelSession> OnnxRuntime::Impl::getSharedSession (const juce::File& modelFile, juce::String& error)
+std::shared_ptr<OrtModelSession> OnnxRuntime::Impl::getSharedSession (const juce::File& modelFile, juce::String& error,
+                                                                      bool allowAccelerator)
 {
     const auto key = modelFile.getFullPathName() + "|" + juce::String (modelFile.getSize())
-                       + "|" + juce::String (modelFile.getLastModificationTime().toMilliseconds());
+                       + "|" + juce::String (modelFile.getLastModificationTime().toMilliseconds())
+                       + "|" + getAcceleratorName (allowAccelerator ? getAccelerator() : Accelerator::cpu);
 
     const std::lock_guard<std::mutex> sl (sharedSessionLock);
 
     if (auto existing = sharedSessions[key].lock())
         return existing;
 
-    std::shared_ptr<OrtModelSession> session (OrtModelSession::create (modelFile, error));
+    std::shared_ptr<OrtModelSession> session (OrtModelSession::create (modelFile, error, allowAccelerator));
 
     if (session != nullptr)
         sharedSessions[key] = session;

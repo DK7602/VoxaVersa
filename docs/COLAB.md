@@ -7,7 +7,7 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
 | | What it is |
 |---|---|
 | Notebook | `tools/training/VoxaVersa_Queue_Colab.ipynb` |
-| Data kit | `VoxaVersa_Colab_Data.zip` (private: the cleaned Cymatics singers + test vocals + the voice list; never share it) |
+| Data kit | `VoxaVersa_Colab_Data.zip` (private: your cleaned studio singers + test vocals + the voice list) |
 | Results | `.vxpack` voice packs in *My Drive > VoxaVersa > queue > voices* |
 
 ## 1. One-time preparation (5 minutes)
@@ -30,7 +30,7 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
    "See, edit, create and delete all of your Google Drive files": the notebook only uses the VoxaVersa
    folder).
 4. Wait for step 6. The first time, steps 3 - 4 take about 5 - 10 minutes (software and base models). Step 5
-   takes seconds: training starts with the Cymatics singers while the 20 free VocalSet singers download and are
+   takes seconds: training starts with your studio singers while the 20 free VocalSet singers download and are
    cleaned in the background (~30 - 60 minutes; the line "VocalSet singers:" in step 6 shows how far it is).
    They join the queue by themselves when ready. If that download fails, training simply carries on and the
    next Run all tries again. Later sessions start in about 5 minutes.
@@ -41,7 +41,7 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
 lost except the minutes since the last checkpoint (saved to Drive every 5 epochs, and before every quality
 check). Come back later, open the notebook and do **Runtime > Run all** again. It continues where it stopped.
 
-**What to expect:** 24 singers (4 from your Cymatics packs, 20 from VocalSet, a free CC BY 4.0 dataset).
+**What to expect:** 24 singers (4 from your own studio vocal packs, 20 from VocalSet, a free CC BY 4.0 dataset).
 Each trains for at least 100 and at most 300 epochs, stops by itself when the quality stops improving, and
 keeps its best checkpoint. On a T4 with mixed precision that is roughly 1 - 3 hours per singer, so about
 40 - 60 GPU hours in total: a couple of weeks of daily sessions on the free plan, or a few days with
@@ -51,7 +51,7 @@ Colab Pro (paid; check its current price). The order is female singers first.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `INCLUDE_VOCALSET` | on | Also train the 20 VocalSet singers. Off: only the 4 Cymatics singers (~6 GPU hours). |
+| `INCLUDE_VOCALSET` | on | Also train the 20 VocalSet singers. Off: only your 4 studio singers (~6 GPU hours). |
 | `PRECISION` | mixed | RVC's standard GPU training (fp16 mixed precision). *full* = fp32 like the CPU trainer, ~2x slower. |
 | `BATCH_SIZE` | 8 | RVC's usual GPU batch. Out of GPU memory: the trainer halves it by itself. |
 
@@ -66,7 +66,10 @@ checkpoint are all that stay.
    **contentvec-768.onnx** (Ctrl-click both), then right-click > **Download**. Drive zips them into one file (or
    a few, for very large downloads).
 3. In VoxaVersa: menu (top right) > **Import Voices...** and pick the downloaded zip (several at once is fine).
-   VoxaVersa installs every voice pack and the AI content encoder from it and ignores everything else.
+   VoxaVersa installs every voice pack, the voice assignment (`voice_assignment.json`: which built-in voices
+   each singer powers, and the singers' names) and the AI content encoder from it and ignores everything else.
+   Downloading only some singers' folders works too; then also download `voices/voice_assignment.json` and
+   import it, or the new singers show up as voices of their own until it is imported.
 
 Each pack already lists the built-in genre voices it powers (for example Female Pop and Female EDM). Those
 voices show an **AI** badge and use the trained singer whenever *Use AI Voice Engine* is on. Packs that only

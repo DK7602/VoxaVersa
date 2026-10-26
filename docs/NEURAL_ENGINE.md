@@ -215,15 +215,19 @@ bundle (see *Bundling*). DAWs that load third-party plugins allow this already.
 
 ### Accelerators and threads
 
-The CPU is used by default. To try a GPU execution provider (when the installed runtime build includes
-it), set one of `cpu`, `auto`, `cuda`, `directml`, `coreml`:
+On Windows the default is `auto` (the installer ships the DirectML build, which runs on any DirectX 12
+graphics card); elsewhere it is the CPU. *Settings > AI Device* switches between **Automatic** (`auto`) and
+**CPU only** and remembers the choice. Other values (`cpu`, `auto`, `cuda`, `directml`, `coreml`) can be set:
 
 * environment variable `VOXAVERSA_AI_ACCELERATOR=auto`, or
 * in `<user data>/settings.xml`: `<VoxaVersaSettings> <NeuralEngine accelerator="auto" threads="3"/> … </VoxaVersaSettings>`
 
-`auto` picks CoreML on macOS, DirectML then CUDA on Windows, CUDA on Linux. If the provider can't be
-used for a model, VoxaVersa silently falls back to the CPU. `threads` (or `VOXAVERSA_AI_THREADS`) sets the
-size of the shared inference thread pool (default `min(4, physical cores / 2)`).
+`auto` picks CoreML on macOS, DirectML then CUDA on Windows, CUDA on Linux. A model the provider can't
+load or run is loaded on the CPU instead, and a GPU that is too slow for live playback (real-time load of
+80% or more; some integrated GPUs run these small chunks slower than the CPU) is compared with the CPU and
+the faster one is kept. The status line names the device ("DirectML GPU" or "CPU"). `threads` (or
+`VOXAVERSA_AI_THREADS`) sets the size of the shared inference thread pool (default
+`min(4, physical cores / 2)`).
 
 ### Bundling ONNX Runtime with your build
 
@@ -459,8 +463,8 @@ models and resets while streaming, and offline bounces.
 * **Feature retrieval** (RVC's `.index` / faiss step) and RVC's `protect` and `rms_mix_rate` options are
   not implemented; the generator receives the raw content features.
 * **Pitch** must be supplied by the caller (target f0); the engine does not estimate pitch.
-* **GPU providers** (CUDA, DirectML, CoreML) are wired up through ONNX Runtime's generic APIs but have
-  only been exercised on CPU builds; any failure falls back to the CPU.
+* **GPU providers** (CUDA, DirectML, CoreML) are wired up through ONNX Runtime's generic APIs; the automated
+  tests run on CPU builds only. A provider that fails to load or run a model falls back to the CPU.
 * **Offline joins**: segments of long clips may be shifted by up to ±6 ms around their nominal position
   to align phases (inaudible, never accumulates).
 * **Noise** for the generator is deterministic per frame position; re-rendering a clip gives the same

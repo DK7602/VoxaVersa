@@ -398,9 +398,9 @@ void HeaderBar::importPreset()
 void HeaderBar::importVoicePack()
 {
     // Packs (.vxpack), a folder or .zip of many packs (e.g. Google Drive's download of the trained voices),
-    // and the AI content encoder (contentvec-768.onnx) - one or several at once.
+    // the voice assignment and the AI content encoder (contentvec-768.onnx) - one or several at once.
     ctx.chooseFiles ("Import Voices (.vxpack, a .zip or folder of voices, contentvec-768.onnx)",
-                     "*.zip;*.vxpack;*.onnx;voice.json", true, [this] (const juce::Array<juce::File>& chosen)
+                     "*.zip;*.vxpack;*.onnx;voice.json;voice_assignment*.json", true, [this] (const juce::Array<juce::File>& chosen)
     {
         VoiceLibrary::ImportResult total;
         for (auto f : chosen)
@@ -410,6 +410,7 @@ void HeaderBar::importVoicePack()
             const auto r = ctx.processor.getVoiceLibrary().importVoices (f);
             total.installed.addArray (r.installed);
             total.encoderInstalled = total.encoderInstalled || r.encoderInstalled;
+            total.assignedPacks += r.assignedPacks;
             total.errors.addArray (r.errors);
         }
         ctx.toast (total.summary(), total.errors.isEmpty() ? ToastKind::Success
@@ -444,15 +445,15 @@ void HeaderBar::showSettingsMenu()
     enum
     {
         sizeBase = 100, qualityBase = 200, sourceBase = 300,
-        aiToggle = 400, importVoices = 401, openVoices = 402, rescanVoices = 403,
+        aiToggle = 400, importVoices = 401, openVoices = 402, rescanVoices = 403, deviceAuto = 404, deviceCpu = 405,
         importPresetId = 500, deletePresetId = 501, openPresets = 502, about = 600
     };
 
-    static const int widths[] = { 900, 1050, 1200, 1350, 1536, 1728, 1920 };
+    const auto& widths = uiWidths;
     const int currentWidth = getUiWidth ? getUiWidth() : 1200;
 
     juce::PopupMenu sizes;
-    for (int i = 0; i < (int) std::size (widths); ++i)
+    for (int i = 0; i < (int) std::size (uiWidths); ++i)
     {
         const int w = widths[i];
         sizes.addItem (sizeBase + i, juce::String (juce::roundToInt (100.0 * w / 1200.0)) + "%  (" + juce::String (w) + " x "
@@ -477,6 +478,13 @@ void HeaderBar::showSettingsMenu()
     menu.addSeparator();
     menu.addSectionHeader ("AI Voice Engine");
     menu.addItem (aiToggle, "Use AI Voice Engine", true, ctx.getBool (ParamID::aiEngine));
+    {
+        const bool cpuOnly = ctx.processor.isNeuralCpuOnly();
+        juce::PopupMenu device;
+        device.addItem (deviceAuto, "Automatic: graphics card (GPU) when it is faster", true, ! cpuOnly);
+        device.addItem (deviceCpu, "CPU only", true, cpuOnly);
+        menu.addSubMenu (juce::String ("AI Device: ") + (cpuOnly ? "CPU only" : "Automatic"), device);
+    }
     menu.addItem (-1, "Status: " + ctx.processor.getNeuralStatusMessage(), false, false);
     menu.addItem (importVoices, "Import Voices...");
     menu.addItem (openVoices, "Open Voices Folder");
@@ -499,15 +507,16 @@ void HeaderBar::showSettingsMenu()
         if (safeThis == nullptr)
             return;
 
-        if (r >= sizeBase && r < sizeBase + (int) std::size (widths))
+        if (r >= sizeBase && r < sizeBase + (int) std::size (uiWidths))
         {
             if (onUiSizeChosen)
-                onUiSizeChosen (widths[r - sizeBase]);
+                onUiSizeChosen (uiWidths[r - sizeBase]);
         }
         else if (r >= qualityBase && r < qualityBase + 10)  ctx.setValue (ParamID::quality, (float) (r - qualityBase));
         else if (r >= sourceBase && r < sourceBase + 10)    ctx.setValue (ParamID::sourceVoice, (float) (r - sourceBase));
         else if (r == aiToggle)                             ctx.setValue (ParamID::aiEngine, ctx.getBool (ParamID::aiEngine) ? 0.0f : 1.0f);
         else if (r == importVoices)                         importVoicePack();
+        else if (r == deviceAuto || r == deviceCpu)         ctx.processor.setNeuralCpuOnly (r == deviceCpu);
         else if (r == openVoices)
         {
             auto dir = VoiceLibrary::getUserVoicesDirectory();

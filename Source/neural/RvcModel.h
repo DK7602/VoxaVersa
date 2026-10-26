@@ -49,6 +49,7 @@ struct ModelConfig
     int speakerId = 0;
     float noiseScale = 0.66666f;
     int streamContextMs = 1000;   // 0.3 s measurably weakened the timbre; 1 s is close to offline quality
+    bool allowAccelerator = true; // false: CPU only, whatever the runtime's accelerator
 
     static ModelConfig fromProfile (const VoiceProfile&);
 
@@ -119,6 +120,8 @@ struct NeuralVoiceModel::Impl
     /** Inference time of a live chunk relative to the stream's time budget (streaming::headroomSeconds).
         Above ~0.8 this computer can't run the voice live (offline renders and conversion still work). */
     double getRealTimeLoad() const noexcept;
+    /** True when the generator or the encoder runs on an accelerator (GPU). */
+    bool usesAccelerator() const noexcept;
 
     struct EncoderIO
     {

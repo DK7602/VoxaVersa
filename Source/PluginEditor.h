@@ -24,6 +24,9 @@ public:
 
     static constexpr int defaultWidth = 1200, minWidth = 900, maxWidth = 1920;
 
+    /** The largest Settings > UI Size width whose window fits the main display's work area. */
+    static int defaultWidthForScreen();
+
 private:
     void timerCallback() override;
     void setUiWidth (int width);

@@ -290,6 +290,53 @@ bool VoiceLibrary::loadVoicePack (const juce::File& directory, VoiceProfile& p, 
     return true;
 }
 
+/** The "packs" object of a voice assignment file (or an empty var). */
+static juce::var readAssignment (const juce::File& file)
+{
+    if (! file.existsAsFile())
+        return {};
+
+    const auto json = juce::JSON::parse (file);
+    auto* obj = json.getDynamicObject();
+    return obj != nullptr && obj->getProperty ("packs").getDynamicObject() != nullptr ? obj->getProperty ("packs") : juce::var();
+}
+
+/** The assignment entry for a pack, matched by its id (as in voice.json) or its folder name. */
+static const juce::var* findAssignment (const juce::var& packs, const VoiceProfile& p)
+{
+    auto* obj = packs.getDynamicObject();
+    if (obj == nullptr)
+        return nullptr;
+
+    for (const auto& entry : obj->getProperties())
+    {
+        const auto key = entry.name.toString();
+        if ("user-" + key.toLowerCase().replaceCharacters (" _/\\", "----") == p.id || key == p.packDirectory.getFileName())
+            return &entry.value;
+    }
+
+    return nullptr;
+}
+
+static void applyAssignment (VoiceProfile& p, const juce::var& entry)
+{
+    auto* obj = entry.getDynamicObject();
+    if (obj == nullptr)
+        return;
+
+    if (obj->hasProperty ("name"))        p.name = obj->getProperty ("name").toString();
+    if (obj->hasProperty ("description")) p.tagline = obj->getProperty ("description").toString();
+    if (obj->hasProperty ("license"))     p.license = obj->getProperty ("license").toString();
+    if (obj->hasProperty ("listed"))      p.listed = (bool) obj->getProperty ("listed");
+
+    if (auto* ids = obj->getProperty ("factoryVoices").getArray())
+    {
+        p.factoryVoices.clear();
+        for (auto& id : *ids)
+            p.factoryVoices.addIfNotAlreadyThere (id.toString().trim());
+    }
+}
+
 void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 {
     voices.resize (numFactoryVoices);
@@ -306,6 +353,7 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
     {
         auto packs = dir.findChildFiles (juce::File::findDirectories, false);
         packs.sort();   // deterministic: when two packs claim a built-in voice, the first by name wins
+        const auto assignment = readAssignment (dir.getChildFile (assignmentFileName));
 
         for (const auto& packDir : packs)
         {
@@ -316,6 +364,9 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
                 DBG ("VoxaVersa: skipping voice pack: " << error);
                 continue;
             }
+
+            if (const auto* entry = findAssignment (assignment, p))
+                applyAssignment (p, *entry);
 
             if (p.hasNeuralModel())
             {
@@ -416,6 +467,37 @@ bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& erro
     return true;
 }
 
+static bool isAssignmentFile (const juce::String& fileName)
+{
+    // browsers rename repeated downloads ("voice_assignment (1).json")
+    return fileName.startsWithIgnoreCase ("voice_assignment") && fileName.endsWithIgnoreCase (".json");
+}
+
+/** Merges an imported assignment into <Voices>/voice_assignment.json (newer entries replace older ones).
+    Returns the number of packs it describes, or -1 if it isn't a voice assignment. */
+static int mergeAssignment (const juce::File& imported, const juce::File& voicesDir)
+{
+    const auto incoming = readAssignment (imported);
+    auto* in = incoming.getDynamicObject();
+    if (in == nullptr || ! voicesDir.createDirectory())
+        return -1;
+
+    const auto target = voicesDir.getChildFile (VoiceLibrary::assignmentFileName);
+    auto merged = readAssignment (target);
+    if (merged.getDynamicObject() == nullptr)
+        merged = juce::var (new juce::DynamicObject());
+
+    for (const auto& entry : in->getProperties())
+        merged.getDynamicObject()->setProperty (entry.name, entry.value);
+
+    auto root = std::make_unique<juce::DynamicObject>();
+    root->setProperty ("packs", merged);
+    if (! target.replaceWithText (juce::JSON::toString (juce::var (root.release()))))
+        return -1;
+
+    return in->getProperties().size();
+}
+
 static bool isEncoderFile (const juce::String& fileName)
 {
     const auto n = fileName.toLowerCase();
@@ -431,11 +513,14 @@ juce::String VoiceLibrary::ImportResult::summary() const
         s << installed.size() << " voices installed";
     if (encoderInstalled)
         s << (s.isEmpty() ? "AI content encoder installed" : " + AI content encoder");
+    if (assignedPacks > 0)
+        s << (s.isEmpty() ? "Voice assignment updated" : " + voice assignment") << " (" << assignedPacks
+          << (assignedPacks == 1 ? " singer)" : " singers)");
     if (errors.size() > 0)
         s << (s.isEmpty() ? "Import failed: " : " (") << errors[0]
           << (errors.size() > 1 ? " and " + juce::String (errors.size() - 1) + " more" : juce::String())
           << (succeeded() ? ")" : "");
-    return s.isEmpty() ? juce::String ("No voice packs (.vxpack) or AI encoder found there") : s;
+    return s.isEmpty() ? juce::String ("No voice packs (.vxpack), voice assignment or AI encoder found there") : s;
 }
 
 VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source, const juce::File& userDataDirectory)
@@ -462,6 +547,18 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
             r.errors.add ("Could not copy " + f.getFileName() + " to " + encodersDir.getFullPathName());
     };
 
+    // assignments are merged after the packs, so they describe the packs that are installed by then
+    juce::Array<juce::File> assignments;
+
+    auto assignment = [&] (const juce::File& f)
+    {
+        const int n = mergeAssignment (f, voicesDir);
+        if (n >= 0)
+            r.assignedPacks += n;
+        else
+            r.errors.add (f.getFileName() + ": not a valid voice assignment");
+    };
+
     auto scan = [&] (const juce::File& dir)
     {
         for (const auto& f : dir.findChildFiles (juce::File::findFiles, true, "*"))
@@ -472,7 +569,13 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
                 pack (f.getParentDirectory());
             else if (isEncoderFile (f.getFileName()))
                 encoder (f);
+            else if (isAssignmentFile (f.getFileName()))
+                assignments.add (f);
         }
+
+        for (const auto& f : assignments)
+            assignment (f);
+        assignments.clear();
     };
 
     if (source.isDirectory())
@@ -486,6 +589,10 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
     {
         encoder (source);
     }
+    else if (isAssignmentFile (source.getFileName()))
+    {
+        assignment (source);
+    }
     else
     {
         juce::ZipFile zip (source);
@@ -494,7 +601,7 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
         {
             const auto entryName = zip.getEntry (i)->filename;
             const auto base = entryName.fromLastOccurrenceOf ("/", false, false);
-            if (base.endsWithIgnoreCase (".vxpack") || isEncoderFile (base))
+            if (base.endsWithIgnoreCase (".vxpack") || isEncoderFile (base) || isAssignmentFile (base))
                 wanted.add (i);
         }
 
@@ -508,7 +615,7 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
         }
         else
         {
-            // A collection: unpack only the packs and the encoder, then install them.
+            // A collection: unpack only the packs, the encoder and the assignment, then install them.
             auto temp = userDataDirectory.getChildFile ("ImportTemp");
             temp.deleteRecursively();
             for (int i : wanted)
@@ -519,7 +626,7 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
         }
     }
 
-    if (r.installed.size() > 0)
+    if (r.installed.size() > 0 || r.assignedPacks > 0)
         rescanUserVoices (voicesDir);
     return r;
 }

@@ -206,6 +206,25 @@ def cmd_queue(args):
     with open(os.path.join(args.work, "colab_queue_args.json"), "w") as f:
         json.dump({k: v for k, v in vars(args).items() if k != "cmd"}, f)
     write_queue(args)
+    # voices/voice_assignment.json for the singers finished so far (current names, built-in voices)
+    p = subprocess.run([args.python, os.path.join(HERE, "train_queue.py"), "assign", "--work", args.work],
+                       capture_output=True, text=True)
+    log((p.stdout.strip().splitlines() or ["voice assignment: nothing to do"])[-1] if p.returncode == 0
+        else "voice assignment not updated: " + (p.stderr or p.stdout).strip()[-300:])
+
+
+def presentation(v):
+    """How a singer appears in VoxaVersa. VocalSet singers keep their names (the dataset's CC BY 4.0 credit);
+    the data kit's own singers are named after their voice only: "Studio Female A", "Studio Female Blend"."""
+    if v["dataset"].startswith("datasets_vocalset/"):
+        return v
+    gender = v.get("gender", "")
+    tokens = v["name"].split("_")
+    rest = tokens[tokens.index(gender) + 1:] if gender in tokens else tokens[-1:]
+    label = " ".join(t.upper() if len(t) == 1 else t.capitalize() for t in rest)
+    return dict(v, display_name=" ".join(x for x in ("Studio", gender.capitalize(), label) if x),
+                description="RVC v2 voice trained on dry studio vocals",
+                license="Trained from licence-free studio vocals in the owner's library")
 
 
 def write_queue(args):
@@ -218,7 +237,7 @@ def write_queue(args):
             return args.vocalset and vocalset_ready and os.path.isdir(os.path.join(data, v["dataset"]))
         return os.path.isdir(os.path.join(data, v["dataset"]))
 
-    voices = [v for v in voices if available(v)]
+    voices = [presentation(v) for v in voices if available(v)]
     if args.only:
         voices = [v for v in voices if v["name"] in args.only]
     # voices already started keep going first, so adding singers later never interrupts one

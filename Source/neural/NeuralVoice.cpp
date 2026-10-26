@@ -28,11 +28,41 @@ std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& pr
         return nullptr;
     }
 
+    auto config = ModelConfig::fromProfile (profile);
     std::shared_ptr<NeuralVoiceModel> model (new NeuralVoiceModel());
 
-    if (! model->impl->initialise (ModelConfig::fromProfile (profile), error))
+    if (model->impl->initialise (config, error))
+    {
+        // Some (integrated) GPUs run these small chunks slower than the CPU: if this one is too slow for live
+        // playback, keep whichever of the two is faster.
+        if (! model->impl->usesAccelerator() || model->impl->getRealTimeLoad() < 0.8)
+            return model;
+
+        config.allowAccelerator = false;
+        std::shared_ptr<NeuralVoiceModel> cpu (new NeuralVoiceModel());
+        juce::String cpuError;
+
+        if (cpu->impl->initialise (config, cpuError) && cpu->impl->getRealTimeLoad() < model->impl->getRealTimeLoad())
+            return cpu;
+
+        return model;
+    }
+
+    if (! config.allowAccelerator || runtime.getImpl().getAccelerator() == Accelerator::cpu)
         return nullptr;
 
+    // The GPU could not run this model (a driver or operator problem): the CPU can.
+    const auto gpuError = error;
+    config.allowAccelerator = false;
+    model.reset (new NeuralVoiceModel());
+
+    if (! model->impl->initialise (config, error))
+    {
+        error << " (GPU: " << gpuError << ")";
+        return nullptr;
+    }
+
+    DBG ("VoxaVersa AI voice: GPU failed (" << gpuError << "), using the CPU");
     return model;
 }
 
