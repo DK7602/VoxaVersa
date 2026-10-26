@@ -45,7 +45,8 @@ check). Come back later, open the notebook and do **Runtime > Run all** again. I
 Each trains for at least 100 and at most 300 epochs, stops by itself when the quality stops improving, and
 keeps its best checkpoint. On a T4 with mixed precision that is roughly 1 - 3 hours per singer, so about
 40 - 60 GPU hours in total: a couple of weeks of daily sessions on the free plan, or a few days with
-Colab Pro (paid; check its current price). The order is female singers first.
+Colab Pro (paid; check its current price). Male and female singers take turns (the side with fewer finished
+singers first), after the singer already in training.
 
 **Settings** (step 2 of the notebook; the defaults are right for most people):
 

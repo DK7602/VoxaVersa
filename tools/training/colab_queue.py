@@ -213,6 +213,20 @@ def cmd_queue(args):
         else "voice assignment not updated: " + (p.stderr or p.stdout).strip()[-300:])
 
 
+def alternate_genders(pending, started, state):
+    """Male and female singers take turns (the gender with fewer finished singers first), so both sides of
+    the built-in voices get more trained singers as the queue goes on, instead of all of one gender first."""
+    finished = lambda g: sum(1 for v in started if v.get("gender") == g and state.get(v["name"], {}).get("status") == "done")
+    by_gender = {g: [v for v in pending if v.get("gender") == g] for g in ("male", "female")}
+    order = ["male", "female"] if finished("male") <= finished("female") else ["female", "male"]
+    result = []
+    while by_gender["male"] or by_gender["female"]:
+        for g in order:
+            if by_gender[g]:
+                result.append(by_gender[g].pop(0))
+    return result + [v for v in pending if v.get("gender") not in ("male", "female")]
+
+
 def presentation(v):
     """How a singer appears in VoxaVersa. VocalSet singers keep their names (the dataset's CC BY 4.0 credit);
     the data kit's own singers are named after their voice only: "Studio Female A", "Studio Female Blend"."""
@@ -243,7 +257,7 @@ def write_queue(args):
     # voices already started keep going first, so adding singers later never interrupts one
     state = load(os.path.join(args.work, "queue_state.json")) or {}
     started = [v for v in voices if state.get(v["name"], {}).get("status") not in (None, "pending")]
-    voices = started + [v for v in voices if v not in started]
+    voices = started + alternate_genders([v for v in voices if v not in started], started, state)
     q = {
         "rvc_dir": args.rvc, "python": args.python, "device": "cuda", "amp": args.precision == "mixed",
         "batch": args.batch, "threads": 2, "max_threads": 2, "ckpt_every": args.ckpt_every,
