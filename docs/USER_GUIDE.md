@@ -36,14 +36,19 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
 **Render** to create a WAV and drag it straight into your DAW (or find it in `Documents/VoxaVersa/Exports`).
 
 ### Pro tools
-- **Tune**: pitch correction to a key/scale (or **Auto** key detection), retune speed from hard
-  "robot" (0 ms) to natural, humanize, and **MIDI Pitch Control** (the notes you play set the pitch).
+- **Tune**: pitch correction to a key/scale (or **Auto** key detection; *Chromatic* snaps to the nearest
+  semitone in any key), retune speed from hard "robot" (0 ms) to natural, humanize, and **MIDI Pitch Control**
+  (the notes you play set the pitch).
 - **Harmony**: up to three scale-aware harmony voices (3rds, 4ths, 5ths, 6ths, octaves) with level & pan.
-- **Doubler**: natural double-tracking (detune and timing drift), stereo width.
+- **Doubler**: natural double-tracking (detune and timing drift), stereo width. With an AI voice the
+  doubles are copies of the AI singer itself.
 - **FX**: low cut, de-esser, compressor, presence, air, saturation.
 - **Space**: tempo-synced ping-pong delay (ducked under the vocal) and reverb.
 - **Voice Blend**: right-click a second voice → *Set as Blend Voice* to morph between two voices.
-- **Presets**: factory and user presets, A/B comparison, undo/redo.
+- **Presets**: factory and user presets, A/B comparison, undo/redo. A factory preset keeps your session's
+  mode, input/output level, key and scale, MIDI Pitch Control and Text to Sing tempo. Presets built on a male
+  or female voice turn **Pitch Preserve** off so any singer lands in that voice's register; *Chipmunk*,
+  *Whisper ASMR* and *Live Stage (Low Latency)* use the DSP engine (AI off).
 - **Quality**: *Low Latency* (~35 ms) for live monitoring, *Balanced*, *High Quality* for mixing
   (latency is reported to the DAW and compensated automatically).
 

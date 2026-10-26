@@ -65,7 +65,8 @@ public:
         pack id, which built-in voices the pack powers and how it is presented, overriding its voice.json:
 
             { "packs": { "<pack id>": { "factoryVoices": ["female-pop", ...], "listed": false,
-                                        "name": "...", "description": "...", "license": "..." } } }
+                                        "name": "...", "description": "...", "license": "...",
+                                        "range": [53, 72], "median": 63 } } }
 
         Imported assignments are merged (by pack id) into <Voices>/voice_assignment.json, which every rescan
         applies, so a pack never has to be rewritten when more singers finish and the assignment changes. */

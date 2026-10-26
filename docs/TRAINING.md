@@ -245,7 +245,8 @@ The result for all queued singers is kept in
 [`tools/training/factory_voice_assignment.md`](../tools/training/factory_voice_assignment.md). The training
 queue applies it to the singers that are *finished*: after every voice it re-measures and re-assigns, and
 writes `voices/voice_assignment.json` next to the packs: per pack id `factoryVoices`, `"listed"` (packs that
-only power built-in voices are hidden) and the name, description and licence. VoxaVersa's *Import Voices...*
+only power built-in voices are hidden), the name, description and licence, and the singer's measured `range`
+and `median` note (the AI voice is placed in the octave nearest that median, where the model sounds right). VoxaVersa's *Import Voices...*
 takes it along with the packs (Google Drive's download of the voices folder) and applies it to every
 installed pack, so packs are never rewritten when the assignment changes. With one finished singer per
 gender that singer powers all of that gender's voices; the voices spread out as more singers finish.

@@ -34,6 +34,7 @@ public:
         int sourceGender = 0;             // 0 auto, 1 male, 2 female
         bool sourceIsSynth = false;       // Text-to-Sing guide: no correction / register / profile expression
         bool naturalVibrato = false;      // AI lead: keep the singer's own vibrato, add none unless correcting
+        bool aiRegister = false;          // AI lead: place the octave near traits.aiCentreMidi (its singer's range)
         VoiceTraits traits;               // target voice
     };
 

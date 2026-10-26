@@ -48,17 +48,20 @@ juce::String PresetManager::getCurrentName() const
     return apvts.state.getProperty (StateID::presetName, "Init Preset").toString();
 }
 
-void PresetManager::resetAllParametersToDefault()
+void PresetManager::resetSoundParametersToDefault()
 {
+    static const juce::StringArray sessionSettings { ParamID::power, ParamID::mode, ParamID::inputGain, ParamID::outputGain,
+                                                     ParamID::key, ParamID::scale, ParamID::midiControl, ParamID::singTempo,
+                                                     ParamID::singSyncHost, ParamID::melodySource };
     for (auto* p : apvts.processor.getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
-            if (rp->paramID != ParamID::power)
+            if (! sessionSettings.contains (rp->paramID))
                 rp->setValueNotifyingHost (rp->getDefaultValue());
 }
 
 void PresetManager::applyFactoryPreset (const FactoryPreset& preset)
 {
-    resetAllParametersToDefault();
+    resetSoundParametersToDefault();
 
     for (const auto& [id, value] : preset.values)
         if (auto* p = apvts.getParameter (id))

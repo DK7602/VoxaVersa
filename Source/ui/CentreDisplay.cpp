@@ -72,7 +72,12 @@ void CentreDisplay::updateReadouts()
     auto newOut = noteNameForHz (outHz > 1.0f ? outHz : 0.0f);
 
     juce::String newKey, newKeySub;
-    if (ctx.getChoice (ParamID::key) == 0)
+    if (ctx.getChoice (ParamID::key) == 0 && ctx.getChoice (ParamID::scale) == (int) ScaleType::Chromatic)
+    {
+        newKey = "Auto";
+        newKeySub = "Chromatic";
+    }
+    else if (ctx.getChoice (ParamID::key) == 0)
     {
         const int root = p.detectedKeyRoot.load();
         const int scale = p.detectedScale.load();

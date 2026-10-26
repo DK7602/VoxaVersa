@@ -43,7 +43,8 @@ int PitchMapper::getEffectiveKeyRoot (const Settings& s) const noexcept
 
 ScaleType PitchMapper::getEffectiveScale (const Settings& s) const noexcept
 {
-    if (s.keyRoot >= 0)
+    // Chromatic needs no key, so it applies with Auto key too.
+    if (s.keyRoot >= 0 || s.scale == ScaleType::Chromatic)
         return s.scale;
     // Auto key: use the detected mode once known; chromatic until then.
     return keyKnown ? keyDetector.getScale() : ScaleType::Chromatic;
@@ -68,12 +69,14 @@ float PitchMapper::harmonyShift (const PitchFrame& f, HarmonyInterval interval, 
 
 void PitchMapper::updateRegister (const Settings& s) noexcept
 {
-    const int centre = s.traits.centreMidi();
+    const bool ai = s.aiRegister && s.traits.aiCentreMidi > 0.0f;
+    const int centre = ai ? 1000 + juce::roundToInt (s.traits.aiCentreMidi) : s.traits.centreMidi();
     const int source = s.sourceGender != 0 ? s.sourceGender : genderEstimate;
 
     // Once the input voice is known the octave is locked, so phrases never jump between registers.
-    // It is re-evaluated only for a new target voice or a different source gender.
-    if (registerLocked && centre == lockedCentre && source == lockedSource)
+    // It is re-evaluated only for a new target voice or a different source gender (an AI voice: see below).
+    const bool sameTarget = registerLocked && centre == lockedCentre && source == lockedSource;
+    if (sameTarget && ! ai)
         return;
 
     // Male -> female moves up an octave, female -> male down; same-gender pairs stay put.
@@ -82,7 +85,22 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
     if (source == 2 && s.traits.gender == VoiceGender::Male)   k = -1;
 
     // Keep the performance inside the target voice's register (with a little headroom).
-    if (sourceWeight > 0.5f)
+    if (sourceWeight > 0.5f && ai)
+    {
+        // An AI model sounds right only near the notes its singer sang (far above them it turns to noise):
+        // the octave closest to the middle of that range, the gender's usual direction on a near tie.
+        const int preferred = k;
+        auto cost = [&] (int o) { return std::abs (sourceMedian + 12.0f * (float) o - s.traits.aiCentreMidi) + (o == preferred ? 0.0f : 2.0f); };
+        for (int o = -2; o <= 2; ++o)
+            if (cost (o) < cost (k))
+                k = o;
+
+        // The first phrases can be unrepresentative of the whole song, so the choice stays open (checked at
+        // every phrase start) but only changes when another octave is clearly closer: no back and forth.
+        if (sameTarget && cost (registerOctaves) <= cost (k) + 3.0f)
+            k = registerOctaves;
+    }
+    else if (sourceWeight > 0.5f)
     {
         while (k > -2 && sourceMedian + 12.0f * (float) k > (float) s.traits.rangeHighMidi + 3.0f) --k;
         while (k < 2 && sourceMedian + 12.0f * (float) k < (float) s.traits.rangeLowMidi - 3.0f) ++k;

@@ -19,6 +19,9 @@ struct VoiceTraits
     // Register (MIDI notes) - used for smart octave placement and by Text-to-Sing melodies.
     int rangeLowMidi  = 48;
     int rangeHighMidi = 72;
+    // Centre of the range the voice's AI model was trained on (0 = unknown / no AI model). An AI model
+    // only sounds right near the notes its singer sang: while it is active, octave placement aims here.
+    float aiCentreMidi = 0.0f;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift

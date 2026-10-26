@@ -1,5 +1,6 @@
 #include <juce_dsp/juce_dsp.h>
 #include "dsp/PitchDetector.h"
+#include "dsp/PitchMapper.h"
 #include "dsp/VoiceChain.h"
 #include "dsp/VoiceGenderEstimator.h"
 #include "voices/VoiceLibrary.h"
@@ -420,8 +421,77 @@ public:
     }
 };
 
+class PitchMapperTests : public juce::UnitTest
+{
+public:
+    PitchMapperTests() : juce::UnitTest ("Pitch mapper", "DSP") {}
+
+    /** Feeds phrases (1 s sung, 0.2 s rest) cycling through `notes` (MIDI); returns the last voiced frame. */
+    static dsp::PitchFrame sing (dsp::PitchMapper& mapper, const dsp::PitchMapper::Settings& s,
+                                 std::initializer_list<float> notes, int phrases)
+    {
+        constexpr double sr = 48000.0;
+        constexpr int hop = 256;
+        dsp::PitchFrame last;
+        juce::int64 t = 0;
+        for (int p = 0; p < phrases; ++p)
+        {
+            const float midi = *(notes.begin() + p % (int) notes.size());
+            for (int i = 0; i < (int) (sr / hop); ++i, t += hop)
+            {
+                dsp::PitchDetector::Frame f;
+                f.voiced = true;
+                f.frequencyHz = music::midiToHz (midi);
+                f.periodSamples = (float) sr / f.frequencyHz;
+                f.confidence = 0.95f;
+                last = mapper.process (f, t, s);
+            }
+            for (int i = 0; i < (int) (0.2 * sr / hop); ++i, t += hop)
+                mapper.process (dsp::PitchDetector::Frame(), t, s);
+        }
+        return last;
+    }
+
+    void runTest() override
+    {
+        beginTest ("Chromatic applies with Auto key");
+        {
+            dsp::PitchMapper mapper;
+            mapper.prepare (48000.0, 256);
+            dsp::PitchMapper::Settings s;
+            sing (mapper, s, { 60.0f, 64.0f, 67.0f, 62.0f, 65.0f, 69.0f, 71.0f }, 14);   // C major melody
+            expect (mapper.getDetectedKeyRoot() >= 0, "key detected");
+            expect (mapper.getEffectiveScale (s) != ScaleType::Chromatic, "auto key uses the detected scale");
+            s.scale = ScaleType::Chromatic;
+            expect (mapper.getEffectiveScale (s) == ScaleType::Chromatic, "chosen chromatic scale is kept");
+        }
+
+        beginTest ("AI register stays near the singer's own notes");
+        {
+            auto run = [this] (float aiCentre, bool ai)
+            {
+                dsp::PitchMapper mapper;
+                mapper.prepare (48000.0, 256);
+                dsp::PitchMapper::Settings s;
+                s.pitchPreserve = false;
+                s.sourceGender = 1;                               // a man singing around D3
+                s.traits.gender = VoiceGender::Female;
+                s.traits.rangeLowMidi = 57;
+                s.traits.rangeHighMidi = 79;
+                s.traits.aiCentreMidi = aiCentre;
+                s.aiRegister = ai;
+                return juce::roundToInt (sing (mapper, s, { 50.0f, 52.0f, 48.0f }, 6).globalOffset);
+            };
+            expectEquals (run (0.0f, false), 12, "DSP female voice: an octave up");
+            expectEquals (run (63.0f, true), 12, "AI singer centred on D#4: an octave up");
+            expectEquals (run (52.0f, true), 0, "AI singer centred on E3: stays put");
+        }
+    }
+};
+
 static PitchDetectorTests pitchDetectorTests;
 static GenderEstimatorTests genderEstimatorTests;
 static VoiceChainTests voiceChainTests;
+static PitchMapperTests pitchMapperTests;
 
 } // namespace voxa

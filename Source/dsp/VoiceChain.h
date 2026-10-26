@@ -50,6 +50,7 @@ struct ChainSettings
     double bpm = 120.0;
 
     bool useNeural = false;      // lead voice comes from the neural stream when it has a model
+    bool aiLead = false;         // the lead is an AI voice rendered elsewhere (offline: process's leadOverride)
 };
 
 /** The complete mono-in / stereo-out voice transformation chain. */
@@ -138,6 +139,30 @@ private:
         }
     };
     DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage;
+
+    // Doubler voices of an AI lead: copies of the AI singer itself, slightly late and slowly drifting in pitch
+    // (a modulated delay), so the double has the lead's own timbre rather than the DSP voice's.
+    struct ModulatedDelay
+    {
+        std::vector<float> buffer;
+        int write = 0;
+        void prepare (int maxDelay) { buffer.assign ((size_t) maxDelay + 2, 0.0f); write = 0; }
+        void clear() { std::fill (buffer.begin(), buffer.end(), 0.0f); write = 0; }
+        inline float process (float x, float delay) noexcept
+        {
+            const int size = (int) buffer.size();
+            buffer[(size_t) write] = x;
+            float r = (float) write - delay;
+            if (r < 0.0f) r += (float) size;
+            const int i0 = juce::jmin (size - 1, (int) r);
+            const int i1 = (i0 + 1) % size;
+            const float frac = r - (float) i0;
+            write = (write + 1) % size;
+            return buffer[(size_t) i0] + frac * (buffer[(size_t) i1] - buffer[(size_t) i0]);
+        }
+    };
+    ModulatedDelay aiDoubler[2];
+    bool aiDoublerActive = false;
 
     neural::NeuralVoiceStream* neural = nullptr;
 

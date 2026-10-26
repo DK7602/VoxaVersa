@@ -60,7 +60,9 @@ public:
 private:
     void applyFactoryPreset (const FactoryPreset&);
     void applyStateTree (const juce::ValueTree&);
-    void resetAllParametersToDefault();
+    /** Resets the sound to defaults. Keeps power and the session's own settings: mode, input / output gain,
+        the song's key and scale, MIDI pitch control and the Text to Sing tempo and melody source. */
+    void resetSoundParametersToDefault();
 
     juce::AudioProcessorValueTreeState& apvts;
     std::vector<FactoryPreset> factoryPresets;

@@ -163,6 +163,43 @@ public:
             }
         }
 
+        beginTest ("Factory presets keep the session's key, mode and levels");
+        {
+            VoxaVersaProcessor p;
+            auto& state = p.getState();
+            auto set = [&state] (const char* id, float value)
+            {
+                auto* param = state.getParameter (id);
+                param->setValueNotifyingHost (param->convertTo0to1 (value));
+            };
+            auto value = [&state] (const char* id) { return state.getRawParameterValue (id)->load(); };
+            set (ParamID::key, 10.0f);          // A
+            set (ParamID::scale, 1.0f);         // Minor
+            set (ParamID::mode, 1.0f);          // Text to Sing
+            set (ParamID::outputGain, -6.0f);
+            set (ParamID::reverbMix, 80.0f);
+
+            auto& pm = p.getPresetManager();
+            auto load = [&pm] (const juce::String& presetName)
+            {
+                for (int i = 0; i < (int) pm.getPresets().size(); ++i)
+                    if (pm.getPresets()[(size_t) i].name == presetName)
+                        pm.loadPreset (i);
+            };
+            load ("Robot Hard Tune");
+            expectWithinAbsoluteError (value (ParamID::key), 10.0f, 0.01f);
+            expectWithinAbsoluteError (value (ParamID::scale), 1.0f, 0.01f);
+            expectWithinAbsoluteError (value (ParamID::mode), 1.0f, 0.01f);
+            expectWithinAbsoluteError (value (ParamID::outputGain), -6.0f, 0.01f);
+            expectWithinAbsoluteError (value (ParamID::reverbMix), 12.0f, 0.01f);   // sound settings: defaults
+
+            load ("Chipmunk");
+            expect (value (ParamID::aiEngine) < 0.5f, "Chipmunk uses the DSP engine");
+            load ("Radio Pop Star");
+            expect (value (ParamID::aiEngine) > 0.5f, "AI back on");
+            expect (value (ParamID::pitchPreserve) < 0.5f, "smart register for a female voice");
+        }
+
         beginTest ("Voice sample offline render to WAV");
         {
             auto tempDir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("voxaversa-tests");

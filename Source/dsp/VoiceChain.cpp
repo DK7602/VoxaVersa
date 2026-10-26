@@ -70,6 +70,8 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     alignNeural.prepare (maxAlign);
     alignLead.prepare (maxAlign);
     alignCoverage.prepare (maxAlign);
+    for (auto& d : aiDoubler)
+        d.prepare ((int) std::ceil (sr * 0.04));
 
     setNeuralStream (neural);
     reset();
@@ -117,6 +119,9 @@ void VoiceChain::reset()
     alignNeural.clear();
     alignLead.clear();
     alignCoverage.clear();
+    for (auto& d : aiDoubler)
+        d.clear();
+    aiDoublerActive = false;
     blockStart = 0;
     formantSmoothed = 0.0f;
     detectedHz = targetHz = 0.0f;
@@ -160,10 +165,12 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
 
     const bool neuralActive = s.useNeural && neural != nullptr && neuralLatency > 0 && neural->hasModel();
     neuralLeadActive = neuralActive;
+    const bool aiLead = neuralActive || s.aiLead;
 
     // An AI lead re-sings the performance with its own vibrato: don't stack the profile's on top.
     auto pitchSettings = s.pitch;
-    pitchSettings.naturalVibrato = pitchSettings.naturalVibrato || neuralActive;
+    pitchSettings.naturalVibrato = pitchSettings.naturalVibrato || aiLead;
+    pitchSettings.aiRegister = aiLead;
 
     //==========================================================================
     // 1. Analysis
@@ -288,9 +295,11 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     const float doublerAmount = s.doublerOn ? s.doublerAmount : traits.vibeDoubler;
     const float doublerWidth = s.doublerOn ? s.doublerWidth : 0.8f;
 
+    // An AI lead is doubled after the model (section 6), with the AI voice itself.
+    const bool aiDoublerOn = aiLead && doublerOn && doublerAmount > 0.001f;
     for (int k = 0; k < 2; ++k)
     {
-        const bool active = doublerOn && doublerAmount > 0.001f;
+        const bool active = doublerOn && doublerAmount > 0.001f && ! aiLead;
         if (active && ! doublerActive[k])
             doubler[k].reset (untilPos);
         doublerActive[k] = active;
@@ -362,8 +371,41 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
 
             if (neuralActive)
             {
-                busL[(size_t) i] += v + fill * (1.0f - c);
-                busR[(size_t) i] += v + fill * (1.0f - c);
+                const float leadSample = v + fill * (1.0f - c);
+                busL[(size_t) i] += leadSample;
+                busR[(size_t) i] += leadSample;
+                voiceBuf[(size_t) i] = leadSample;
+            }
+        }
+    }
+
+    // Doubles of an AI lead: copies of the AI voice itself, slightly late and slowly drifting in pitch (same
+    // delays, drift rates and pan as the DSP doubler; the drift depth gives a few cents of detune).
+    if (aiDoublerOn && ! aiDoublerActive)
+        for (auto& d : aiDoubler)
+            d.clear();
+    aiDoublerActive = aiDoublerOn;
+
+    if (aiDoublerOn)
+    {
+        const float* aiLeadSignal = neuralActive ? voiceBuf.data() : leadBuf.data();
+        float gl[2], gr[2];
+        for (int k = 0; k < 2; ++k)
+            panGains ((k == 0 ? -1.0f : 1.0f) * doublerWidth, gl[k], gr[k]);
+        const float level = doublerAmount * 0.7f;
+        const double driftDepth = (0.002 + 0.003 * doublerAmount) * sr;
+
+        for (int i = 0; i < n; ++i)
+        {
+            const double pos = (double) (tStart + i);
+            for (int k = 0; k < 2; ++k)
+            {
+                const double base = (k == 0 ? 0.014 : 0.022) * sr;
+                const double drift = driftDepth * (0.75 * lfo (pos, sr, k == 0 ? 0.21 : 0.27, k * 1.3)
+                                                   + 0.25 * lfo (pos, sr, k == 0 ? 0.53 : 0.61, k * 2.0));
+                const float y = aiDoubler[k].process (aiLeadSignal[(size_t) i], (float) (base + drift));
+                busL[(size_t) i] += y * level * gl[k];
+                busR[(size_t) i] += y * level * gr[k];
             }
         }
     }
@@ -383,8 +425,11 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     cs.bodyDb = traits.bodyDb * I;
     cs.presenceDb = s.presenceDb + traits.presenceDb * I;
     cs.airDb = s.airDb + traits.airDb * I;
-    cs.breath = juce::jlimit (0.0f, 1.0f, s.breath + (synth ? 0.0f : traits.breathiness * I) + juce::jmax (0.0f, -s.age) * 0.08f);
-    cs.rasp = juce::jlimit (0.0f, 1.0f, s.rasp + (synth ? 0.0f : traits.rasp * I * styleScale) + juce::jmax (0.0f, s.age) * 0.12f);
+    // An AI singer already breathes and has its own grit: the profile's synthetic breath noise and rasp on top
+    // of it only sound like static. The Breath, Rasp and Age controls still add them when turned up.
+    const bool profileTexture = ! synth && ! aiLead;
+    cs.breath = juce::jlimit (0.0f, 1.0f, s.breath + (profileTexture ? traits.breathiness * I : 0.0f) + juce::jmax (0.0f, -s.age) * 0.08f);
+    cs.rasp = juce::jlimit (0.0f, 1.0f, s.rasp + (profileTexture ? traits.rasp * I * styleScale : 0.0f) + juce::jmax (0.0f, s.age) * 0.12f);
     character.process (busL.data(), busR.data(), n, cs);
 
     //==========================================================================

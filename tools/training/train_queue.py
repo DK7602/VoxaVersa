@@ -1125,7 +1125,10 @@ def apply_factory_voices(w, cfg, current=None):
             continue
         fvs = data["factory_voices"][v["name"]]
         epoch = (st.get(v["name"], {}).get("best") or {}).get("epoch")
+        t = next(s for s in singers if s["name"] == v["name"])
         packs[pack_id_of(v)] = {
+            "range": [int(round(t["range_midi"][0])), int(round(t["range_midi"][1]))],   # the singer's own notes
+            "median": round(float(t["median_midi"]), 1),
             "name": v.get("display_name", v["name"]),
             "description": v.get("description", "") + (" (epoch %d)" % epoch if epoch else ""),
             "license": v.get("license", ""),

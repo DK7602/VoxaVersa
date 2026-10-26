@@ -13,6 +13,8 @@ VoiceTraits VoiceTraits::blend (const VoiceTraits& a, const VoiceTraits& b, floa
     VoiceTraits r = t < 0.5f ? a : b;
     r.rangeLowMidi = lerpi (a.rangeLowMidi, b.rangeLowMidi);
     r.rangeHighMidi = lerpi (a.rangeHighMidi, b.rangeHighMidi);
+    r.aiCentreMidi = a.aiCentreMidi > 0.0f && b.aiCentreMidi > 0.0f ? lerp (a.aiCentreMidi, b.aiCentreMidi)
+                                                                       : (t < 0.5f ? a.aiCentreMidi : b.aiCentreMidi);
     r.formantSemis = lerp (a.formantSemis, b.formantSemis);
     r.tiltDb = lerp (a.tiltDb, b.tiltDb);
     r.warmthDb = lerp (a.warmthDb, b.warmthDb);
@@ -251,6 +253,7 @@ bool VoiceLibrary::loadVoicePack (const juce::File& directory, VoiceProfile& p, 
     {
         t.rangeLowMidi = (int) (*range)[0];
         t.rangeHighMidi = (int) (*range)[1];
+        t.aiCentreMidi = 0.5f * (float) (t.rangeLowMidi + t.rangeHighMidi);   // the singer's own range
     }
     else
     {
@@ -329,6 +332,15 @@ static void applyAssignment (VoiceProfile& p, const juce::var& entry)
     if (obj->hasProperty ("license"))     p.license = obj->getProperty ("license").toString();
     if (obj->hasProperty ("listed"))      p.listed = (bool) obj->getProperty ("listed");
 
+    // the singer's measured range (3rd - 97th percentile) and median note
+    if (auto* range = obj->getProperty ("range").getArray(); range != nullptr && range->size() == 2)
+    {
+        p.traits.rangeLowMidi = (int) (*range)[0];
+        p.traits.rangeHighMidi = (int) (*range)[1];
+        p.traits.aiCentreMidi = obj->hasProperty ("median") ? (float) (double) obj->getProperty ("median")
+                                                            : 0.5f * (float) (p.traits.rangeLowMidi + p.traits.rangeHighMidi);
+    }
+
     if (auto* ids = obj->getProperty ("factoryVoices").getArray())
     {
         p.factoryVoices.clear();
@@ -347,6 +359,7 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         v.neuralEncoder.clear();
         v.neuralSampleRate = 0;
         v.aiPackName.clear();
+        v.traits.aiCentreMidi = 0.0f;
     }
 
     if (dir.isDirectory())
@@ -381,6 +394,7 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
                     v.neuralEncoder = p.neuralEncoder;
                     v.neuralSampleRate = p.neuralSampleRate;
                     v.aiPackName = p.name;
+                    v.traits.aiCentreMidi = p.traits.aiCentreMidi;
                 }
             }
 

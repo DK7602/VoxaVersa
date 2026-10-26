@@ -1169,7 +1169,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
         settings.pitch.sourceGender = sourceGender;   // whole-file analysis beats the live estimate
     const auto model = (! sourceIsNeural && settings.useNeural) ? impl->currentModel : nullptr;
     settings.useNeural = false;
-    settings.pitch.naturalVibrato = model != nullptr;   // the AI lead keeps the singer's own vibrato
+    settings.aiLead = model != nullptr;   // the AI lead keeps the singer's own vibrato, breath and register
 
     const float mix = ParamCache::v (impl->params.mix) * 0.01f;
     const float outGainLin = juce::Decibels::decibelsToGain (ParamCache::v (impl->params.outputGain));
@@ -1234,12 +1234,14 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
             chain.reset();
         }
 
+        auto renderSettings = settings;
+        renderSettings.aiLead = neuralLead.getNumSamples() > 0;   // the DSP voice if the conversion failed
         juce::AudioBuffer<float> wet (2, total);
         for (int pos = 0; pos < total && ! cancel.load(); pos += 1024)
         {
             const int n = juce::jmin (1024, total - pos);
-            chain.process (padded.getReadPointer (0, pos), wet.getWritePointer (0, pos), wet.getWritePointer (1, pos), n, settings,
-                           neuralLead.getNumSamples() > 0 ? neuralLead.getReadPointer (0, pos) : nullptr);
+            chain.process (padded.getReadPointer (0, pos), wet.getWritePointer (0, pos), wet.getWritePointer (1, pos), n, renderSettings,
+                           renderSettings.aiLead ? neuralLead.getReadPointer (0, pos) : nullptr);
             self->offlineProgress.store ((model != nullptr ? 0.5f : 0.0f) + (model != nullptr ? 0.45f : 0.95f) * (float) pos / (float) total);
         }
 
