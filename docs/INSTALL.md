@@ -24,9 +24,13 @@ nothing else to install for AI voices except the voices themselves.
 
 Which build is running: menu (gear) > **About VoxaVersa...** shows `1.0.0 (build N)`; N is the number of
 the GitHub Actions run the installer came from. If the DAW shows an older build than the standalone app,
-the DAW still has the old plug-in: close it completely and run the installer again, and check that there is
-no second copy of `VoxaVersa.vst3` in another plug-in folder (in Cubase: *Studio > VST Plug-in Manager*,
-select VoxaVersa, the info panel shows the file it loads).
+the DAW still has the old plug-in: close it completely and run the installer again. Setup also removes other
+copies of `VoxaVersa.vst3` in the VST3 folders (for example an unzipped build in a subfolder), which a DAW may
+load instead; to see which file a DAW loads in Cubase: *Studio > VST Plug-in Manager*, select VoxaVersa, the
+info panel shows its path.
+
+The window opens at 100% (1200 x 800, or smaller on a small screen); menu (gear) > **UI Size** changes it and
+VoxaVersa remembers the choice.
 
 Uninstall from *Settings > Apps*. Your voices, presets and settings in `%APPDATA%\VoxaVersa` are kept.
 

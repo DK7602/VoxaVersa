@@ -7,8 +7,8 @@ namespace voxa
 
 namespace
 {
-    // window width in the plug-in state and in settings.xml (<Ui editorWidth="...">)
-    constexpr const char* sizeKey = "editorWidth";
+    // window width in the plug-in state and in settings.xml (<Ui editorSize="...">)
+    constexpr const char* sizeKey = "editorSize";
 
     juce::File getSettingsFile()
     {
@@ -219,19 +219,20 @@ int VoxaVersaEditor::defaultWidthForScreen()
     if (display == nullptr)
         return defaultWidth;
 
-    // room for the host's window frame and title bar
+    // 100% (the UI Size menu's 1200 x 800), or the largest size below it that leaves room for the host's
+    // window frame and title bar on a small screen
     const int fitting = (display->userArea.getHeight() - 80) * 3 / 2;
     int width = minWidth;
     for (int w : ui::HeaderBar::uiWidths)
-        if (w <= fitting && w <= ui::MainView::designWidth)
+        if (w <= fitting && w <= defaultWidth)
             width = w;
     return width;
 }
 
 int VoxaVersaEditor::loadSavedWidth() const
 {
-    // Sizes saved by earlier builds ("uiWidth" / "width") are ignored: many had the minimum size saved,
-    // where the text is too small to read.
+    // Sizes saved by earlier builds ("uiWidth", "width", "editorWidth") are ignored: the editor opens at 100%
+    // once, and then at whatever size the user picks.
     const auto stored = processor.getState().state.getProperty (sizeKey);
     if (! stored.isVoid() && (int) stored > 0)
         return juce::jlimit (minWidth, maxWidth, (int) stored);

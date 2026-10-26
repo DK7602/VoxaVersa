@@ -4,7 +4,8 @@
 ;
 ; <dist> is the CI artefact layout: VST3\VoxaVersa.vst3, VST3\VoxaVersa Singer.vst3 and Standalone\VoxaVersa.exe,
 ; each with ONNX Runtime (DirectML build) + DirectML.dll next to the binary. Installs:
-;   - the VST3 effect and instrument into C:\Program Files\Common Files\VST3
+;   - the VST3 effect and instrument into C:\Program Files\Common Files\VST3 (other copies of them in the VST3
+;     folders, e.g. an unzipped build, are removed so the DAW can't load an old one)
 ;   - the standalone app into C:\Program Files\VoxaVersa (+ Start menu, optional desktop shortcut)
 ;   - the Microsoft Visual C++ runtime that ONNX Runtime needs (skipped if already up to date)
 ; Voices, presets and settings live in %APPDATA%\VoxaVersa and are kept on uninstall.
@@ -85,6 +86,59 @@ Type: filesandordirs; Name: "{commoncf64}\VST3\VoxaVersa Singer.vst3"
 FinishedLabel=VoxaVersa {#AppVersion} is installed.%n%nIn your DAW, rescan plug-ins to find VoxaVersa (effect) and VoxaVersa Singer (instrument).%n%nTo add your trained AI voices: open VoxaVersa, click the menu (top right) > Import Voices..., and pick the zip you downloaded from Google Drive.
 
 [Code]
+// A copy of the plug-ins put somewhere else in a VST3 folder by hand (an unzipped build, a renamed folder) is
+// found by the DAW too, which may then keep loading that old version: such copies are removed.
+function IsVoxaVersaPlugin(const Name: String): Boolean;
+begin
+  Result := (CompareText(Name, 'VoxaVersa.vst3') = 0) or (CompareText(Name, 'VoxaVersa Singer.vst3') = 0);
+end;
+
+function IsVst3Bundle(const Name: String): Boolean;
+begin
+  Result := (Length(Name) > 5) and (CompareText(Copy(Name, Length(Name) - 4, 5), '.vst3') = 0);
+end;
+
+// Root: the folder Setup installs into, whose VoxaVersa.vst3 bundles are replaced by [Files] (not removed here).
+procedure RemoveOldPluginCopies(const Dir: String; const Root: Boolean);
+var
+  FindRec: TFindRec;
+  Path: String;
+  IsDir: Boolean;
+begin
+  if not FindFirst(AddBackslash(Dir) + '*', FindRec) then
+    exit;
+  try
+    repeat
+      if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        Path := AddBackslash(Dir) + FindRec.Name;
+        IsDir := (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0;
+        if IsVoxaVersaPlugin(FindRec.Name) and not (Root and IsDir) then
+        begin
+          Log('Removing an old copy of the plug-in: ' + Path);
+          if IsDir then
+            DelTree(Path, True, True, True)
+          else
+            DeleteFile(Path);
+        end
+        else if IsDir and not IsVst3Bundle(FindRec.Name) then
+          RemoveOldPluginCopies(Path, False);
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssInstall) and WizardIsComponentSelected('vst3') then
+  begin
+    RemoveOldPluginCopies(ExpandConstant('{commoncf64}\VST3'), True);
+    RemoveOldPluginCopies(ExpandConstant('{localappdata}\Programs\Common\VST3'), False);
+  end;
+end;
+
 // ONNX Runtime needs the Visual C++ 2015-2022 runtime 14.40 or newer.
 function NeedsVCRedist: Boolean;
 var
