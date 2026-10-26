@@ -45,6 +45,20 @@ live singer will sing (melisma marks and breaths do not count), so the UI can sh
    stem), compound splitting (`moonlightdancer`) and finally the NRL letter-to-sound rules.
 3. Syllables are formed around vowel nuclei with the maximal-onset principle (`ex-tra` sings as
    *ek-stra*). A one-syllable function word (*the, a, of, to, and, my...*) is treated as unstressed.
+4. The singer speaks **General American** connected speech, not the dictionary's word-by-word citation
+   forms (those are what make a synthetic singer sound like a non-native speaker):
+   - function words take their weak form on short notes that run on into the next word: *to* [tə],
+     *for / or / your / are* [ɚ], *of, from, was, at, can, an, as, than, them, but, some, does, has, have,
+     had* with a schwa. Long, held or phrase-final notes keep the full vowel, as singers do. *The* is
+     [ði] before a vowel;
+   - T and D are **flapped** between a vowel (or R) and an unstressed vowel (*better, city, little,
+     party*) and at the end of a word before a vowel-initial word (*got it, what about*);
+   - *don't you, what you, hold you* coalesce to *don'-chu, wha-chu, hol-ju*;
+   - voiceless stops are aspirated only at the start of stressed syllables and words (not in *happy*);
+     final stops are unreleased before another consonant (*good night*), released into a following
+     vowel (*hold on*) and released softly - no voiced "-uh" - before a pause;
+   - /u/ is fronted after coronals (*you, to, new*), /æ/ is raised before nasals (*hand, can't*), a
+     vowel takes on the colour of a following R (*here, dark*: F3 falls) or L (*feel, all*: dark L).
 
 If a made-up word comes out wrong, spell it phonetically (`ny-ooo`) or hyphenate it.
 
@@ -60,7 +74,10 @@ Composes a new melody for the lyrics, deterministic for a given `seed`:
 - **Rhythm:** a dynamic programme places syllables on a 16th grid so that stressed syllables fall
   on strong beats and unstressed ones (and function words) on weak beats or pick-ups, around a
   syllable density set by the voice's `singRhythmBusy` (≈0.7 syllables/beat for ballads and opera,
-  ≈2.6 for rap/trap). Phrases end on a long note followed by a rest; commas get a breath.
+  ≈2.6 for rap/trap). Phrases end on a long note followed by a rest; commas get a breath. When a line
+  ends in a word stressed before its last syllable (*feeling, magic, together*), the stressed syllable
+  gets the long note and the weak ending a moderate one (≤ 1.5 beats) - a long note on the ending
+  would sound like *fee-LING*.
 - **Pitch:** a second-order Viterbi search over scale degrees, guided by an arch contour (a flat
   reciting tone for rap), prefers stepwise motion with occasional leaps (larger leaps are
   "recovered" by a step back), favours chord tones of an implied four-bar chord loop on strong beats
@@ -89,7 +106,8 @@ lyric line break or `[br]` makes the singer breathe (shortening a legato note if
 are **more syllables than notes** the melody repeats in whole bars; if there are **more notes than
 syllables** the last syllable carries on through the rest of its phrase as a short melisma and
 the remaining notes are left as rests. The melody is moved by whole octaves to fit the voice;
-with `keyRoot = -1` the reported key is estimated from the notes.
+with `keyRoot = -1` the reported key is estimated from the notes. A played melody carries no lyric
+stress, so unstressed syllables are sung about 1 dB softer than their note velocity.
 
 ## How the voice shapes the singing
 
@@ -121,16 +139,28 @@ Velocity sets loudness (up to −16 dB for soft notes) and brightness (glottal t
 - **Tract:** nasal anti-resonance, then a cascade of 14 resonators (F1-F5 follow the phonemes,
   F6-F14 model the upper tract and act as a higher-pole correction for a natural spectrum above
   4 kHz), plus a gentle high shelf. Bandwidths follow the formant frequencies; F1 is raised above
-  f0 on high notes the way trained singers tune it.
+  f0 on high notes the way trained singers tune it - on sonorants only: an obstruent constriction
+  pulls F1 down whatever the pitch, and at soprano pitches that dip is most of what marks a stop,
+  flap or fricative transition (nasals stay tuned, or their murmur would vanish on high notes).
+- **Vowels:** General American targets after Hillenbrand et al. (1995), slightly more open for
+  singing. /eɪ/ and /oʊ/ are real diphthongs (F1 falls 140-170 Hz) - sung as pure [e] and [o] they
+  sound foreign; /æ/ is a front vowel (not [a]), /ɔ/ an open one (not [o]).
 - **Consonants:** plosives with closure, burst shaped by place of articulation (velar bursts
-  follow the neighbouring vowel), aspiration whose formants move from the consonant's locus
-  towards the vowel; fricatives through a high-passed two-resonance noise branch (S, SH, F, TH and
+  follow the neighbouring vowel, with F2 and F3 drawn together - the "velar pinch" that tells /g/
+  from /b/ and /d/), aspiration whose formants move from the consonant's locus
+  towards the vowel; flaps as a ~28 ms voiced tap (a ~10 dB dip, no burst); final stops with a weak,
+  devoiced release; no voice bar before a voiced stop after a pause (English /b d g/ are not
+  prevoiced); fricatives through a high-passed two-resonance noise branch (S, SH, F, TH and
   voiced Z, ZH, V, DH mixing voicing); affricates; nasal murmur with an anti-resonance; liquids and
-  glides as formant targets; HH as aspiration through the next vowel.
-- **Timing:** onset consonants are sung *before* the beat so the vowel lands on it; codas sit at
+  glides as formant targets, with a velarised (dark) L in codas; HH as aspiration through the next
+  vowel.
+- **Timing:** onset consonants are sung *before* the beat so the vowel lands on it (20 % shorter in
+  unstressed syllables, as in English speech); codas sit at
   the end of the note (sharing the gap with the next onset in legato lines); diphthongs hold their
-  first vowel and glide at the end of the note; breaths are inserted before phrases when there is
-  room.
+  first vowel and glide late, completing just before the next consonant (a vowel before a coda R
+  or L glides into its colour the same way); detached voices leave small gaps between words but
+  never inside a word or where words link (flaps, vowel-initial words); breaths are inserted before
+  phrases when there is room.
 - **Coarticulation:** articulator targets are interpolated with zero-phase Gaussian smoothing
   (≈50-60 ms formant transitions; fast for amplitudes and bursts). Consonant-vowel transitions are
   anchored at the release so the audible part carries the place cue.
@@ -188,6 +218,21 @@ Be honest with users about what this is:
   because it hallucinates on long sustained notes. Remaining confusions are nasals vs. liquids
   (*night* → *light*) and the odd voiced plosive at a phrase start (*dancing* → *then sing*).
   A live-singer run of "Hello my friend, how are you" is recognised word for word.
+- **Accent.** Early versions sang with a recognisably non-native accent (users heard an East Asian
+  one, most of all in the female voices): pure [e] and [o]
+  for /eɪ oʊ/, an [a]-like /æ/, a very back /u/, citation forms of every function word, no flaps,
+  aspirated T in *better*, a voiced "-uh" after final stops, silent gaps between the syllables of a
+  word and long notes on weak endings (*fee-LING*). Measured on 20 lines (5 four-line songs, 2
+  melody seeds) sung by Female Pop, Female R&B and Male Pop at 80 and 128 bpm, the American English
+  rules above roughly doubled the English score of a VoxLingua107 language identifier (P(English)
+  of the female guides 0.07-0.29 → 0.16-0.59; Piper US/GB text-to-speech scores ≈ 1.0, so sung
+  audio never reaches speech values), raised the US margin of a CommonAccent accent classifier for
+  every voice, lowered Whisper base.en WER in 11 of 12 cases and Whisper small.en WER through the
+  voice chain from 6-15 % to 3-4 % for the female voices, and raised the stressed/unstressed vowel
+  duration ratio from 2.1-2.5 to 2.5-2.7. Female Pop still scores lowest on language ID, mainly
+  because its clean, non-breathy source reads as less natural (raising its `breathiness` from 0.2 to
+  0.3 lifts the score by ~40 % but costs a little intelligibility, so the voice was left as
+  designed).
 - **High notes:** above roughly A5 the harmonics are too far apart to define the vowel (true for
   real sopranos too), and formant tuning makes all vowels drift towards "ah".
 - **English only.** Other languages are read with English rules. Names and invented words go
@@ -199,6 +244,8 @@ Be honest with users about what this is:
 - **Auto melodies** are pleasant and singable but simple: one implied chord loop, 4/4 only, no
   chorus/verse awareness beyond motif reuse between lines of the same length.
 - **Live mode** cannot pre-time consonants (see above) and has no lookahead for diphthong timing.
+  It shares the vowel and consonant allophones (dark L, soft final stops, fronted /u/, R/L colouring
+  on release) but not the rhythm-dependent connected speech (flaps, weak forms, *don'-chu*).
 
 ## Development notes
 
@@ -207,6 +254,12 @@ Be honest with users about what this is:
 - Demo takes and per-phoneme level statistics:
   `VOXA_SING_RENDER_DIR=/some/dir ./VoxaVersaTests SingDemo` writes WAVs of several factory voices,
   phoneme inventories, breathiness/rasp ladders and a live-singer run.
+- Measuring a change (build with `-DVOXAVERSA_BUILD_TOOLS=ON`):
+  `VoxaVersaRender --sing lyrics.txt guide.wav --voice female-pop --bpm 80 --segments plan.tsv
+  --chain voiced.wav` renders the take with an automatic melody (seed 1 = the plug-in's first
+  Generate), its phoneme plan (one row per segment: times, phoneme, stress, word) and the take through
+  the voice chain as the plug-in exports it. `--trait formantSemis=0.9` etc. overrides a trait of the
+  guide for experiments. Keep renders and models out of the repository.
 - Main sources: `Lyrics` (parsing), `G2P` + `LetterToSound` (pronunciation), `Melody` (compose,
   fit), `PitchTracker` (YIN, hum-to-melody), `Articulation` (phoneme targets, voice set-up),
   `VocalSynth` (glottal source and filters), `OfflineRenderer` (performance planning and
