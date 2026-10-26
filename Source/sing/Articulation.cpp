@@ -36,9 +36,9 @@ namespace
         { 450,  980, 2300 },   // AW  off-glide
         { 600,  950, 2450 },   // OY  onset
         { 440, 1850, 2550 },   // OY  off-glide
-        { 340, 1350, 2300 },   // UW  after coronals ("you", "to")
+        { 340, 1300, 2300 },   // UW  after coronals ("you", "to")
         { 460,  900, 2500 },   // dark L colour ("all", "feel")
-        { 580, 1950, 2550 },   // AE  before nasals ("hand", "can't")
+        { 610, 1900, 2550 },   // AE  before nasals ("hand", "can't")
     };
 
     const float femaleVowels[V::numVowelTargets][3] = {
@@ -63,9 +63,9 @@ namespace
         { 500, 1100, 2700 },   // AW off-glide
         { 680, 1050, 2750 },   // OY onset
         { 500, 2250, 3000 },   // OY off-glide
-        { 410, 1600, 2700 },   // UW after coronals
+        { 420, 1450, 2700 },   // UW after coronals
         { 520, 1050, 2800 },   // dark L colour
-        { 690, 2350, 3000 },   // AE before nasals
+        { 740, 2280, 3000 },   // AE before nasals
     };
 
     // F4 .. F14. Above F8 these are the neutral-tube resonances that a uniform tract keeps producing;
