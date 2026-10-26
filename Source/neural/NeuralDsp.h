@@ -90,6 +90,10 @@ float correlation (const float* a, const float* b, int length) noexcept;
     or unrelated (r = 0, equal-power). Writes `length` samples to `dest` (may alias `fadingIn`). */
 void crossfade (const float* fadingOut, const float* fadingIn, float* dest, int length, float correlation) noexcept;
 
+/** The gain crossfade() gives sample i of the fading-in signal when the two are unrelated (r = 0).
+    The fading-out signal's gain is crossfadeGain (length - 1 - i, length); the squares of both sum to 1. */
+float crossfadeGain (int i, int length) noexcept;
+
 /** True when the block is below -60 dBFS RMS and -40 dBFS peak. */
 bool isSilent (const float* samples, int numSamples) noexcept;
 

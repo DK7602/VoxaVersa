@@ -3,6 +3,7 @@
 #include "neural/NeuralDsp.h"
 #include "neural/RvcModel.h"
 #include "voices/VoiceLibrary.h"
+#include "dsp/VoiceChain.h"
 
 #include <cmath>
 #include <ctime>
@@ -296,6 +297,49 @@ public:
 
             expect (dsp::isSilent (std::vector<float> (1000, 0.0f).data(), 1000));
             expect (! dsp::isSilent (a.data(), 2000));
+
+            // crossfadeGain() is exactly what crossfade() applies to unrelated signals, and equal-power
+            const std::vector<float> zeros (2000, 0.0f), ones (2000, 1.0f);
+            std::vector<float> fadeIn (2000), fadeOut (2000);
+            dsp::crossfade (zeros.data(), ones.data(), fadeIn.data(), 2000, 0.0f);
+            dsp::crossfade (ones.data(), zeros.data(), fadeOut.data(), 2000, 0.0f);
+            double gainErr = 0.0, powerErr = 0.0;
+            for (int i = 0; i < 2000; ++i)
+            {
+                const float gi = dsp::crossfadeGain (i, 2000), go = dsp::crossfadeGain (1999 - i, 2000);
+                gainErr = juce::jmax (gainErr, (double) std::abs (gi - fadeIn[(size_t) i]), (double) std::abs (go - fadeOut[(size_t) i]));
+                powerErr = juce::jmax (powerErr, (double) std::abs (gi * gi + go * go - 1.0f));
+            }
+            expect (gainErr < 1.0e-5 && powerErr < 1.0e-5);
+            expect (dsp::crossfadeGain (0, 2000) < 0.001f && dsp::crossfadeGain (1999, 2000) > 0.999f);
+        }
+
+        beginTest ("Live context choice");
+        {
+            // the longest candidate that fits the budget, measured in order, stopping at the first fit
+            std::vector<size_t> measured;
+            auto timing = [&measured] (std::vector<double> seconds)
+            {
+                return [&measured, seconds] (size_t i) { measured.push_back (i); return seconds[i]; };
+            };
+
+            expectEquals ((int) NeuralVoiceModel::Impl::chooseLiveContext (4, timing ({ 0.05, 0.04, 0.03, 0.02 }), 0.1), 0);
+            expect (measured == std::vector<size_t> { 0 });
+            measured.clear();
+            expectEquals ((int) NeuralVoiceModel::Impl::chooseLiveContext (4, timing ({ 0.3, 0.2, 0.09, 0.05 }), 0.1), 2);
+            expect (measured == std::vector<size_t> ({ 0, 1, 2 }));
+            measured.clear();
+            // nothing fits: the shortest context (and it is measured, for the status message)
+            expectEquals ((int) NeuralVoiceModel::Impl::chooseLiveContext (3, timing ({ 0.5, 0.4, 0.3 }), 0.1), 2);
+            expect (measured == std::vector<size_t> ({ 0, 1, 2 }));
+            measured.clear();
+            expectEquals ((int) NeuralVoiceModel::Impl::chooseLiveContext (1, timing ({ 0.5 }), 0.1), 0);
+            expect (measured == std::vector<size_t> { 0 });
+
+            expectEquals (NeuralVoiceModel::Impl::chunkFramesFor (100), 150);
+            expectEquals (NeuralVoiceModel::Impl::chunkFramesFor (15), 64);
+            expectEquals (NeuralVoiceModel::Impl::generatorSkipFor (100), 150 - 69);
+            expectEquals (NeuralVoiceModel::Impl::generatorSkipFor (15), 0);
         }
 
         beginTest ("Noise and float16");
@@ -372,6 +416,7 @@ public:
         testStreaming();
         testHotSwap();
         testOfflineRenderDetection();
+        testDspFill();
 
         for (auto& dir : tempDirs)
             dir.deleteRecursively();
@@ -452,7 +497,11 @@ private:
         expect (impl.gen.phone == "phone" && impl.gen.pitch == "pitch" && impl.gen.pitchf == "pitchf"
                 && impl.gen.speaker == "ds" && impl.gen.noise == "rnd" && impl.gen.lengths == "phone_lengths");
         expect (mainModel->getDescription().contains ("pitch-guided"));
-        logMessage ("  one real-time chunk (" + juce::String (impl.getStreamChunkFrames() * 10) + " ms of audio) takes "
+        const auto& live = impl.getLiveContextFrames();
+        expect (! live.empty() && live.front() <= impl.getStreamContextFrames());
+        for (size_t i = 1; i < live.size(); ++i)
+            expect (live[i] < live[i - 1], "live contexts must get shorter");
+        logMessage ("  one live chunk (" + juce::String (NeuralVoiceModel::Impl::chunkFramesFor (live.front()) * 10) + " ms of audio) takes "
                     + juce::String (impl.chunkInferenceSeconds * 1000.0, 2) + " ms = " + juce::String (impl.getRealTimeLoad() * 100.0, 1)
                     + "% of the real-time budget");
         expect (impl.chunkInferenceSeconds > 0.0);
@@ -638,10 +687,14 @@ private:
     //==============================================================================
     /** Feeds `input` through a stream in blocks, paced to real time (or as fast as possible). */
     static std::vector<float> runStream (NeuralVoiceStream& stream, const std::vector<float>& input, double rate,
-                                         int blockSize, bool realTimePacing, double* cpuSecondsOut = nullptr)
+                                         int blockSize, bool realTimePacing, double* cpuSecondsOut = nullptr,
+                                         std::vector<float>* coverage = nullptr, double speed = 1.0)
     {
         const int total = (int) input.size() + stream.getLatencySamples() + blockSize;
         std::vector<float> in ((size_t) total, 0.0f), f0 ((size_t) total), out ((size_t) total, 0.0f);
+
+        if (coverage != nullptr)
+            coverage->assign ((size_t) total, -1.0f);
         std::copy (input.begin(), input.end(), in.begin());
 
         for (int i = 0; i < total; ++i)
@@ -653,10 +706,11 @@ private:
         for (int pos = 0; pos < total; pos += blockSize)
         {
             const int n = juce::jmin (blockSize, total - pos);
-            stream.process (in.data() + pos, f0.data() + pos, out.data() + pos, n);
+            stream.process (in.data() + pos, f0.data() + pos, out.data() + pos, n,
+                            coverage != nullptr ? coverage->data() + pos : nullptr);
 
             if (realTimePacing)
-                while (juce::Time::getMillisecondCounterHiRes() - startMs < 1000.0 * (pos + n) / rate)
+                while (juce::Time::getMillisecondCounterHiRes() - startMs < 1000.0 * (pos + n) / (rate * speed))
                     juce::Thread::sleep (1);
         }
 
@@ -718,8 +772,16 @@ private:
             const int latency = stream.getLatencySamples();
 
             double cpuSeconds = 0.0;
-            auto out = runStream (stream, input, rate, block, true, &cpuSeconds);
+            std::vector<float> coverage;
+            auto out = runStream (stream, input, rate, block, true, &cpuSeconds, &coverage);
             expect (stream.isRunningInRealTime(), "the stream should keep up with real time");
+
+            // coverage: nothing while warming up, all converted voice inside the bursts, always within 0..1
+            const auto inBurst = [&] (double t) { return coverage[(size_t) (latency + juce::roundToInt (t * rate))]; };
+            expectEquals (coverage[(size_t) latency / 2], 0.0f);
+            for (double t : { 0.6, 1.45, 2.2, 3.2 })
+                expectWithinAbsoluteError (inBurst (t), 1.0f, 1.0e-6f);
+            expect (std::all_of (coverage.begin(), coverage.end(), [] (float c) { return c >= 0.0f && c <= 1.0f; }));
             expect (allFinite (out, 4.0f));
             logMessage ("  streaming CPU (whole process, all threads): " + juce::String (100.0 * cpuSeconds / ((double) out.size() / rate), 1)
                         + "% of one core");
@@ -844,6 +906,85 @@ private:
         const auto at = [rate, latency] (double t) { return latency + juce::roundToInt (t * rate); };
         for (double t : { 0.5, 1.4, 2.2, 3.1 })
             expect (rms (out.data() + at (t), juce::roundToInt (0.1 * rate)) > 0.1, "missing output at " + juce::String (t) + " s");
+
+        beginTest ("Host-flagged offline render (export at a speed pace detection doesn't catch)");
+        {
+            NeuralVoiceStream exporter;
+            exporter.prepare (rate, block);
+            exporter.setModel (mainModel);
+            exporter.setNonRealtime (true);
+
+            std::vector<float> coverage;
+            auto exported = runStream (exporter, input, rate, block, true, nullptr, &coverage, 1.5);
+
+            for (double t : { 0.5, 1.4, 2.2, 3.1 })
+            {
+                expect (rms (exported.data() + at (t), juce::roundToInt (0.1 * rate)) > 0.1, "missing output at " + juce::String (t) + " s");
+                expectWithinAbsoluteError (coverage[(size_t) at (t)], 1.0f, 1.0e-6f);
+            }
+
+            expectEquals ((int) exporter.getNumMissedChunks(), 0);
+        }
+    }
+
+    void testDspFill()
+    {
+        beginTest ("The DSP lead fills the neural lead's gaps (no silence after a stream reset)");
+
+        if (mainModel == nullptr)
+            return;
+
+        const double rate = 48000.0;
+        const int block = 256;
+        VoiceLibrary library;
+        const auto& voice = library.getDefaultVoice();
+
+        NeuralVoiceStream stream;
+        stream.prepare (rate, block);
+        stream.setModel (mainModel);
+
+        voxa::dsp::VoiceChain chain;
+        chain.prepare (rate, block, Quality::Balanced);
+        chain.setNeuralStream (&stream);
+        expect (chain.getNeuralLatency() > 0);
+
+        voxa::dsp::ChainSettings s;
+        s.pitch.traits = voice.traits;
+        s.useNeural = true;
+        s.reverbMix = 0.0f;
+        s.delayMix = 0.0f;
+
+        // a steady voiced tone for 5 s; the stream is reset at 2.5 s (as on a transport jump)
+        const int total = juce::roundToInt (5.0 * rate);
+        const auto tone = makeSine (180.0, rate, total, 0.4f);
+        std::vector<float> outL ((size_t) total), outR ((size_t) total);
+        const auto startMs = juce::Time::getMillisecondCounterHiRes();
+
+        for (int pos = 0; pos < total; pos += block)
+        {
+            if (pos == juce::roundToInt (2.5 * rate / block) * block)
+                stream.reset();
+
+            const int n = juce::jmin (block, total - pos);
+            chain.process (tone.data() + pos, outL.data() + pos, outR.data() + pos, n, s);
+
+            while (juce::Time::getMillisecondCounterHiRes() - startMs < 1000.0 * (pos + n) / rate)
+                juce::Thread::sleep (1);
+        }
+
+        expect (chain.isNeuralLeadActive());
+
+        // from when the first neural chunk is due until the end: no 20 ms window much quieter than the rest
+        const int from = chain.getLatencySamples() + juce::roundToInt (0.3 * rate), window = juce::roundToInt (0.02 * rate);
+        std::vector<double> levels;
+        for (int pos = from; pos + window <= total; pos += window)
+            levels.push_back (rms (outL.data() + pos, window));
+
+        auto sorted = levels;
+        std::sort (sorted.begin(), sorted.end());
+        const double median = sorted[sorted.size() / 2], quietest = sorted.front();
+        logMessage ("  quietest 20 ms window " + juce::String (juce::Decibels::gainToDecibels (quietest / median), 1) + " dB vs the median");
+        expect (quietest > 0.25 * median, "gap in the lead voice: quietest window " + juce::String (quietest) + ", median " + juce::String (median));
     }
 };
 

@@ -2,10 +2,13 @@
 //
 //   VoxaVersaRender <in.wav> <out.wav> [--voice <id>] [--preset "<name>"] [--quality 0|1|2]
 //                   [--set <paramId>=<value> ...] [--list-voices] [--list-params]
+//                   [--realtime | --host-offline]
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
+// --realtime feeds the blocks at the pace of live playback (what a DAW does while playing);
+// --host-offline flags the render as non-real-time, like a DAW export or Render in Place.
 // Prints source/target pitch statistics so renders can be compared objectively.
 
 #include "PluginProcessor.h"
@@ -159,6 +162,8 @@ int main (int argc, char* argv[])
     juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 
     constexpr int block = 512;
+    const bool realTimePacing = args.contains ("--realtime");
+    processor.setNonRealtime (args.contains ("--host-offline"));
     processor.setPlayConfigDetails (2, 2, sr, block);
     processor.prepareToPlay (sr, block);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
@@ -191,6 +196,10 @@ int main (int argc, char* argv[])
         processor.processBlock (buffer, midi);
         for (int ch = 0; ch < 2; ++ch)
             output.copyFrom (ch, pos, buffer, ch, 0, n);
+
+        if (realTimePacing)
+            while (juce::Time::getMillisecondCounterHiRes() - start < 1000.0 * (pos + n) / sr)
+                juce::Thread::sleep (1);
     }
 
     const double ms = juce::Time::getMillisecondCounterHiRes() - start;

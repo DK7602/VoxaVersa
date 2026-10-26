@@ -54,8 +54,8 @@ bool NeuralVoiceModel::convert (const juce::AudioBuffer<float>& monoInput, doubl
     Every stream lives on one absolute timeline of host samples (0 = prepare()). The audio thread writes
     input sample n (audio + target f0) into ring slot n and publishes `inputWritten`; it reads output
     position n from the output ring if the worker has already published it (`outputWritten`), otherwise
-    it outputs silence. Nothing on the audio thread allocates, locks or waits (except when the host is
-    clearly rendering offline, see updatePace()).
+    it outputs silence with coverage 0 (the caller fills it with its DSP voice). Nothing on the audio thread
+    allocates, locks or waits (except when the host renders offline, see updatePace()).
 
     The worker converts chunk k = frames [40k, 40k + 40) (0.4 s) once its input has arrived:
       - context + tail + chunk is band-limited to 16 kHz and fed through the content encoder & generator
@@ -68,8 +68,13 @@ bool NeuralVoiceModel::convert (const juce::AudioBuffer<float>& monoInput, doubl
       - those samples go to ring positions [e0 + outputOffset, e1 + outputOffset).
 
     The latency L is therefore constant: chunk + crossfade + S/2 + resampler lookahead + one host block +
-    inference headroom + polling interval. A chunk whose output would arrive too late is skipped (silence),
-    which keeps the stream aligned; isRunningInRealTime() then reports false. */
+    inference headroom + polling interval. A chunk whose output would arrive too late is skipped (coverage
+    0), which keeps the stream aligned; isRunningInRealTime() then reports false.
+
+    The left context of each chunk is the configured one while the host renders offline (best quality, the
+    audio thread waits for it). Live, it is the longest one this computer converts comfortably in real time
+    (measured when the model loads, NeuralVoiceModel::Impl::getLiveContextFrames()), and the next shorter
+    one whenever chunks keep missing their deadline (a busier host). */
 namespace
 {
     int64_t floorDiv (int64_t a, int64_t b) noexcept
@@ -126,6 +131,8 @@ struct NeuralVoiceStream::Impl : private juce::Thread
         inputRing.assign (inputSize, 0.0f);
         f0Ring.assign (inputSize, 0.0f);
         outputRing.assign (outputSize, 0.0f);
+        coverageRing.assign (outputSize, 0.0f);
+        coverageScratch.assign ((size_t) maxBlock, 0.0f);
         inputMask = (int64_t) inputSize - 1;
         outputMask = (int64_t) outputSize - 1;
 
@@ -135,12 +142,16 @@ struct NeuralVoiceStream::Impl : private juce::Thread
         outputWritten.store (outputOffset);
         resetPosition.store (0);
         underruns.store (0);
+        missedChunks.store (0);
         realTime.store (false);
+        offlineMode.store (false);
 
         // audio-thread state
         audioPosition = 0;
         validFrom = newLatency;
         pace = {};
+        coverageGain = 0.0f;
+        coverageStep = 1.0f / juce::jmax (1.0f, 0.005f * (float) hostRate);
 
         // worker state
         nextChunk = 0;
@@ -149,8 +160,11 @@ struct NeuralVoiceStream::Impl : private juce::Thread
         historyValidFrom = 0;
         onTimeStreak = 0;
         hasSola = false;
+        liveLevel = 0;
+        missHistory = 0;
         solaBuffer.assign ((size_t) crossfadeLength, 0.0f);
         chunkOutput.assign ((size_t) (blockLength + 1 + crossfadeLength + searchLength), 0.0f);
+        chunkCoverage.assign ((size_t) blockLength + 1, 0.0f);
 
         prepared.store (true, std::memory_order_release);
         startThread (juce::Thread::Priority::high);
@@ -174,15 +188,19 @@ struct NeuralVoiceStream::Impl : private juce::Thread
     bool hasModel() const noexcept               { return modelSet.load(); }
     int getLatencySamples() const noexcept       { return latency.load(); }
     bool isRunningInRealTime() const noexcept    { return modelSet.load() && realTime.load(); }
+    uint32_t getNumMissedChunks() const noexcept { return missedChunks.load (std::memory_order_relaxed); }
+    void setNonRealtime (bool b) noexcept        { hostOffline.store (b, std::memory_order_relaxed); }
 
     //==============================================================================
     // Audio thread
 
-    void process (const float* input, const float* targetF0, float* output, int numSamples) noexcept
+    void process (const float* input, const float* targetF0, float* output, int numSamples, float* coverage) noexcept
     {
         if (! prepared.load (std::memory_order_acquire))
         {
             juce::FloatVectorOperations::clear (output, numSamples);
+            if (coverage != nullptr)
+                juce::FloatVectorOperations::clear (coverage, numSamples);
             return;
         }
 
@@ -191,7 +209,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
             const int n = juce::jmin (maxBlock, numSamples - done);
             processBlock (input != nullptr ? input + done : nullptr,
                           targetF0 != nullptr ? targetF0 + done : nullptr,
-                          output + done, n);
+                          output + done, coverage != nullptr ? coverage + done : coverageScratch.data(), n);
             done += n;
         }
     }
@@ -208,7 +226,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
 
 private:
     //==============================================================================
-    void processBlock (const float* input, const float* targetF0, float* output, int n) noexcept
+    void processBlock (const float* input, const float* targetF0, float* output, float* coverage, int n) noexcept
     {
         const auto position = audioPosition;
 
@@ -227,9 +245,15 @@ private:
         const auto to = juce::jmin (position + n, written);
 
         juce::FloatVectorOperations::clear (output, n);
+        juce::FloatVectorOperations::clear (coverage, n);
 
         if (to > from)
+        {
             readRing (outputRing, outputMask, from, output + (from - position), (int) (to - from));
+            readRing (coverageRing, outputMask, from, coverage + (from - position), (int) (to - from));
+        }
+
+        smoothCoverage (output, coverage, n);
 
         if (active && position + n > juce::jmax (validFrom, written))
             underruns.fetch_add (1, std::memory_order_relaxed);
@@ -238,7 +262,30 @@ private:
         audioReadPosition.store (audioPosition, std::memory_order_release);
     }
 
-    /** Detects offline rendering (blocks arriving much faster than real time) and only then waits for the
+    /** The worker's crossfades are already in `coverage`. What is left are hard edges: a chunk that arrived
+        partly too late starts abruptly, and output can stop where the next chunk is missing. Both are turned
+        into 5 ms ramps (the converted voice fades in; the caller's fill fades in where it stops). */
+    void smoothCoverage (float* output, float* coverage, int n) noexcept
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const float c = coverage[i];
+
+            if (c > coverageGain)
+            {
+                coverageGain = juce::jmin (c, coverageGain + coverageStep);
+                output[i] *= coverageGain / c;
+            }
+            else
+            {
+                coverageGain = juce::jmax (c, coverageGain - coverageStep);
+            }
+
+            coverage[i] = coverageGain;
+        }
+    }
+
+    /** The host renders offline (it says so, or blocks arrive much faster than real time): wait for the
         worker, so bounces/exports are complete. In real time this never blocks. */
     void updatePace (int64_t endPosition, int n) noexcept
     {
@@ -260,10 +307,17 @@ private:
                 pace = { now, 0, 0, 0.0, pace.offline };
         }
 
-        if (pace.offline && endPosition > validFrom && isThreadRunning())
+        const bool hostSaysOffline = hostOffline.load (std::memory_order_relaxed);
+        const bool offline = hostSaysOffline || pace.offline;
+        offlineMode.store (offline, std::memory_order_relaxed);
+
+        if (offline && endPosition > validFrom && isThreadRunning())
         {
+            // generous when the host says it renders offline: a slow computer converts slower than real time
+            const double timeoutMs = hostSaysOffline ? 10000.0 : 1000.0;
+
             while (outputWritten.load (std::memory_order_acquire) < endPosition && modelSet.load()
-                   && juce::Time::getMillisecondCounterHiRes() - now < 1000.0)
+                   && juce::Time::getMillisecondCounterHiRes() - now < timeoutMs)
                 juce::Thread::sleep (1);
 
             pace.waitedMs += juce::Time::getMillisecondCounterHiRes() - now;
@@ -338,6 +392,8 @@ private:
 
         std::swap (model, incoming);   // the previous model is released here, on the worker thread
         incoming.reset();
+        liveLevel = 0;
+        missHistory = 0;
         onTimeStreak = 0;
         reportedError = false;
         realTime.store (false);
@@ -391,6 +447,7 @@ private:
 
         const bool late = audioReadPosition.load (std::memory_order_acquire) >= ringStart + emitLength;
         const auto* m = model != nullptr ? &model->getImpl() : nullptr;
+        const bool live = ! offlineMode.load (std::memory_order_relaxed);
         bool produced = false;
 
         if (m != nullptr && ! late)
@@ -398,7 +455,12 @@ private:
             readInput (inputRing, regionStart, regionLength, hostScratch);
 
             if (! dsp::isSilent (hostScratch.data(), regionLength))
-                produced = infer (*m, endFrame, regionStart, regionLength);
+            {
+                const auto& liveContexts = m->getLiveContextFrames();
+                const int context = live && ! liveContexts.empty() ? liveContexts[juce::jmin (liveLevel, liveContexts.size() - 1)]
+                                                                   : m->getStreamContextFrames();
+                produced = infer (*m, context, endFrame, regionStart, regionLength);
+            }
         }
 
         if (! produced)
@@ -413,6 +475,14 @@ private:
         auto* emitted = chunkOutput.data() + offset;
         dsp::crossfade (solaBuffer.data(), emitted, emitted, crossfadeLength, hasSola ? r : 0.0f);
 
+        // Coverage: 1 while converted voice continues, 0 where there is none, and where it fades in from (or out
+        // to) silence the complement of the gain the caller's fill needs to crossfade with it.
+        std::fill_n (chunkCoverage.begin(), emitLength, produced ? 1.0f : 0.0f);
+
+        if (produced != hasSola)
+            for (int i = 0; i < crossfadeLength; ++i)
+                chunkCoverage[(size_t) i] = 1.0f - dsp::crossfadeGain (produced ? crossfadeLength - 1 - i : i, crossfadeLength);
+
         if (produced)
             std::copy_n (emitted + emitLength, crossfadeLength, solaBuffer.data());
         else
@@ -421,6 +491,7 @@ private:
         hasSola = produced;
 
         writeRing (outputRing, outputMask, ringStart, emitted, emitLength);
+        writeRing (coverageRing, outputMask, ringStart, chunkCoverage.data(), emitLength);
         outputWritten.store (ringStart + emitLength, std::memory_order_release);
 
         const bool missedDeadline = late || audioReadPosition.load (std::memory_order_acquire) > ringStart;
@@ -437,11 +508,32 @@ private:
         }
 
         seenUnderruns = currentUnderruns;
+
+        if (m != nullptr && live)
+            trackDeadline (*m, missedDeadline);
     }
 
-    bool infer (const NeuralVoiceModel::Impl& m, int64_t endFrame, int64_t regionStart, int regionLength)
+    /** Live: after 3 missed deadlines within 20 chunks (8 s), continue with the next shorter context. */
+    void trackDeadline (const NeuralVoiceModel::Impl& m, bool missed) noexcept
     {
-        const int chunkFrames = m.getStreamChunkFrames();
+        missHistory = (missHistory << 1) | (missed ? 1u : 0u);
+
+        if (! missed)
+            return;
+
+        missedChunks.fetch_add (1, std::memory_order_relaxed);
+
+        if (juce::countNumberOfBits (missHistory & 0xfffffu) >= 3 && liveLevel + 1 < m.getLiveContextFrames().size())
+        {
+            ++liveLevel;
+            missHistory = 0;
+            DBG ("VoxaVersa AI voice: live context " << m.getLiveContextFrames()[liveLevel] * 10 << " ms");
+        }
+    }
+
+    bool infer (const NeuralVoiceModel::Impl& m, int contextFrames, int64_t endFrame, int64_t regionStart, int regionLength)
+    {
+        const int chunkFrames = NeuralVoiceModel::Impl::chunkFramesFor (contextFrames);
         const auto segmentStart = endFrame - chunkFrames;
         const auto first16k = segmentStart * dsp::samplesPerFrame16k;
         const int num16k = chunkFrames * dsp::samplesPerFrame16k;
@@ -469,7 +561,7 @@ private:
 
         juce::String error;
 
-        const int generatorSkip = m.getStreamGeneratorSkip();
+        const int generatorSkip = NeuralVoiceModel::Impl::generatorSkipFor (contextFrames);
 
         if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip))
         {
@@ -499,11 +591,11 @@ private:
     dsp::Resampler toEncoder;
 
     // Lock-free timeline rings (audio thread -> worker: input & f0, worker -> audio thread: output)
-    std::vector<float> inputRing, f0Ring, outputRing;
+    std::vector<float> inputRing, f0Ring, outputRing, coverageRing;
     int64_t inputMask = 0, outputMask = 0;
     std::atomic<int64_t> inputWritten { 0 }, audioReadPosition { 0 }, outputWritten { 0 }, resetPosition { 0 };
-    std::atomic<uint32_t> resetGeneration { 0 }, underruns { 0 };
-    std::atomic<bool> realTime { false }, modelSet { false };
+    std::atomic<uint32_t> resetGeneration { 0 }, underruns { 0 }, missedChunks { 0 };
+    std::atomic<bool> realTime { false }, modelSet { false }, hostOffline { false }, offlineMode { false };
 
     // Audio thread only
     struct Pace
@@ -517,6 +609,8 @@ private:
 
     int64_t audioPosition = 0, validFrom = 0;
     Pace pace;
+    float coverageGain = 0.0f, coverageStep = 0.01f;
+    std::vector<float> coverageScratch;
 
     // Message thread -> worker
     std::mutex modelLock;
@@ -526,12 +620,13 @@ private:
     // Worker only
     std::shared_ptr<NeuralVoiceModel> model;
     int64_t nextChunk = 0, historyValidFrom = 0;
-    uint32_t seenGeneration = 0, seenUnderruns = 0;
+    uint32_t seenGeneration = 0, seenUnderruns = 0, missHistory = 0;
     int onTimeStreak = 0;
+    size_t liveLevel = 0;
     bool hasSola = false, reportedError = false;
     dsp::Resampler toHost;
     NeuralVoiceModel::Impl::Workspace workspace;
-    std::vector<float> solaBuffer, chunkOutput, hostScratch, f0Scratch, audio16k, f0Frames;
+    std::vector<float> solaBuffer, chunkOutput, chunkCoverage, hostScratch, f0Scratch, audio16k, f0Frames;
 
     JUCE_DECLARE_NON_COPYABLE (Impl)
 };
@@ -545,11 +640,14 @@ void NeuralVoiceStream::setModel (std::shared_ptr<NeuralVoiceModel> model)      
 bool NeuralVoiceStream::hasModel() const noexcept                                 { return impl->hasModel(); }
 int NeuralVoiceStream::getLatencySamples() const noexcept                         { return impl->getLatencySamples(); }
 bool NeuralVoiceStream::isRunningInRealTime() const noexcept                      { return impl->isRunningInRealTime(); }
+uint32_t NeuralVoiceStream::getNumMissedChunks() const noexcept                   { return impl->getNumMissedChunks(); }
+void NeuralVoiceStream::setNonRealtime (bool isNonRealtime) noexcept              { impl->setNonRealtime (isNonRealtime); }
 void NeuralVoiceStream::reset() noexcept                                          { impl->reset(); }
 
-void NeuralVoiceStream::process (const float* input, const float* targetF0Hz, float* output, int numSamples) noexcept
+void NeuralVoiceStream::process (const float* input, const float* targetF0Hz, float* output, int numSamples,
+                                 float* coverage) noexcept
 {
-    impl->process (input, targetF0Hz, output, numSamples);
+    impl->process (input, targetF0Hz, output, numSamples, coverage);
 }
 
 } // namespace voxa::neural

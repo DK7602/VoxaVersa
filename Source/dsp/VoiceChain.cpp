@@ -61,13 +61,15 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &f0Buf, &neuralIn, &neuralOut, &busL, &busR })
+    for (auto* b : { &leadBuf, &voiceBuf, &f0Buf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
     alignL.prepare (maxAlign);
     alignR.prepare (maxAlign);
     alignNeural.prepare (maxAlign);
+    alignLead.prepare (maxAlign);
+    alignCoverage.prepare (maxAlign);
 
     setNeuralStream (neural);
     reset();
@@ -83,11 +85,13 @@ void VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
         neuralLatency = 0;
 
     totalLatency = juce::jmax (dspLatency, neuralLatency);
-    alignL.delay = alignR.delay = totalLatency - dspLatency;
-    alignNeural.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
+    alignL.delay = alignR.delay = alignLead.delay = totalLatency - dspLatency;
+    alignNeural.delay = alignCoverage.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
     alignL.clear();
     alignR.clear();
     alignNeural.clear();
+    alignLead.clear();
+    alignCoverage.clear();
 }
 
 void VoiceChain::reset()
@@ -111,6 +115,8 @@ void VoiceChain::reset()
     alignL.clear();
     alignR.clear();
     alignNeural.clear();
+    alignLead.clear();
+    alignCoverage.clear();
     blockStart = 0;
     formantSmoothed = 0.0f;
     detectedHz = targetHz = 0.0f;
@@ -344,15 +350,20 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             timeline.lookup ((double) t, pf);
             f0Buf[(size_t) i] = pf.voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f;
         }
-        neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n);
+        neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n, neuralCoverage.data());
 
-        if (neuralActive)
+        // Where the neural lead has nothing (warming up, after a reset, a chunk this computer could not
+        // convert in time) the DSP lead fills in, crossfaded by the stream's coverage: never a gap.
+        for (int i = 0; i < n; ++i)
         {
-            for (int i = 0; i < n; ++i)
+            const float v = alignNeural.process (neuralOut[(size_t) i]);
+            const float c = alignCoverage.process (neuralCoverage[(size_t) i]);
+            const float fill = alignLead.process (leadBuf[(size_t) i]);
+
+            if (neuralActive)
             {
-                const float v = alignNeural.process (neuralOut[(size_t) i]);
-                busL[(size_t) i] += v;
-                busR[(size_t) i] += v;
+                busL[(size_t) i] += v + fill * (1.0f - c);
+                busR[(size_t) i] += v + fill * (1.0f - c);
             }
         }
     }

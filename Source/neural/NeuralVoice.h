@@ -83,10 +83,20 @@ public:
     int getLatencySamples() const noexcept;
     /** True when the worker keeps up with real time (false while warming up or overloaded). */
     bool isRunningInRealTime() const noexcept;
+    /** Chunks live playback could not convert in time (so far). Offline renders never miss any. */
+    uint32_t getNumMissedChunks() const noexcept;
+
+    /** Any thread. The host renders offline (export, bounce, render in place): process() then waits for the
+        worker instead of skipping what it could not convert in time, and the worker uses the full context. */
+    void setNonRealtime (bool isNonRealtime) noexcept;
 
     /** Audio thread. `targetF0Hz` is the desired output pitch per input sample (0 = unvoiced).
-        Writes numSamples of converted audio (silence until the first chunk is ready). */
-    void process (const float* input, const float* targetF0Hz, float* output, int numSamples) noexcept;
+        Writes numSamples of converted audio (silence until the first chunk is ready). `coverage` (optional)
+        receives how much of each output sample is converted voice (0..1): 0 where the stream has nothing
+        (warming up, after a reset, a chunk that was not converted in time), in between during its crossfades.
+        Mixing another rendering of the same voice in with gain 1 - coverage fills those gaps seamlessly. */
+    void process (const float* input, const float* targetF0Hz, float* output, int numSamples,
+                  float* coverage = nullptr) noexcept;
 
     /** Audio thread. Clears all buffered audio (e.g. on transport jumps). */
     void reset() noexcept;

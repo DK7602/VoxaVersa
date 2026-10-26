@@ -189,14 +189,27 @@ int NeuralVoiceModel::Impl::getStreamContextFrames() const noexcept
     return juce::jlimit (10, 300, (config.streamContextMs + 5) / 10);
 }
 
-int NeuralVoiceModel::Impl::getStreamChunkFrames() const noexcept
+int NeuralVoiceModel::Impl::chunkFramesFor (int contextFrames) noexcept
 {
-    return streaming::blockFrames + roundUpToEven (streaming::tailFrames + getStreamContextFrames());
+    return streaming::blockFrames + roundUpToEven (streaming::tailFrames + contextFrames);
 }
 
-int NeuralVoiceModel::Impl::getStreamGeneratorSkip() const noexcept
+int NeuralVoiceModel::Impl::generatorSkipFor (int contextFrames) noexcept
 {
-    return juce::jmax (0, getStreamChunkFrames() - (streaming::blockFrames + streaming::tailFrames + streaming::generatorContextFrames));
+    return juce::jmax (0, chunkFramesFor (contextFrames) - (streaming::blockFrames + streaming::tailFrames + streaming::generatorContextFrames));
+}
+
+size_t NeuralVoiceModel::Impl::chooseLiveContext (size_t numCandidates, const std::function<double (size_t)>& measureSeconds,
+                                                  double budgetSeconds)
+{
+    for (size_t i = 0; i + 1 < numCandidates; ++i)
+        if (measureSeconds (i) <= budgetSeconds)
+            return i;
+
+    if (numCandidates > 0)
+        measureSeconds (numCandidates - 1);
+
+    return numCandidates > 0 ? numCandidates - 1 : 0;
 }
 
 bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& error)
@@ -272,8 +285,10 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
     parts.add (juce::String (sampleRate / 1000.0, sampleRate % 1000 == 0 ? 0 : 1) + " kHz");
     parts.add ("encoder " + encoder->getFile().getFileName());
     parts.add (generator->getExecutionProvider());
-    parts.add (getRealTimeLoad() < 0.8 ? "real-time load " + juce::String (juce::roundToInt (getRealTimeLoad() * 100.0)) + "%"
-                                       : juce::String ("too slow for real time on this computer"));
+    if (liveContexts.front() < getStreamContextFrames())
+        parts.add ("live context " + juce::String (liveContexts.front() * 10) + " ms");
+    parts.add ("real-time load " + juce::String (juce::roundToInt (getRealTimeLoad() * 100.0)) + "%"
+               + (getRealTimeLoad() < 0.8 ? juce::String() : juce::String (": too slow for live playback on this computer, exports are complete")));
     description = juce::String (featureChannels == 256 ? "RVC v1" : "RVC v2") + " voice model ("
                     + parts.joinIntoString (", ") + ")";
     return true;
@@ -497,26 +512,50 @@ bool NeuralVoiceModel::Impl::warmUp (juce::String& error)
         }
     }
 
-    // 2. Two runs with the real-time chunk shape: the first primes ONNX Runtime's memory plan for it,
-    //    the second measures the inference time of one real-time chunk.
-    const int chunkFrames = getStreamChunkFrames();
-    makeInput (chunkFrames, audio, f0);
-    double elapsedSeconds = 0.0;
+    // 2. The real-time chunk shapes, longest context first. The first run of each primes ONNX Runtime's memory
+    //    plan for it, the second measures its inference time. Live playback starts with the longest
+    //    context this computer converts comfortably in real time; the shorter ones stay primed as fallbacks.
+    std::vector<int> candidates { getStreamContextFrames() };
 
-    for (int run = 0; run < 2; ++run)
+    for (int ms : streaming::liveContextCandidatesMs)
+        if (ms / 10 < candidates.back())
+            candidates.push_back (ms / 10);
+
+    std::vector<double> seconds (candidates.size(), -1.0);
+    bool failed = false;
+
+    auto run = [&] (int contextFrames)
     {
+        const int chunkFrames = chunkFramesFor (contextFrames);
+        makeInput (chunkFrames, audio, f0);
         const auto start = juce::Time::getMillisecondCounterHiRes();
 
-        if (! runFrames (audio.data(), chunkFrames, f0.data(), 0, ws, false, error, getStreamGeneratorSkip()))
+        if (! failed && ! runFrames (audio.data(), chunkFrames, f0.data(), 0, ws, false, error, generatorSkipFor (contextFrames)))
         {
             error = "test run failed: " + error;
-            return false;
+            failed = true;
         }
 
-        elapsedSeconds = (juce::Time::getMillisecondCounterHiRes() - start) * 0.001;
-    }
+        return (juce::Time::getMillisecondCounterHiRes() - start) * 0.001;
+    };
 
-    chunkInferenceSeconds = elapsedSeconds;
+    auto measure = [&] (size_t i)
+    {
+        run (candidates[i]);
+        seconds[i] = run (candidates[i]);
+        return failed ? std::numeric_limits<double>::max() : seconds[i];
+    };
+
+    const auto chosen = chooseLiveContext (candidates.size(), measure, streaming::liveLoadTarget * streaming::headroomSeconds);
+
+    for (size_t i = chosen + 1; i < candidates.size(); ++i)
+        run (candidates[i]);
+
+    if (failed)
+        return false;
+
+    liveContexts.assign (candidates.begin() + (std::ptrdiff_t) chosen, candidates.end());
+    chunkInferenceSeconds = seconds[chosen];
     return true;
 }
 

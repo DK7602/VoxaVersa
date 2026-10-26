@@ -8,6 +8,7 @@ EditorContext::EditorContext (VoxaVersaProcessor& p)
 {
     lastFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
     lastNeuralStatus = p.getNeuralStatus();
+    lastMissedChunks = p.getNeuralMissedChunks();
 }
 
 float EditorContext::getValue (const char* paramId) const
@@ -71,6 +72,20 @@ void EditorContext::tick()
         else if (status == NS::Active)
             toast ("AI voice engine active: " + processor.getNeuralStatusMessage(), ToastKind::Success);
         lastNeuralStatus = status;
+    }
+
+    // the AI voice can't keep up live on this computer: say what happens and what to do (at most once a minute)
+    const auto missed = processor.getNeuralMissedChunks();
+    if (missed != lastMissedChunks)
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        if (missed > lastMissedChunks && status == VoxaVersaProcessor::NeuralStatus::Active && now - lastOverloadToastMs > 60000.0)
+        {
+            toast ("This computer can't run the AI voice fully live, so short gaps play the DSP voice. "
+                   "Export or Render in Place gives the complete AI voice.", ToastKind::Info);
+            lastOverloadToastMs = now;
+        }
+        lastMissedChunks = missed;
     }
 
     if (! pending.has_value())

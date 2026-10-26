@@ -360,6 +360,14 @@ void crossfade (const float* fadingOut, const float* fadingIn, float* dest, int 
     }
 }
 
+float crossfadeGain (int i, int length) noexcept
+{
+    const float s = std::sin (juce::MathConstants<float>::halfPi * ((float) i + 0.5f) / (float) length);
+    const float wIn = s * s;
+    const float wOut = 1.0f - wIn;
+    return wIn / std::sqrt (wIn * wIn + wOut * wOut);
+}
+
 bool isSilent (const float* samples, int numSamples) noexcept
 {
     if (numSamples <= 0)

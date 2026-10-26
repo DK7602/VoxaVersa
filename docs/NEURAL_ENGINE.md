@@ -78,22 +78,38 @@ Contents
   Measured on a trained voice, 0.3 s of context made the encoder's view of each chunk differ clearly from
   the whole-file view and cost speaker similarity (0.642 vs 0.669 offline); 1 s recovers most of it
   (0.656) and 2 s matches offline (0.672).
-  Every chunk has the same shape, so ONNX Runtime reuses its memory plan.
+  That full context is always used while the host renders offline. **Live** playback uses the longest
+  context this computer converts comfortably in real time: when the model loads, chunks with 1 s, 0.6 s,
+  0.3 s and 0.15 s of context are timed, and live playback starts with the first one that needs at most
+  half of the 200 ms budget. If chunks still keep missing their deadline (3 within 8 s, e.g. a busier
+  session), the stream continues with the next shorter one. All shapes are primed at load time, so
+  ONNX Runtime reuses its memory plan for each. The generator's cost does not depend on the context, so
+  this helps less than it might seem (on a 4-core 2.8 GHz cloud VM the generator takes ~75% of a chunk).
 * Consecutive chunks are joined with **SOLA**: the start of the new chunk is searched within 12.5 ms
   (≥ one period of an 80 Hz voice) for the best match with the previous chunk's tail, then crossfaded over
   60 ms with gains normalised for the signals' correlation (aligned → amplitude-complementary,
   unrelated → equal power). This avoids the phase cancellation you get from naively crossfading two
   independently generated waveforms. Exactly 0.4 s is emitted per chunk, so the stream never drifts.
 * **Silence detection**: chunks whose input is below −60 dBFS RMS / −40 dBFS peak skip inference.
-* If a chunk would be finished too late, it is skipped (silence) instead of shifting the output, so the
-  latency reported to the host always stays valid; `isRunningInRealTime()` then returns false.
+* If a chunk would be finished too late, it is skipped instead of shifting the output, so the latency
+  reported to the host always stays valid; `isRunningInRealTime()` then returns false and
+  `getNumMissedChunks()` counts it (the editor then says once a minute that exports are complete).
+* **No gaps:** `process()` also returns a per-sample *coverage* (0..1): 1 where converted voice
+  continues, 0 where there is none (warming up, after `reset()`, a skipped chunk), and the complement of
+  the crossfade gains where the voice fades in from or out to silence. A chunk that arrives partly too
+  late, or output that stops at a missing chunk, gets a 5 ms ramp instead of a hard edge. `VoiceChain`
+  mixes its DSP lead (aligned to the same latency) in with gain `1 − coverage`, so a computer that
+  can't keep up live plays short stretches of the DSP voice instead of dropping out.
 * `setModel()` hands the model to the worker, which swaps it between chunks (crossfading from the old
   voice to the new one) and releases the old model on the worker thread.
 * `reset()` (audio thread) only bumps a counter; the worker forgets the buffered audio and the next
   latency-worth of output is silence, like a delay line being cleared.
-* **Offline bounces**: when the host calls the plugin much faster than real time (more than 3× real
-  time, measured excluding the time spent waiting), the stream waits for the worker instead of dropping
-  chunks, so bounces/freezes/renders are complete. In real time this never happens.
+* **Offline renders**: when the host says it renders offline (`setNonRealtime (true)`, i.e. the
+  plug-in's `isNonRealtime()`: exports, Render in Place, freeze) or calls the plugin much faster than real
+  time (more than 3× real time, measured excluding the time spent waiting), the stream waits for the
+  worker instead of dropping chunks (up to 10 s per block when the host says so), so renders are complete
+  and at full quality even on a computer that is too slow for live playback. In real time this never
+  happens.
 
 ### Offline conversion
 
@@ -128,7 +144,8 @@ latency compensation and for rendering, not for zero-latency live monitoring (th
 **CPU budget.** Every 0.4 s the worker runs the encoder on 1.5 s and the generator on 0.69 s of audio
 and must finish within the 200 ms headroom. When a model is loaded it is timed on this computer;
 `NeuralVoiceModel::getDescription()` then ends with "real-time load NN%" (time per chunk relative to the
-200 ms budget) or "too slow for real time on this computer". For reference, the community
+200 ms budget), "live context NNN ms" when live playback needs a shorter context than configured, and
+"too slow for live playback on this computer, exports are complete" above 80%. For reference, the community
 `vec-768-layer-12.onnx` ContentVec encoder alone takes about 80 ms per chunk with 2 threads on a 2.1 GHz
 Xeon cloud VM (≈ 0.08× real time offline); the RVC generator adds to that, so a full-size RVC v2 model
 needs a recent desktop-class CPU with 4+ cores for real-time use. On slower machines use a GPU
@@ -396,8 +413,10 @@ model->convert (clip, clipSampleRate, f0, f0FrameRate, rendered, &cancelFlag, er
 * `NeuralVoiceModel::load` blocks while the models load and run twice; call it off the message thread.
   The returned model is immutable, thread-safe and can be shared by several streams and `convert` calls.
 * `prepare()` stops and restarts the worker; call it only while audio is stopped (as `prepareToPlay`).
-* The output is delayed by exactly `getLatencySamples()`; silence is output until the first chunk is
-  ready, after `reset()`, and whenever the worker falls behind.
+* The output is delayed by exactly `getLatencySamples()`; silence (coverage 0) is output until the first
+  chunk is ready, after `reset()`, and whenever the worker falls behind live. Mix a fallback in with
+  `1 − coverage` (as `VoiceChain` does) to fill it.
+* Call `setNonRealtime()` with the host's offline flag before processing, so exports are complete.
 * `targetF0Hz` is the desired output pitch for every input sample (0 = unvoiced → breath/consonants).
   For f0-less models it is ignored.
 * Internals for diagnostics are reachable through `getImpl()` (`Source/neural/RvcModel.h`,

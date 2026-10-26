@@ -99,6 +99,11 @@ Tips:
 - Keep **Intensity** around 60–80% for natural results. Push it for character effects.
 - For gender changes, combine the register shift with **Gender** ±30–60 rather than maxing one control.
 - Use *High Quality* when mixing and *Low Latency* only when you need to monitor live.
+- **AI voice on a slower computer.** The AI engine converts in 0.4 s chunks. If your computer can't keep
+  up during playback, VoxaVersa plays the DSP voice for the moments it missed (you'll see a message), so
+  playback never drops out. The final result is always complete: **Export Audio Mixdown**, **Render in
+  Place** or **Freeze** wait for every chunk and use the AI engine's best quality. The status line (menu,
+  top right) shows the engine (CPU or GPU) and its *real-time load*; below 80% plays live without gaps.
 
 ## 6. Files & folders
 

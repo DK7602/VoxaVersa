@@ -68,6 +68,8 @@ public:
 
 private:
     VoxaVersaProcessor::NeuralStatus lastNeuralStatus = VoxaVersaProcessor::NeuralStatus::Unavailable;
+    uint32_t lastMissedChunks = 0;
+    double lastOverloadToastMs = -1.0e9;
     std::optional<RenderTarget> pending;
     int pendingTicks = 0;
     bool sawRendering = false;

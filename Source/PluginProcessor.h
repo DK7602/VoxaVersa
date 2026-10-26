@@ -89,6 +89,8 @@ public:
     enum class NeuralStatus { Unavailable, NoModelForVoice, Loading, Active, Error };
     NeuralStatus getNeuralStatus() const noexcept { return neuralStatus.load(); }
     juce::String getNeuralStatusMessage() const;
+    /** AI voice chunks that live playback could not convert in time so far (the DSP voice filled them in). */
+    uint32_t getNeuralMissedChunks() const noexcept;
 
     //==============================================================================
     // Input source: live input or a loaded voice sample (drag & drop onto the input panel)

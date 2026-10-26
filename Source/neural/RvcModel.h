@@ -3,6 +3,8 @@
 #include "NeuralRuntime.h"
 #include "NeuralDsp.h"
 
+#include <functional>
+
 namespace voxa::neural
 {
 
@@ -17,6 +19,11 @@ namespace streaming
     inline constexpr double searchSeconds = 0.0125;       // SOLA search (>= one period of an 80 Hz voice)
     inline constexpr double headroomSeconds = 0.2;        // inference time budget per chunk
     inline constexpr double pollSeconds = 0.002;          // worker polling interval
+
+    /** Live playback uses the longest left context whose chunk inference takes at most this fraction of the
+        budget (the rest is margin for the host's own load); offline renders always use the configured one. */
+    inline constexpr double liveLoadTarget = 0.5;
+    inline constexpr int liveContextCandidatesMs[] = { 600, 300, 150 };
 }
 
 /** Neural settings of a voice pack. The required fields come from VoiceProfile (parsed by VoiceLibrary);
@@ -78,12 +85,25 @@ struct NeuralVoiceModel::Impl
                   const std::vector<float>& f0Hz, double f0FrameRate,
                   juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel, juce::String& error) const;
 
-    /** Left context (in 10 ms frames) of each real-time chunk. */
+    /** Left context (in 10 ms frames) of each real-time chunk, as configured (the best quality; used while
+        the host renders offline). */
     int getStreamContextFrames() const noexcept;
     /** Frames processed per real-time chunk (context + tail + new audio, even). */
-    int getStreamChunkFrames() const noexcept;
+    int getStreamChunkFrames() const noexcept     { return chunkFramesFor (getStreamContextFrames()); }
     /** Leading frames of each real-time chunk that only the content encoder sees. */
-    int getStreamGeneratorSkip() const noexcept;
+    int getStreamGeneratorSkip() const noexcept   { return generatorSkipFor (getStreamContextFrames()); }
+
+    static int chunkFramesFor (int contextFrames) noexcept;
+    static int generatorSkipFor (int contextFrames) noexcept;
+
+    /** Left contexts live playback may use, longest first, all primed at load time: [0] is the longest one
+        this computer converts comfortably in real time, the shorter ones are fallbacks if the host gets busier. */
+    const std::vector<int>& getLiveContextFrames() const noexcept   { return liveContexts; }
+
+    /** Index of the first (longest) candidate whose measured chunk time fits `budgetSeconds`, else the last
+        one. Measures lazily, in order, and stops at the first fit. */
+    static size_t chooseLiveContext (size_t numCandidates, const std::function<double (size_t)>& measureSeconds,
+                                     double budgetSeconds);
 
     //==============================================================================
     ModelConfig config;
@@ -92,11 +112,12 @@ struct NeuralVoiceModel::Impl
 
     int sampleRate = 0, hopSize = 0, featureChannels = 0, noiseChannels = 192;
     bool usesF0 = false;
-    double chunkInferenceSeconds = 0.0;   // inference time of one real-time chunk, measured at load time
+    double chunkInferenceSeconds = 0.0;   // inference time of one live chunk (liveContexts[0]), measured at load time
+    std::vector<int> liveContexts;
     juce::String description;
 
-    /** Inference time of a real-time chunk relative to the stream's time budget (streaming::headroomSeconds).
-        Above ~0.8 this computer can't run the voice live (offline conversion still works). */
+    /** Inference time of a live chunk relative to the stream's time budget (streaming::headroomSeconds).
+        Above ~0.8 this computer can't run the voice live (offline renders and conversion still work). */
     double getRealTimeLoad() const noexcept;
 
     struct EncoderIO

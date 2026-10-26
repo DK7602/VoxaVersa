@@ -116,9 +116,10 @@ private:
     StereoDelay delay;
     FdnReverb reverb;
 
-    std::vector<float> leadBuf, voiceBuf, f0Buf, neuralIn, neuralOut, busL, busR;
+    std::vector<float> leadBuf, voiceBuf, f0Buf, neuralIn, neuralOut, neuralCoverage, busL, busR;
 
-    // Alignment delays: DSP bus (stereo) and neural lead (mono) towards totalLatency.
+    // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
+    // is active, the DSP lead that fills its gaps and the neural coverage that crossfades the two.
     struct DelayLine
     {
         std::vector<float> buffer;
@@ -136,7 +137,7 @@ private:
             return buffer[(size_t) r];
         }
     };
-    DelayLine alignL, alignR, alignNeural;
+    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage;
 
     neural::NeuralVoiceStream* neural = nullptr;
 

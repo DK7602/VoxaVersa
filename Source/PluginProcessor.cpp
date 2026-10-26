@@ -464,6 +464,9 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     if (! d.prepared || numSamples == 0)
         return;
 
+    // Exports / render in place: the AI voice waits for every chunk instead of skipping late ones.
+    d.neuralStream.setNonRealtime (isNonRealtime());
+
     // Quality changes need a re-prepare (different latency): defer to the message thread.
     if (d.currentQuality() != d.chain.getQuality())
         d.qualityChangePending.store (true);
@@ -862,6 +865,11 @@ juce::String VoxaVersaProcessor::getNeuralStatusMessage() const
             return "DSP voice engine - " + (impl->neuralMessage.isNotEmpty() ? impl->neuralMessage
                                                                               : neural::OnnxRuntime::getInstance().getStatusMessage());
     }
+}
+
+uint32_t VoxaVersaProcessor::getNeuralMissedChunks() const noexcept
+{
+    return impl->neuralStream.getNumMissedChunks();
 }
 
 void VoxaVersaProcessor::updateNeuralModel()
