@@ -24,8 +24,9 @@ public:
     /** Updates undo/redo enablement and the preset name; called from the editor timer. */
     void tick();
 
-    /** The area the header wordmark is drawn into (header coordinates; rendered in the cached background). */
-    juce::Rectangle<float> getWordmarkArea() const;
+    /** The header's tagline and the area it is drawn into (header coordinates; rendered in the cached background). */
+    static const char* const tagline;
+    juce::Rectangle<float> getTaglineArea() const;
 
     std::function<void (int width)> onUiSizeChosen;
     std::function<int()> getUiWidth;

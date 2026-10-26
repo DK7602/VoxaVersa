@@ -50,6 +50,7 @@ public:
 private:
     void renderBackground (float scale);
     void paintBackdrop (juce::Graphics&);
+    static void drawTagline (juce::Graphics&, juce::Rectangle<float> area);
     std::vector<GlassPanel*> getGlassPanels();
 
     juce::Image background;

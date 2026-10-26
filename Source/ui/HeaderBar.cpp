@@ -129,9 +129,11 @@ HeaderBar::~HeaderBar()
     slotB.removeMouseListener (this);
 }
 
-juce::Rectangle<float> HeaderBar::getWordmarkArea() const
+const char* const HeaderBar::tagline = "Any Voice. Any Lyric.";
+
+juce::Rectangle<float> HeaderBar::getTaglineArea() const
 {
-    return { 606.0f, 8.0f, 324.0f, 76.0f };
+    return { 530.0f, 10.0f, 410.0f, 72.0f };   // between the mode tabs and the preset bar
 }
 
 void HeaderBar::resized()
@@ -428,7 +430,7 @@ void HeaderBar::showAbout()
         << "Engine: " << ctx.processor.getNeuralStatusMessage() << "\n"
         << "Latency: " << juce::String (1000.0 * ctx.processor.getCurrentLatencySamples() / juce::jmax (1.0, ctx.processor.getCurrentSampleRate()), 1) << " ms\n\n"
         << "Voice packs: " << VoiceLibrary::getUserVoicesDirectory().getFullPathName() << "\n"
-        << "Interface font: Barlow (SIL Open Font License)";
+        << "Interface fonts: Barlow, Marcellus (SIL Open Font License)";
 
     juce::AlertWindow::showAsync (juce::MessageBoxOptions()
                                       .withIconType (juce::MessageBoxIconType::InfoIcon)

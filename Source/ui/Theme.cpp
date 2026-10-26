@@ -20,6 +20,7 @@ namespace
             medium   = load (VoxaAssets::BarlowSemiCondensedMedium_ttf,   VoxaAssets::BarlowSemiCondensedMedium_ttfSize);
             semibold = load (VoxaAssets::BarlowSemiCondensedSemiBold_ttf, VoxaAssets::BarlowSemiCondensedSemiBold_ttfSize);
             title    = load (VoxaAssets::BarlowMedium_ttf,                VoxaAssets::BarlowMedium_ttfSize);
+            display  = load (VoxaAssets::MarcellusRegular_ttf,            VoxaAssets::MarcellusRegular_ttfSize);
         }
 
         ~FontSet() override { clearSingletonInstance(); }
@@ -36,12 +37,13 @@ namespace
                 case Weight::Medium:   return medium;
                 case Weight::SemiBold: return semibold;
                 case Weight::Title:    return title;
+                case Weight::Display:  return display;
                 case Weight::Regular:
                 default:               return regular;
             }
         }
 
-        juce::Typeface::Ptr regular, medium, semibold, title;
+        juce::Typeface::Ptr regular, medium, semibold, title, display;
         std::map<int, juce::Font> cache;   // fonts are reused: constructing one allocates
 
         JUCE_DECLARE_SINGLETON_INLINE (FontSet, false)

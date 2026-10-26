@@ -42,9 +42,9 @@ namespace Palette
 }
 
 //==============================================================================
-enum class Weight { Regular, Medium, SemiBold, Title };
+enum class Weight { Regular, Medium, SemiBold, Title, Display };
 
-/** Embedded Barlow fonts (see docs/UI_FONTS.md). */
+/** Embedded Barlow fonts; Display is Marcellus, the lettering of the VoxaVersa wordmark (see docs/UI_FONTS.md). */
 juce::Font font (float height, Weight weight = Weight::Regular);
 
 /** Text asked for smaller than this (in design pixels) is drawn larger, up to 1.45x, so that it stays

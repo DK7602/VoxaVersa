@@ -181,7 +181,7 @@ void MainView::renderBackground (float scale)
         g.addTransform (juce::AffineTransform::scale (scale));
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
 
-        // orb + wordmarks
+        // orb, wordmark, tagline
         const auto centreOrigin = centre.getPosition().toFloat();
         if (orbImage.isValid())
         {
@@ -192,10 +192,8 @@ void MainView::renderBackground (float scale)
             g.drawImage (scaled, orbArea, juce::RectanglePlacement::centred);
         }
         if (wordmarkImage.isValid())
-        {
             g.drawImage (wordmarkImage, centre.getWordmarkArea() + centreOrigin, juce::RectanglePlacement::centred);
-            g.drawImage (wordmarkImage, header.getWordmarkArea() + header.getPosition().toFloat(), juce::RectanglePlacement::centred);
-        }
+        drawTagline (g, header.getTaglineArea() + header.getPosition().toFloat());
 
         for (auto* p : getGlassPanels())
         {
@@ -210,6 +208,37 @@ void MainView::renderBackground (float scale)
 
     background = img;
     backgroundScale = scale;
+}
+
+void MainView::drawTagline (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    // The wordmark's lettering (Marcellus) in its polished blue metal: a light sheen on top fading into deep
+    // navy, a fine dark edge, and a soft glow lifting it off the glass.
+    const juce::String text (HeaderBar::tagline);
+    auto f = font (area.getHeight() * 0.62f, Weight::Display).withExtraKerningFactor (0.03f);
+    while (f.getHeight() > 12.0f && juce::GlyphArrangement::getStringWidth (f, text) > area.getWidth() * 0.96f)
+        f = f.withHeight (f.getHeight() - 1.0f);
+
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText (f, text, 0.0f, 0.0f);
+    juce::Path letters;
+    glyphs.createPath (letters);
+    const auto b = letters.getBounds();
+    letters.applyTransform (juce::AffineTransform::translation (area.getCentreX() - b.getCentreX(), area.getCentreY() - b.getCentreY()));
+    const auto r = letters.getBounds();
+
+    juce::DropShadow (juce::Colours::white.withAlpha (0.75f), 10, {}).drawForPath (g, letters);
+    juce::DropShadow (juce::Colour (0xff0a1a4f).withAlpha (0.35f), 4, { 0, 2 }).drawForPath (g, letters);
+
+    juce::ColourGradient metal (juce::Colour (0xffe4efff), 0.0f, r.getY(), juce::Colour (0xff0a1a4f), 0.0f, r.getBottom(), false);
+    metal.addColour (0.30, juce::Colour (0xff6c9cff));
+    metal.addColour (0.52, juce::Colour (0xff1d47c4));
+    metal.addColour (0.78, juce::Colour (0xff12286e));
+    g.setGradientFill (metal);
+    g.fillPath (letters);
+
+    g.setColour (juce::Colour (0xff071233).withAlpha (0.85f));
+    g.strokePath (letters, juce::PathStrokeType (0.7f));
 }
 
 void MainView::paintBackdrop (juce::Graphics& g)

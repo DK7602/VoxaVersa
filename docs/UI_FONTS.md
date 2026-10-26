@@ -10,10 +10,16 @@ identically on every platform without depending on system fonts.
 | `Resources/fonts/BarlowSemiCondensed-Medium.ttf` | Barlow Semi Condensed Medium | labels, buttons, knob names | SIL OFL 1.1 |
 | `Resources/fonts/BarlowSemiCondensed-SemiBold.ttf` | Barlow Semi Condensed SemiBold | emphasis, badges, read-outs | SIL OFL 1.1 |
 | `Resources/fonts/Barlow-Medium.ttf` | Barlow Medium | upper-case panel titles and tabs | SIL OFL 1.1 |
+| `Resources/fonts/Marcellus-Regular.ttf` | Marcellus Regular | the header tagline (`Weight::Display`) | SIL OFL 1.1 |
 
 - Designer: Jeremy Tribby — Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
 - Source: the `google/fonts` repository (`ofl/barlow`, `ofl/barlowsemicondensed`)
 - Licence: SIL Open Font License, Version 1.1 — full text in `Resources/fonts/OFL-Barlow.txt`
+
+Marcellus (Copyright 2012 Brian J. Bonislawsky, Astigmatic; Reserved Font Name "Marcellus"; from Google
+Fonts) is used unmodified for the header tagline because its flared, Optima-like letters match the
+VoxaVersa wordmark (`Resources/images/wordmark.png`). Licence: SIL OFL 1.1 — full text in
+`Resources/fonts/OFL-Marcellus.txt`.
 
 The OFL allows the fonts to be embedded in and distributed with the plugin (including
 commercially); the font software itself may not be sold on its own, and the licence text must
