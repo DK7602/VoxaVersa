@@ -4,20 +4,168 @@
 //                   [--set <paramId>=<value> ...] [--list-voices] [--list-params]
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
+//   VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice <id>] [--bpm 120] [--seed 1]
+//                   [--segments <plan.tsv>] [--chain <voiced.wav>]
+//                                             Text to Sing with an automatic melody: the plain guide vocal,
+//                                             its phoneme plan (one row per segment) and, with --chain, the
+//                                             take rendered through the voice chain exactly as Generate +
+//                                             export do in the plug-in (DSP path, AI engine off).
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // Prints source/target pitch statistics so renders can be compared objectively.
 
 #include "PluginProcessor.h"
+#include "Parameters.h"
 #include "core/AiDisclosure.h"
 #include "core/AudioUtils.h"
 #include "core/Watermark.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/VoiceGenderEstimator.h"
+#include "sing/Lyrics.h"
+#include "sing/Melody.h"
+#include "sing/OfflineRenderer.h"
 #include <map>
 
 namespace
 {
+    int fail (const juce::String& message);
+
+    juce::String optionValue (const juce::StringArray& args, const char* name, const juce::String& fallback)
+    {
+        const int i = args.indexOf (name);
+        return i >= 0 && i + 1 < args.size() ? args[i + 1] : fallback;
+    }
+
+    /** --sing: the same pipeline as SingEngine::render (seed 1 matches the plug-in's first Generate). */
+    int renderSing (voxa::VoxaVersaProcessor& processor, const juce::StringArray& args)
+    {
+        using namespace voxa::sing;
+        if (args.size() < 3)
+            return fail ("usage: VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice id] [--bpm N] [--seed N] "
+                         "[--segments plan.tsv] [--chain voiced.wav]");
+
+        const auto cwd = juce::File::getCurrentWorkingDirectory();
+        const auto lyrics = cwd.getChildFile (args[1]).loadFileAsString();
+        const auto guideFile = cwd.getChildFile (args[2]);
+        const double bpm = optionValue (args, "--bpm", "120").getDoubleValue();
+        const auto seed = (juce::uint32) optionValue (args, "--seed", "1").getIntValue();
+        const double sr = 48000.0;
+
+        if (const auto id = optionValue (args, "--voice", {}); id.isNotEmpty())
+        {
+            if (processor.getVoiceLibrary().findById (id) == nullptr)
+                return fail ("unknown voice " + id + " (see --list-voices)");
+            processor.selectVoice (id);
+        }
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+        auto voice = processor.getSelectedVoice();
+
+        // --trait name=value overrides a voice trait of the guide (for experiments; not used by --chain).
+        for (int i = 3; i + 1 < args.size(); ++i)
+        {
+            if (args[i] != "--trait")
+                continue;
+            const auto name = args[i + 1].upToFirstOccurrenceOf ("=", false, false);
+            const auto value = args[i + 1].fromFirstOccurrenceOf ("=", false, false).getFloatValue();
+            auto& t = voice.traits;
+            std::map<juce::String, float*> traits { { "formantSemis", &t.formantSemis }, { "breathiness", &t.breathiness },
+                                                    { "rasp", &t.rasp }, { "tiltDb", &t.tiltDb },
+                                                    { "vibratoDepthCents", &t.vibratoDepthCents },
+                                                    { "vibratoRateHz", &t.vibratoRateHz }, { "scoopCents", &t.scoopCents },
+                                                    { "jitterCents", &t.jitterCents }, { "singLegato", &t.singLegato },
+                                                    { "singRhythmBusy", &t.singRhythmBusy },
+                                                    { "singPortamentoMs", &t.singPortamentoMs } };
+            if (traits.count (name) == 0)
+                return fail ("unknown trait " + name);
+            *traits[name] = value;
+        }
+
+        const auto script = parseLyrics (lyrics);
+        if (script.isEmpty())
+            return fail ("no lyrics in " + args[1]);
+        const auto score = melody::compose (script, voice.traits, -1, voxa::ScaleType::Major, seed);
+        OfflineRenderer renderer (script, score, voice.traits, bpm, sr, seed);
+        if (! renderer.render (nullptr, {}))
+            return fail ("render failed");
+        if (! voxa::writeWav (guideFile, renderer.audio, sr, voxa::disclosureMetadata (voxa::VocalOrigin::SynthesizedSinging, voice.name)))
+            return fail ("cannot write " + guideFile.getFullPathName());
+        std::printf ("%s: %s, %.1f s, %d syllables\n", guideFile.getFileName().toRawUTF8(), voice.name.toRawUTF8(),
+                     renderer.audio.getNumSamples() / sr, script.getNumSyllables());
+
+        if (const auto plan = optionValue (args, "--segments", {}); plan.isNotEmpty())
+        {
+            // One row per planned segment, with the syllable/word it belongs to.
+            juce::String tsv ("start\tend\tph\tnucleus\tsyllable\tstress\tfunction\tword\ttext\tmidi\tnoteStart\tnoteEnd\n");
+            const double secondsPerBeat = 60.0 / bpm;
+            for (const auto& s : renderer.getSegments())
+            {
+                int syllable = -1;
+                const ScoreNote* note = nullptr;
+                if (s.note >= 0 && s.note < (int) score.notes.size())
+                {
+                    note = &score.notes[(size_t) s.note];
+                    syllable = note->syllable;
+                }
+                const auto* syl = syllable >= 0 && syllable < script.getNumSyllables() ? &script.syllables[(size_t) syllable] : nullptr;
+                tsv << juce::String (s.start, 4) << "\t" << juce::String (s.end, 4) << "\t" << phonemeSymbol (s.event.ph) << "\t"
+                    << (s.nucleus ? 1 : 0) << "\t" << syllable << "\t" << (syl != nullptr ? syl->stress : -1) << "\t"
+                    << (syl != nullptr && syl->functionWord ? 1 : 0) << "\t"
+                    << (syl != nullptr ? script.words[syl->wordIndex] : juce::String ("-")) << "\t"
+                    << (syl != nullptr ? syl->text : juce::String ("-")) << "\t" << (note != nullptr ? note->midiNote : -1) << "\t"
+                    << juce::String (note != nullptr ? note->startBeat * secondsPerBeat : 0.0, 4) << "\t"
+                    << juce::String (note != nullptr ? note->endBeat() * secondsPerBeat : 0.0, 4) << "\n";
+            }
+            cwd.getChildFile (plan).replaceWithText (tsv);
+        }
+
+        const auto chainName = optionValue (args, "--chain", {});
+        if (chainName.isEmpty())
+            return 0;
+
+        // Through the plug-in: Generate (auto melody, this tempo) then export the take through the voice chain.
+        auto& state = processor.getState();
+        auto set = [&state] (const char* id, float value)
+        {
+            if (auto* p = state.getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (value));
+        };
+        set (voxa::ParamID::mode, (float) (int) voxa::Mode::TextToSing);
+        set (voxa::ParamID::melodySource, 1.0f);   // Auto Melody
+        set (voxa::ParamID::singTempo, (float) bpm);
+        set (voxa::ParamID::key, 0.0f);            // automatic
+        set (voxa::ParamID::aiEngine, 0.0f);
+        processor.setPlayConfigDetails (2, 2, sr, 512);
+        processor.prepareToPlay (sr, 512);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+
+        processor.setLyrics (lyrics);
+        for (juce::uint32 i = 1; i < seed; ++i)   // the plug-in advances its seed on every Generate
+        {
+            processor.generateSinging();
+            while (processor.getSingState() == voxa::VoxaVersaProcessor::SingState::Rendering)
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+        }
+        processor.generateSinging();
+        while (processor.getSingState() == voxa::VoxaVersaProcessor::SingState::Rendering)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+        if (processor.getSingState() != voxa::VoxaVersaProcessor::SingState::Ready)
+            return fail ("Generate failed: " + processor.getSingError());
+
+        processor.startOfflineRender (voxa::VoxaVersaProcessor::RenderTarget::SingTake);
+        while (processor.isOfflineRendering())
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+        const auto rendered = processor.getLastRenderedFile();
+        if (! rendered.existsAsFile())
+            return fail ("voice chain render failed: " + processor.getLastRenderError());
+
+        const auto chainFile = cwd.getChildFile (chainName);
+        chainFile.deleteFile();
+        if (! rendered.moveFileTo (chainFile))
+            return fail ("cannot write " + chainFile.getFullPathName());
+        std::printf ("%s: through the %s voice chain\n", chainFile.getFileName().toRawUTF8(), voice.name.toRawUTF8());
+        return 0;
+    }
+
     float medianVoicedPitch (const float* x, int n, double sr)
     {
         auto frames = voxa::dsp::PitchDetector::analyse (x, n, sr, 480);
@@ -61,6 +209,9 @@ int main (int argc, char* argv[])
                 std::printf ("%-16s %s\n", rp->paramID.toRawUTF8(), rp->getName (64).toRawUTF8());
         return 0;
     }
+
+    if (args.size() > 0 && args[0] == "--sing")
+        return renderSing (processor, args);
 
     if (args.size() < 2 && ! args.contains ("--analyse") && ! args.contains ("--detect"))
         return fail ("usage: VoxaVersaRender <in.wav> <out.wav> [--voice id] [--preset name] [--quality 0|1|2] [--set id=value ...]");
