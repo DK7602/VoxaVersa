@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.22)
 
 project(VoxaVersa VERSION 1.0.0 LANGUAGES C CXX)
 
+# CI sets the build number (GitHub run number), shown in the About box so a user can tell which build a host loaded.
+set(VOXAVERSA_BUILD "dev" CACHE STRING "Build number shown in the plug-in")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -69,7 +72,8 @@ set(VOXA_COMMON_DEFINITIONS
     JUCE_REPORT_APP_USAGE=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1
     JUCE_SILENCE_XCODE_15_LINKER_WARNING=1
-    VOXAVERSA_VERSION_STRING="${PROJECT_VERSION}")
+    VOXAVERSA_VERSION_STRING="${PROJECT_VERSION}"
+    VOXAVERSA_BUILD_STRING="${VOXAVERSA_BUILD}")
 
 set(VOXA_JUCE_MODULES
     juce::juce_audio_utils

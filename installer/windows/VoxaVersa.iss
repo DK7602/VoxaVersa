@@ -35,6 +35,11 @@ PrivilegesRequired=admin
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; A DAW that has the plug-in loaded keeps its files locked, and Windows then keeps the old version. The
+; Restart Manager finds such programs (the plug-in binaries are *.vst3) and Setup offers to close them first.
+CloseApplications=yes
+CloseApplicationsFilter=*.exe,*.dll,*.vst3
+RestartApplications=no
 UninstallDisplayIcon={app}\VoxaVersa.exe
 UninstallDisplayName=VoxaVersa
 #ifdef IconFile
@@ -77,7 +82,7 @@ Type: filesandordirs; Name: "{commoncf64}\VST3\VoxaVersa.vst3"
 Type: filesandordirs; Name: "{commoncf64}\VST3\VoxaVersa Singer.vst3"
 
 [Messages]
-FinishedLabel=VoxaVersa is installed.%n%nIn your DAW, rescan plug-ins to find VoxaVersa (effect) and VoxaVersa Singer (instrument).%n%nTo add your trained AI voices: open VoxaVersa, click the menu (top right) > Import Voices..., and pick the zip you downloaded from Google Drive.
+FinishedLabel=VoxaVersa {#AppVersion} is installed.%n%nIn your DAW, rescan plug-ins to find VoxaVersa (effect) and VoxaVersa Singer (instrument).%n%nTo add your trained AI voices: open VoxaVersa, click the menu (top right) > Import Voices..., and pick the zip you downloaded from Google Drive.
 
 [Code]
 // ONNX Runtime needs the Visual C++ 2015-2022 runtime 14.40 or newer.

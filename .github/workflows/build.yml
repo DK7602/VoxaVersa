@@ -86,7 +86,7 @@ jobs:
           key: juce-8.0.9-${{ runner.os }}
 
       - name: Configure
-        run: cmake -S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release -DVOXAVERSA_ONNXRUNTIME_DIR="${{ env.ORT_DIR }}"
+        run: cmake -S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release -DVOXAVERSA_ONNXRUNTIME_DIR="${{ env.ORT_DIR }}" -DVOXAVERSA_BUILD="${{ github.run_number }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel 4
@@ -140,7 +140,7 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
           $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(VoxaVersa VERSION ([0-9.]+)').Matches[0].Groups[1].Value
           $icon = Get-ChildItem -Path build -Recurse -Filter icon.ico -ErrorAction SilentlyContinue | Select-Object -First 1
-          $isccArgs = @("/DAppVersion=$version", "/DSourceDir=$PWD\dist", "/DRedistDir=$PWD\installer\windows\redist", "/O$PWD\installer-out")
+          $isccArgs = @("/DAppVersion=$version.$env:GITHUB_RUN_NUMBER", "/DSourceDir=$PWD\dist", "/DRedistDir=$PWD\installer\windows\redist", "/O$PWD\installer-out")
           if ($icon) { $isccArgs += "/DIconFile=$($icon.FullName)" }
           & $iscc @isccArgs installer\windows\VoxaVersa.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -151,7 +151,7 @@ jobs:
         run: |
           version=$(sed -n 's/^project(VoxaVersa VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           mkdir -p installer-out
-          bash installer/macos/build_pkg.sh dist "$version" "installer-out/VoxaVersa-$version-macOS.pkg"
+          bash installer/macos/build_pkg.sh dist "$version" "installer-out/VoxaVersa-$version-build$GITHUB_RUN_NUMBER-macOS.pkg"
 
       - name: Upload installer
         if: runner.os != 'Linux'

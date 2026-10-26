@@ -424,7 +424,7 @@ void HeaderBar::showAbout()
 {
     const auto& voices = ctx.processor.getVoiceLibrary().getVoices();
     juce::String msg;
-    msg << "VoxaVersa " << VOXAVERSA_VERSION_STRING << "\n"
+    msg << "VoxaVersa " << VOXAVERSA_VERSION_STRING << " (build " << VOXAVERSA_BUILD_STRING << ")\n"
         << "AI vocal transformation and text-to-sing.\n\n"
         << (int) voices.size() << " voices installed\n"
         << "Engine: " << ctx.processor.getNeuralStatusMessage() << "\n"

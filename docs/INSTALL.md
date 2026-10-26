@@ -11,7 +11,8 @@ nothing else to install for AI voices except the voices themselves.
 
 ## Windows
 
-1. Run `VoxaVersa-<version>-Windows-Setup.exe`.
+1. Close your DAW (a running DAW keeps the old plug-in locked; Setup offers to close it), then run
+   `VoxaVersa-<version>.<build>-Windows-Setup.exe`.
 2. Windows may show **"Windows protected your PC"** because the installer is not code-signed yet: click
    **More info > Run anyway**.
 3. Keep **Everything** selected and click through. It installs:
@@ -20,6 +21,12 @@ nothing else to install for AI voices except the voices themselves.
    * the **VoxaVersa** app (Start menu, optional desktop shortcut)
    * the Microsoft Visual C++ runtime, if your PC doesn't have a recent one
 4. In your DAW, rescan plug-ins.
+
+Which build is running: menu (gear) > **About VoxaVersa...** shows `1.0.0 (build N)`; N is the number of
+the GitHub Actions run the installer came from. If the DAW shows an older build than the standalone app,
+the DAW still has the old plug-in: close it completely and run the installer again, and check that there is
+no second copy of `VoxaVersa.vst3` in another plug-in folder (in Cubase: *Studio > VST Plug-in Manager*,
+select VoxaVersa, the info panel shows the file it loads).
 
 Uninstall from *Settings > Apps*. Your voices, presets and settings in `%APPDATA%\VoxaVersa` are kept.
 
