@@ -190,7 +190,8 @@ float articSmoothingSeconds (int param) noexcept
 {
     switch (param)
     {
-        case apF1: case apF2: case apF3:     return 0.014f;
+        case apF1: case apF2: case apF3:
+        case apF1Tuning:                     return 0.014f;
         case apB1: case apB2: case apB3:     return 0.012f;
         case apUpperDamping:                 return 0.008f;
         case apNasalZero:                    return 0.006f;
@@ -353,6 +354,7 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
 
     v.fill (0.0f);
     v[apUpperDamping] = 1.0f;
+    v[apF1Tuning] = 1.0f;
     v[apNasalZero] = 1500.0f * cs;
     v[apFricF1] = 5000.0f * cs;
     v[apFricB1] = 2000.0f * cs;
@@ -626,6 +628,15 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
             break;
         }
     }
+
+    // Formant tuning (F1 raised above a high f0) belongs to vowels. A consonant constriction pulls F1
+    // down whatever the pitch, and at soprano pitches that dip is what is left of the cue for stops,
+    // flaps and nasals; approximants are half vowel-like.
+    const auto manner = info.manner;
+    if (manner == Manner::Stop || manner == Manner::Affricate || manner == Manner::Fricative || manner == Manner::Nasal)
+        v[apF1Tuning] = 0.0f;
+    else if (manner == Manner::Liquid || manner == Manner::Glide)
+        v[apF1Tuning] = 0.5f;
 }
 
 void makeSynthFrame (const ArticFrame& a, const VoiceSetup& vs, float f0, float rd, SynthFrame& out) noexcept
@@ -637,7 +648,8 @@ void makeSynthFrame (const ArticFrame& a, const VoiceSetup& vs, float f0, float 
     out.ah = juce::jmax (0.0f, v[apAH]);
     out.af = juce::jmax (0.0f, v[apAF]);
 
-    const float f1 = tunedFirstFormant (v[apF1], f0);
+    const float tuning = juce::jlimit (0.0f, 1.0f, v[apF1Tuning]);
+    const float f1 = v[apF1] + tuning * (tunedFirstFormant (v[apF1], f0) - v[apF1]);
     const float f2 = juce::jmax (v[apF2], f1 + 200.0f);
     const float f3 = juce::jmax (v[apF3], f2 + 250.0f);
     out.formants[0] = f1;

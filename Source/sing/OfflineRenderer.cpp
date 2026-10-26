@@ -746,7 +746,7 @@ bool OfflineRenderer::render (const std::atomic<bool>* cancel, const std::functi
 
     // Silence has no articulation: hold the neighbouring formants so transitions stay put.
     const int shapeParams[] = { apF1, apF2, apF3, apB1, apB2, apB3, apUpperDamping, apNasalZero,
-                                apFricF1, apFricB1, apFricF2, apFricB2, apFricHighpass };
+                                apFricF1, apFricB1, apFricF2, apFricB2, apFricHighpass, apF1Tuning };
     int firstValid = -1;
     for (int k = 0; k < numFrames; ++k)
     {

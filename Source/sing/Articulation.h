@@ -19,6 +19,7 @@ enum ArticParam
     apFricF2, apFricB2, apFricG2,
     apFricBypass,
     apFricHighpass,               // high-pass corner of the frication noise (steep sibilant spectra)
+    apF1Tuning,                   // 1 = F1 follows a high f0 (vowels), 0 = consonant constriction keeps F1 low
     numArticParams
 };
 
