@@ -334,6 +334,40 @@ bool isFunctionWord (const juce::String& w)
     return words.contains (w);
 }
 
+bool setWeakForm (const juce::String& w, SungSyllable& s)
+{
+    // Weak forms of American English function words: the vowel reduces to schwa, or to [ɚ] for an
+    // r-word. ("and" is already [ənd] in the dictionary.)
+    struct Entry { const char* word; const char* weak; bool beforeConsonantOnly; };
+    static const Entry table[] = {
+        { "to", "AH0", true },     { "for", "ER0", false },   { "or", "ER0", false },    { "your", "ER0", false },
+        { "are", "ER0", false },   { "of", "AH0 V", false },  { "from", "AH0 M", false }, { "was", "AH0 Z", false },
+        { "at", "AH0 T", false },  { "can", "AH0 N", false }, { "an", "AH0 N", false },
+        { "as", "AH0 Z", false },  { "than", "AH0 N", false }, { "them", "AH0 M", false }, { "but", "AH0 T", false },
+        { "some", "AH0 M", false }, { "does", "AH0 Z", false }, { "has", "AH0 Z", false }, { "have", "AH0 V", false },
+        { "had", "AH0 D", false },
+    };
+
+    for (const auto& e : table)
+    {
+        if (w != e.word)
+            continue;
+
+        const auto weak = phonesFromString (e.weak);
+        if (weak.empty() || ! isVowel (s.nucleus))
+            return false;
+
+        s.hasWeakForm = true;
+        s.weakNucleus = weak.front().ph;
+        s.weakCoda.clear();
+        for (size_t k = 1; k < weak.size(); ++k)
+            s.weakCoda.push_back (weak[k].ph);
+        s.weakOnlyBeforeConsonant = e.beforeConsonantOnly;
+        return true;
+    }
+    return false;
+}
+
 juce::StringArray splitWordText (const juce::String& word, int numSyllables)
 {
     juce::StringArray result;
@@ -597,6 +631,8 @@ LyricScript parseLyrics (const juce::String& lyrics)
                     s.wordEnd = k + 1 == sylls.size();
                     s.functionWord = function;
                     s.pauseAfter = s.wordEnd && spec.pauseAfter;
+                    if (function)
+                        setWeakForm (normalised, s);
 
                     LyricEvent e;
                     e.type = LyricEvent::Type::Syllable;
@@ -616,6 +652,17 @@ LyricScript parseLyrics (const juce::String& lyrics)
     }
 
     script.numPhrases = phrase;
+
+    // "the" is [ði] before a vowel ("the end", "the only one").
+    for (size_t i = 0; i + 1 < script.syllables.size(); ++i)
+    {
+        auto& s = script.syllables[i];
+        const auto& next = script.syllables[i + 1];
+        if (s.wordStart && s.wordEnd && s.nucleus == Ph::AX && next.wordStart && next.onset.empty()
+            && isVowel (next.nucleus) && next.phraseIndex == s.phraseIndex
+            && g2p::normaliseWord (script.words[s.wordIndex]) == "the")
+            s.nucleus = Ph::IY;
+    }
     return script;
 }
 

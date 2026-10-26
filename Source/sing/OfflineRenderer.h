@@ -57,7 +57,23 @@ private:
         bool phraseEnd = false;
     };
 
+    /** A syllable plus the melisma notes it is held through. */
+    struct Occurrence
+    {
+        int syllable = -1;
+        SungSyllable sung;                // the syllable as sung here (connected-speech changes applied)
+        int firstNote = 0, lastNote = 0;
+        double vowelStart = 0.0, noteEnd = 0.0;
+        bool breathBefore = false;
+        bool connected = false;           // flows into the next syllable without a rest
+        bool onsetTap = false;            // the onset T / D is a flap ("bet-ter")
+        bool codaTap = false;             // the final T / D is a flap into the next word ("got it")
+        std::vector<float> onset, onsetMin, coda, codaMin;
+        double onsetStart = 0.0, vowelEnd = 0.0, codaEnd = 0.0;
+    };
+
     void plan();
+    void applyConnectedSpeech (std::vector<Occurrence>&) const;
     void buildPitchTrack (int numFrames, double frameSeconds, std::vector<float>& midiTrack) const;
 
     const LyricScript& script;

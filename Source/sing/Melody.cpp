@@ -229,6 +229,16 @@ namespace
         return e;
     }
 
+    /** The phrase ends on the unstressed syllable of a word stressed just before it ("FEEL-ing",
+        "MA-gic", "to-GETH-er"). English keeps the stress audible there: the stressed syllable gets the
+        long note and the weak ending stays moderate - a long note on "-ing" sounds like "fee-LING". */
+    bool hasFeminineEnding (const Phrase& phrase) noexcept
+    {
+        const auto n = phrase.size();
+        return n >= 2 && ! phrase[n - 1].melisma && phrase[n - 1].stress == 0
+            && ! phrase[n - 2].melisma && phrase[n - 2].stress == 2 && ! phrase[n - 2].wordEnd;
+    }
+
     double transitionScore (const RhythmContext& ctx, int i, double ioi)
     {
         const auto& prev = (*ctx.phrase)[(size_t) i - 1];
@@ -239,6 +249,8 @@ namespace
         else if (prev.stress == 0)  target *= 0.8;
         if (! prev.wordEnd)         target *= 0.9;
         if (prev.pauseAfter)        target *= 1.9;
+        if (i + 1 == (int) ctx.phrase->size() && hasFeminineEnding (*ctx.phrase))
+            target *= 2.2;
 
         const double maxIOI = r.maxIOI + (prev.pauseAfter ? 1.0 : 0.0);
         if (ioi > maxIOI + 1.0e-9 || ioi < r.minIOI - 1.0e-9)
@@ -252,6 +264,13 @@ namespace
     {
         const auto& r = *ctx.params;
         const double duration = ctx.sungEnd - pos;
+        if (hasFeminineEnding (*ctx.phrase))
+        {
+            // The weak ending follows the stressed syllable's long note; it need not land on a downbeat.
+            return 0.6 * metricStrength (pos) - 0.5 * std::max (0.0, duration - r.finalMax)
+                 - 0.6 * std::max (0.0, duration - std::max (r.finalMin, 1.5));
+        }
+
         double s = 1.6 * metricStrength (pos);
         s -= 0.5 * std::max (0.0, duration - r.finalMax);
         if (duration >= 1.5)
@@ -937,6 +956,8 @@ Score compose (const LyricScript& script, const VoiceTraits& traits, int keyRoot
             else
             {
                 note.lengthBeats = std::max (gridUnit, std::min (ctx.sungEnd - pos, rp.finalMax));
+                if (hasFeminineEnding (phrase))
+                    note.lengthBeats = std::min (note.lengthBeats, std::max (rp.finalMin, 1.5));
             }
 
             note.midiNote = ps.midiOf (degrees[(size_t) i]);
@@ -1134,11 +1155,13 @@ Score fitProvided (const LyricScript& script, const std::vector<Note>& melodyIn,
             case LyricEvent::Type::Syllable:
             {
                 const auto& n = mel[next++];
+                // A played melody knows nothing of the lyric's stress; singers still sing unstressed
+                // syllables a little softer (about 1 dB) - equal weight on every syllable sounds foreign.
                 ScoreNote sn;
                 sn.startBeat = n.startBeat;
                 sn.lengthBeats = n.lengthBeats;
                 sn.midiNote = n.midiNote;
-                sn.velocity = n.velocity;
+                sn.velocity = n.velocity * (script.syllables[(size_t) e.syllable].stress == 0 ? 0.92f : 1.0f);
                 sn.syllable = e.syllable;
                 sn.breathBefore = pendingBreath || score.notes.empty();
                 pendingBreath = false;

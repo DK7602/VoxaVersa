@@ -9,54 +9,63 @@ namespace
 {
     using V = VoiceSetup;
 
-    // Sung vowel targets (F1, F2, F3 in Hz). Based on Peterson & Barney (1952) and Hillenbrand et al.
-    // (1995) averages, nudged towards the slightly darker, more open vowels of singing.
+    // Sung vowel targets (F1, F2, F3 in Hz): General American, after Hillenbrand et al. (1995) and
+    // Peterson & Barney (1952), nudged towards the slightly more open vowels of singing. The American
+    // features matter for the accent: /ae/ is a raised front vowel (not [a]), /ao/ is open (not [o]),
+    // /u/ is somewhat fronted (strongly so after coronals), and /ey/ and /ow/ are real diphthongs whose
+    // off-glides move F1 down by 140-170 Hz - sung as pure [e] and [o] they sound foreign.
     const float maleVowels[V::numVowelTargets][3] = {
-        { 750, 1220, 2500 },   // AA  father
-        { 660, 1700, 2450 },   // AE  cat
+        { 750, 1250, 2500 },   // AA  father
+        { 640, 1850, 2500 },   // AE  cat
         { 640, 1190, 2450 },   // AH  cut
-        { 590,  900, 2450 },   // AO  caught
+        { 660, 1000, 2500 },   // AO  caught
         { 500, 1400, 2450 },   // AX  schwa
-        { 550, 1770, 2500 },   // EH  bed
+        { 580, 1800, 2550 },   // EH  bed
         { 480, 1350, 1700 },   // ER  bird
-        { 400, 1950, 2550 },   // IH  bit
+        { 410, 1980, 2600 },   // IH  bit
         { 300, 2200, 2950 },   // IY  beat
-        { 450, 1050, 2300 },   // UH  book
-        { 320,  880, 2250 },   // UW  boot
-        { 480, 1850, 2500 },   // EY  onset
-        { 360, 2050, 2600 },   // EY  off-glide
-        { 520,  900, 2400 },   // OW  onset
-        { 400,  850, 2300 },   // OW  off-glide
-        { 740, 1250, 2500 },   // AY  onset
-        { 420, 1900, 2550 },   // AY  off-glide
-        { 720, 1200, 2450 },   // AW  onset
-        { 440,  950, 2300 },   // AW  off-glide
-        { 570,  880, 2450 },   // OY  onset
-        { 400, 1950, 2550 },   // OY  off-glide
+        { 460, 1120, 2400 },   // UH  book
+        { 330, 1050, 2300 },   // UW  boot
+        { 520, 1820, 2500 },   // EY  onset
+        { 380, 2150, 2650 },   // EY  off-glide
+        { 560, 1050, 2450 },   // OW  onset
+        { 410,  880, 2350 },   // OW  off-glide
+        { 740, 1280, 2500 },   // AY  onset
+        { 440, 1850, 2550 },   // AY  off-glide
+        { 720, 1300, 2450 },   // AW  onset
+        { 450,  980, 2300 },   // AW  off-glide
+        { 600,  950, 2450 },   // OY  onset
+        { 440, 1850, 2550 },   // OY  off-glide
+        { 340, 1300, 2300 },   // UW  after coronals ("you", "to")
+        { 460,  900, 2500 },   // dark L colour ("all", "feel")
+        { 610, 1900, 2550 },   // AE  before nasals ("hand", "can't")
     };
 
     const float femaleVowels[V::numVowelTargets][3] = {
-        { 900, 1400, 2850 },   // AA
-        { 820, 2000, 2900 },   // AE
+        { 920, 1450, 2850 },   // AA
+        { 780, 2200, 2950 },   // AE
         { 760, 1400, 2800 },   // AH
-        { 650, 1000, 2750 },   // AO
+        { 780, 1150, 2800 },   // AO
         { 560, 1600, 2800 },   // AX
-        { 650, 2100, 2950 },   // EH
+        { 720, 2050, 2950 },   // EH
         { 520, 1580, 1950 },   // ER
-        { 450, 2350, 3000 },   // IH
+        { 460, 2330, 3000 },   // IH
         { 340, 2650, 3250 },   // IY
-        { 490, 1180, 2700 },   // UH
-        { 380,  980, 2650 },   // UW
-        { 560, 2250, 2950 },   // EY onset
-        { 420, 2450, 3050 },   // EY off-glide
-        { 580, 1000, 2750 },   // OW onset
-        { 450,  950, 2650 },   // OW off-glide
-        { 880, 1450, 2850 },   // AY onset
-        { 470, 2300, 3000 },   // AY off-glide
-        { 860, 1400, 2800 },   // AW onset
-        { 480, 1050, 2650 },   // AW off-glide
-        { 630,  980, 2750 },   // OY onset
-        { 450, 2350, 3000 },   // OY off-glide
+        { 510, 1300, 2750 },   // UH
+        { 400, 1200, 2700 },   // UW
+        { 600, 2200, 2950 },   // EY onset
+        { 440, 2550, 3100 },   // EY off-glide
+        { 640, 1180, 2800 },   // OW onset
+        { 470, 1000, 2700 },   // OW off-glide
+        { 880, 1500, 2850 },   // AY onset
+        { 500, 2200, 3000 },   // AY off-glide
+        { 860, 1550, 2800 },   // AW onset
+        { 500, 1100, 2700 },   // AW off-glide
+        { 680, 1050, 2750 },   // OY onset
+        { 500, 2250, 3000 },   // OY off-glide
+        { 420, 1450, 2700 },   // UW after coronals
+        { 520, 1050, 2800 },   // dark L colour
+        { 740, 2280, 3000 },   // AE before nasals
     };
 
     // F4 .. F14. Above F8 these are the neutral-tube resonances that a uniform tract keeps producing;
@@ -181,7 +190,8 @@ float articSmoothingSeconds (int param) noexcept
 {
     switch (param)
     {
-        case apF1: case apF2: case apF3:     return 0.014f;
+        case apF1: case apF2: case apF3:
+        case apF1Tuning:                     return 0.014f;
         case apB1: case apB2: case apB3:     return 0.012f;
         case apUpperDamping:                 return 0.008f;
         case apNasalZero:                    return 0.006f;
@@ -304,6 +314,35 @@ void VoiceSetup::vowelFormants (Ph vowel, float glide, float* f) const noexcept
         f[k] = va[(size_t) k] * std::pow (vb[(size_t) k] / va[(size_t) k], juce::jlimit (0.0f, 1.0f, glide));
 }
 
+void VoiceSetup::vowelFormants (Ph vowel, float glide, bool contextual, Ph liquid, float* f) const noexcept
+{
+    if (isDiphthong (vowel) || ! isVowel (vowel) || (! contextual && liquid != Ph::R && liquid != Ph::L))
+    {
+        vowelFormants (vowel, glide, f);
+        return;
+    }
+
+    int a = vAX, b = vAX;
+    vowelTargets (vowel, a, b);
+    if (contextual && vowel == Ph::UW)
+        a = vUWfront;
+    else if (contextual && vowel == Ph::AE)
+        a = vAEnasal;
+
+    // R after a vowel colours its end (F3 falls: "here", "dark"); an L darkens it ("feel", "all").
+    b = a;
+    if (liquid == Ph::R && vowel != Ph::ER)
+        b = vER;
+    else if (liquid == Ph::L)
+        b = vDarkL;
+
+    const auto& va = vowels[(size_t) a];
+    const auto& vb = vowels[(size_t) b];
+    const float x = juce::jlimit (0.0f, 1.0f, glide);
+    for (int k = 0; k < 3; ++k)
+        f[k] = va[(size_t) k] * std::pow (vb[(size_t) k] / va[(size_t) k], x);
+}
+
 //==============================================================================
 void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame& out) noexcept
 {
@@ -315,6 +354,7 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
 
     v.fill (0.0f);
     v[apUpperDamping] = 1.0f;
+    v[apF1Tuning] = 1.0f;
     v[apNasalZero] = 1500.0f * cs;
     v[apFricF1] = 5000.0f * cs;
     v[apFricB1] = 2000.0f * cs;
@@ -349,9 +389,11 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
 
     const auto& info = phonemeInfo (e.ph);
 
-    // Velar consonants take their place from the neighbouring vowel ("velar pinch").
+    // Velar consonants take their place from the neighbouring vowel, with F2 and F3 drawn together
+    // ("velar pinch": F3 starts at most ~600 Hz above F2 - without it a /g/ before a back vowel is
+    // heard as /b/ or /d/).
     const float velarF2 = juce::jlimit (1100.0f * cs, 2450.0f * cs, context[1] + 150.0f * cs);
-    const float velarF3 = juce::jmax (velarF2 + 300.0f * cs, context[2] - 200.0f * cs);
+    const float velarF3 = juce::jmax (velarF2 + 300.0f * cs, juce::jmin (context[2] - 200.0f * cs, velarF2 + 600.0f * cs));
 
     auto setLocus = [&] (Place place)
     {
@@ -370,11 +412,11 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
         case Manner::Diphthong:
         {
             float glide = 0.0f;
-            if (info.manner == Manner::Diphthong && t > e.glideStart)
+            if ((info.manner == Manner::Diphthong || e.liquidCoda != Ph::Sil) && t > e.glideStart)
                 glide = smoothstep ((t - e.glideStart) / juce::jmax (0.01f, e.glideTime));
 
             float f[3];
-            vs.vowelFormants (e.ph, glide, f);
+            vs.vowelFormants (e.ph, glide, e.contextual, e.liquidCoda, f);
             setFormants (f[0], f[1], f[2]);
             v[apAV] = 1.0f;
             break;
@@ -427,6 +469,31 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
         {
             const bool voiced = info.voiced;
             const float duration = juce::jmax (0.02f, e.duration);
+
+            if (e.tap)
+            {
+                // American flap ("better", "got it"): one quick tap of the tongue tip against the ridge.
+                // Voicing carries on through the brief near-closure (a ~10 dB dip, muffled upper
+                // spectrum) and a faint release transient marks the end - no silence, no aspiration.
+                setLocus (Place::Alveolar);
+                v[apF1] = 250.0f * cs;
+                v[apB2] *= 1.4f;
+                v[apB3] *= 1.4f;
+                v[apUpperDamping] = 2.5f;
+                v[apAV] = 0.3f;
+                if (t > 0.7f * duration)
+                {
+                    const auto shape = burstShape (Ph::D, 0.0f);
+                    setFrication (shape);
+                    v[apAF] = 0.12f * shape.amplitude;
+                }
+                break;
+            }
+
+            // A coda stop that is not linked to a following vowel is released softly: English final
+            // stops have a weak, devoiced release - a full burst plus voicing sounds like an added vowel
+            // ("good-uh").
+            const bool soft = e.coda && ! e.linked;
             const float burst = juce::jmin (voiced ? 0.008f : 0.010f, 0.2f * duration);
             float vot;
             if (voiced)
@@ -445,14 +512,31 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
                 v[apB2] *= 1.5f;
                 v[apB3] *= 1.5f;
                 v[apUpperDamping] = 3.0f;
-                v[apAV] = voiced ? 0.06f : 0.0f;
+
+                // The voice bar: English voiced stops after a pause start voiceless (short-lag, no
+                // prevoicing - a prevoiced "b-but" sounds Japanese or Romance), final ones devoice.
+                float voiceBar = voiced ? 0.06f : 0.0f;
+                if (soft)
+                    voiceBar *= 1.0f - 0.7f * t / juce::jmax (0.01f, closure);
+                else if (e.afterPause)
+                    voiceBar *= juce::jlimit (0.0f, 1.0f, (t - 0.8f * closure) / juce::jmax (0.005f, 0.2f * closure));
+                v[apAV] = voiceBar;
             }
             else if (t < closure + burst)
             {
                 const auto shape = burstShape (e.ph, velarCentre);
                 setFrication (shape);
-                v[apAF] = shape.amplitude;
-                v[apAV] = voiced ? 0.15f : 0.0f;
+                v[apAF] = shape.amplitude * (soft ? 0.4f : 1.0f);
+                v[apAV] = voiced && ! soft ? 0.15f : 0.0f;
+            }
+            else if (soft)
+            {
+                // The release noise dies away; nothing voiced follows.
+                const float x = juce::jlimit (0.0f, 1.0f, (t - closure - burst) / juce::jmax (0.005f, vot));
+                const auto shape = burstShape (e.ph, velarCentre);
+                setFrication (shape);
+                v[apAF] = 0.1f * shape.amplitude * (1.0f - x);
+                v[apAH] = voiced ? 0.0f : 0.3f * (1.0f - x);
             }
             else if (voiced)
             {
@@ -520,7 +604,13 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
 
         case Manner::Liquid:
         {
-            if (e.ph == Ph::L)
+            if (e.ph == Ph::L && (e.coda || e.syllabic))
+            {
+                // American coda L is velarised ("dark"): low F2, a little more open than the onset L.
+                const auto& dark = vs.vowels[(size_t) VoiceSetup::vDarkL];
+                setFormants (0.85f * dark[0], 0.95f * dark[1], dark[2]);
+            }
+            else if (e.ph == Ph::L)
                 setFormants (360.0f * cs, 1150.0f * cs, 2650.0f * cs);
             else
                 setFormants (420.0f * cs, 1100.0f * cs, 1550.0f * cs);
@@ -538,6 +628,14 @@ void articulate (const PhoneEvent& e, float t, const VoiceSetup& vs, ArticFrame&
             break;
         }
     }
+
+    // Formant tuning (F1 raised above a high f0) is for sonorants. An obstruent constriction pulls F1
+    // down whatever the pitch, and at soprano pitches that dip is what is left of the transition cue
+    // for stops, flaps and fricatives. (Nasals keep the tuning: with F1 below f0 their murmur would
+    // all but vanish on high notes.)
+    const auto manner = info.manner;
+    if (manner == Manner::Stop || manner == Manner::Affricate || manner == Manner::Fricative)
+        v[apF1Tuning] = 0.0f;
 }
 
 void makeSynthFrame (const ArticFrame& a, const VoiceSetup& vs, float f0, float rd, SynthFrame& out) noexcept
@@ -549,7 +647,8 @@ void makeSynthFrame (const ArticFrame& a, const VoiceSetup& vs, float f0, float 
     out.ah = juce::jmax (0.0f, v[apAH]);
     out.af = juce::jmax (0.0f, v[apAF]);
 
-    const float f1 = tunedFirstFormant (v[apF1], f0);
+    const float tuning = juce::jlimit (0.0f, 1.0f, v[apF1Tuning]);
+    const float f1 = v[apF1] + tuning * (tunedFirstFormant (v[apF1], f0) - v[apF1]);
     const float f2 = juce::jmax (v[apF2], f1 + 200.0f);
     const float f3 = juce::jmax (v[apF3], f2 + 250.0f);
     out.formants[0] = f1;

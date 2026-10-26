@@ -19,6 +19,7 @@ enum ArticParam
     apFricF2, apFricB2, apFricG2,
     apFricBypass,
     apFricHighpass,               // high-pass corner of the frication noise (steep sibilant spectra)
+    apF1Tuning,                   // 1 = F1 follows a high f0 (sonorants), 0 = obstruent constriction keeps F1 low
     numArticParams
 };
 
@@ -41,6 +42,9 @@ struct VoiceSetup
     {
         vAA, vAE, vAH, vAO, vAX, vEH, vER, vIH, vIY, vUH, vUW,
         vEYa, vEYb, vOWa, vOWb, vAYa, vAYb, vAWa, vAWb, vOYa, vOYb,
+        vUWfront,       // /u/ after a coronal or /j/ ("you", "to", "new"): fronted, as in American English
+        vDarkL,         // vowel colour of a velarised (dark) L: coda L and the off-glide into it
+        vAEnasal,       // /ae/ before a nasal ("hand", "can't"): raised, as in American English
         numVowelTargets
     };
 
@@ -77,6 +81,11 @@ struct VoiceSetup
     float vowelPowerDb (Ph vowel, float f0) const noexcept;
 
     void vowelFormants (Ph vowel, float glide, float* f) const noexcept;
+
+    /** Like vowelFormants(), with American allophones: the `contextual` variant (fronted /u/ after
+        coronals, raised /ae/ before nasals), and a monophthong followed by a coda R or L (`liquid`)
+        gliding towards r-colouring or dark-L colouring. */
+    void vowelFormants (Ph vowel, float glide, bool contextual, Ph liquid, float* f) const noexcept;
 };
 
 /** One phoneme occurrence as the articulator sees it. */
@@ -85,11 +94,17 @@ struct PhoneEvent
     Ph ph = Ph::Sil;
     Ph contextVowel = Ph::AX;     // adjacent vowel: next for onsets, previous for codas
     float duration = 0.1f;        // seconds (a large value for held live vowels)
-    float glideStart = 1.0e9f;    // diphthongs: seconds after the start where the off-glide begins
+    float glideStart = 1.0e9f;    // diphthongs, vowels before a coda liquid: seconds after the start where the off-glide begins
     float glideTime = 0.12f;
     bool released = true;         // stops: false = unreleased (no burst)
     bool aspirated = true;        // voiceless stops: long voice-onset time
     bool syllabic = false;        // nasal / liquid sung as the nucleus ("hmm")
+    bool coda = false;            // consonant after the nucleus: dark L, soft release of stops
+    bool linked = false;          // coda released straight into a vowel-initial next word ("hold on")
+    bool tap = false;             // T / D as an American flap ("better", "got it"): a short voiced tap
+    bool afterPause = false;      // onset straight after a rest: voiced stops start without a voice bar
+    bool contextual = false;      // vowels: UW after a coronal or Y (fronted), AE before a nasal (raised)
+    Ph liquidCoda = Ph::Sil;      // vowels: R or L that follows in the coda (its colour is anticipated)
 };
 
 /** Articulatory targets of a phoneme `t` seconds after its start. */
