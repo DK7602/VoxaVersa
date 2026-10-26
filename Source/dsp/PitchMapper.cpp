@@ -249,7 +249,8 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     float expression = 0.0f;
     const bool profileExpression = s.expression && ! s.sourceIsSynth;
 
-    if (profileExpression && onset)
+    // An AI lead keeps the singer's own attacks too, unless correction has flattened them.
+    if (profileExpression && onset && (correcting || ! s.naturalVibrato))
         scoopOffset = -s.traits.scoopCents * 0.01f * s.styleScale;
 
     if (scoopOffset < 0.0f)

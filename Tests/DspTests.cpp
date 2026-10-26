@@ -77,6 +77,37 @@ public:
             for (auto& f : frames) voiced += f.voiced ? 1 : 0;
             expect (voiced < (int) frames.size() / 10, "noise voiced frames: " + juce::String (voiced));
         }
+
+        beginTest ("A weak fundamental is not read an octave high");
+        {
+            // 2 s of an ordinary 150 Hz voice, then the same pitch with a weak fundamental and strong even
+            // harmonics: half the period looks periodic enough for plain YIN, which then reads 300 Hz.
+            const double sr = 48000.0;
+            std::vector<float> x ((size_t) (sr * 4));
+            double phase = 0.0;
+            for (size_t i = 0; i < x.size(); ++i)
+            {
+                const double t = (double) i / sr;
+                phase += juce::MathConstants<double>::twoPi * 150.0 * (1.0 + 0.004 * std::sin (juce::MathConstants<double>::twoPi * 5.5 * t)) / sr;
+                double v = 0.0;
+                if (t < 2.0)
+                    for (int k = 1; k < 12; ++k)
+                        v += 0.6 / k * std::sin (k * phase);
+                else
+                    v = 0.08 * std::sin (phase) + std::sin (2 * phase) + 0.06 * std::sin (3 * phase) + 0.5 * std::sin (4 * phase)
+                      + 0.05 * std::sin (5 * phase) + 0.3 * std::sin (6 * phase);
+                x[i] = (float) (0.3 * v);
+            }
+            const int hop = 256;
+            auto frames = dsp::PitchDetector::analyse (x.data(), (int) x.size(), sr, hop);
+            std::vector<float> f;
+            for (int k = (int) (sr * 2.2) / hop; k < (int) (sr * 3.9) / hop; ++k)
+                if (frames[(size_t) k].voiced)
+                    f.push_back (frames[(size_t) k].frequencyHz);
+            std::sort (f.begin(), f.end());
+            const float measured = f.empty() ? 0.0f : f[f.size() / 2];
+            expect (std::abs (centsBetween (measured, 150.0f)) < 20.0f, "measured " + juce::String (measured));
+        }
     }
 };
 

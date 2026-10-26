@@ -53,6 +53,7 @@ void PitchDetector::reset()
     latest = {};
     lastPeriods[0] = lastPeriods[1] = lastPeriods[2] = 0.0f;
     voicedRun = unvoicedRun = 0;
+    registerLog2 = registerSeconds = 0.0f;
 }
 
 bool PitchDetector::pushSample (float x) noexcept
@@ -194,6 +195,21 @@ void PitchDetector::analyseFrame() noexcept
                 }
         }
 
+        // Octave check: a strong second harmonic can make half the period periodic enough to be picked
+        // first, reading the voice an octave high for whole phrases. When that reading is well above the
+        // singer's recent register and twice the lag is clearly more periodic, the voice is there.
+        if (tau > 0 && registerSeconds > 1.0f && 2 * tau + 2 < maxLagD - 1)
+        {
+            int doubled = 2 * tau - 2;
+            for (int t = 2 * tau - 1; t <= 2 * tau + 2; ++t)
+                if (cmnd[(size_t) t] < cmnd[(size_t) doubled])
+                    doubled = t;
+
+            const float above = std::log2 ((float) decimatedRate / (float) tau) - registerLog2;
+            if (above > 0.5f && cmnd[(size_t) doubled] < 0.1f && cmnd[(size_t) doubled] < 0.5f * cmnd[(size_t) tau])
+                tau = doubled;
+        }
+
         if (tau > 0 && tau < maxLagD - 1)
         {
             aperiodicity = cmnd[(size_t) tau];
@@ -241,6 +257,13 @@ void PitchDetector::analyseFrame() noexcept
         latest.periodSamples = period;
         latest.frequencyHz = (float) (sr / period);
         latest.confidence = juce::jlimit (0.0f, 1.0f, 1.0f - aperiodicity);
+
+        // fast at first, then a few seconds' memory
+        const float hopSeconds = (float) hopD / (float) decimatedRate;
+        const float pitchLog2 = std::log2 (latest.frequencyHz);
+        const float a = 1.0f - std::exp (-hopSeconds / (registerSeconds < 2.0f ? 0.3f : 2.0f));
+        registerLog2 = registerSeconds <= 0.0f ? pitchLog2 : registerLog2 + (pitchLog2 - registerLog2) * a;
+        registerSeconds += hopSeconds;
     }
     else if (nowVoiced)
     {

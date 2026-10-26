@@ -79,6 +79,9 @@ private:
     Frame latest;
     float lastPeriods[3] {};
     int voicedRun = 0, unvoicedRun = 0;
+
+    // The singer's recent register (log2 Hz, slow average of voiced estimates) for the octave check.
+    float registerLog2 = 0.0f, registerSeconds = 0.0f;
 };
 
 } // namespace voxa::dsp

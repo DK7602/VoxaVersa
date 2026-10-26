@@ -380,7 +380,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     }
 
     // Doubles of an AI lead: copies of the AI voice itself, slightly late and slowly drifting in pitch (same
-    // delays, drift rates and pan as the DSP doubler; the drift depth gives a few cents of detune).
+    // delays, drift rates and pan as the DSP doubler; the drift depth gives 2 to 6 cents of detune).
     if (aiDoublerOn && ! aiDoublerActive)
         for (auto& d : aiDoubler)
             d.clear();
@@ -393,7 +393,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         for (int k = 0; k < 2; ++k)
             panGains ((k == 0 ? -1.0f : 1.0f) * doublerWidth, gl[k], gr[k]);
         const float level = doublerAmount * 0.7f;
-        const double driftDepth = (0.002 + 0.003 * doublerAmount) * sr;
+        const double driftDepth = (0.001 + 0.002 * doublerAmount) * sr;
 
         for (int i = 0; i < n; ++i)
         {

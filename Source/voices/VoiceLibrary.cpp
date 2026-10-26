@@ -368,6 +368,17 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         packs.sort();   // deterministic: when two packs claim a built-in voice, the first by name wins
         const auto assignment = readAssignment (dir.getChildFile (assignmentFileName));
 
+        auto giveModel = [] (VoiceProfile& v, const VoiceProfile& singer)
+        {
+            v.packDirectory = singer.packDirectory;
+            v.neuralModelFile = singer.neuralModelFile;
+            v.neuralEncoder = singer.neuralEncoder;
+            v.neuralSampleRate = singer.neuralSampleRate;
+            v.aiPackName = singer.name;
+            v.traits.aiCentreMidi = singer.traits.aiCentreMidi;
+        };
+        std::vector<VoiceProfile> singers;   // packs made to power built-in voices
+
         for (const auto& packDir : packs)
         {
             VoiceProfile p;
@@ -381,25 +392,45 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
             if (const auto* entry = findAssignment (assignment, p))
                 applyAssignment (p, *entry);
 
-            if (p.hasNeuralModel())
+            if (p.hasNeuralModel() && ! p.factoryVoices.isEmpty())
             {
                 for (const auto& id : p.factoryVoices)
                 {
                     const int index = indexOf (id);
-                    if (index < 0 || index >= (int) numFactoryVoices || voices[(size_t) index].hasNeuralModel())
-                        continue;
-                    auto& v = voices[(size_t) index];
-                    v.packDirectory = p.packDirectory;
-                    v.neuralModelFile = p.neuralModelFile;
-                    v.neuralEncoder = p.neuralEncoder;
-                    v.neuralSampleRate = p.neuralSampleRate;
-                    v.aiPackName = p.name;
-                    v.traits.aiCentreMidi = p.traits.aiCentreMidi;
+                    if (index >= 0 && index < (int) numFactoryVoices && ! voices[(size_t) index].hasNeuralModel())
+                        giveModel (voices[(size_t) index], p);
                 }
+                singers.push_back (p);
             }
 
             if (p.listed && indexOf (p.id) < 0)
                 voices.push_back (std::move (p));
+        }
+
+        // A built-in voice whose own singer is not installed (yet) borrows the installed singer of its gender
+        // whose register is closest, so every male and female voice has the AI engine.
+        for (size_t i = 0; i < numFactoryVoices; ++i)
+        {
+            auto& v = voices[i];
+            if (v.hasNeuralModel() || v.traits.gender == VoiceGender::Neutral)
+                continue;
+
+            const VoiceProfile* best = nullptr;
+            float bestDistance = 0.0f;
+            for (const auto& singer : singers)
+            {
+                if (singer.traits.gender != v.traits.gender)
+                    continue;
+                const float centre = singer.traits.aiCentreMidi > 0.0f ? singer.traits.aiCentreMidi : (float) singer.traits.centreMidi();
+                const float distance = std::abs (centre - (float) v.traits.centreMidi());
+                if (best == nullptr || distance < bestDistance)
+                {
+                    best = &singer;
+                    bestDistance = distance;
+                }
+            }
+            if (best != nullptr)
+                giveModel (v, *best);
         }
     }
 

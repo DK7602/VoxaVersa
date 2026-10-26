@@ -50,7 +50,11 @@ public:
             expect (jazz->hasNeuralModel() && jazz->aiPackName == "Singer B");
             expectEquals (jazz->neuralSampleRate, 48000);
             expect (jazz->packDirectory == root.getChildFile ("b-listed"));
-            expect (! rock->hasNeuralModel());
+
+            // A built-in voice nobody claims borrows an installed singer of its gender; there is no male one.
+            expect (rock->hasNeuralModel() && (rock->aiPackName == "Singer A" || rock->aiPackName == "Singer B"), rock->aiPackName);
+            expect (! library.findById ("male-rock")->hasNeuralModel());
+            expect (! library.findById ("neutral-robot")->hasNeuralModel());
 
             // "listed": false hides the pack itself; a listed pack is also its own voice.
             expectEquals ((int) library.getVoices().size(), (int) factoryCount + 1);
@@ -187,7 +191,8 @@ public:
             const auto r2 = library.importVoices (driveZip, user);
             expectEquals (r2.assignedPacks, 1, r2.summary());
             expect (library.findById ("female-pop")->hasNeuralModel());
-            expect (! library.findById ("female-jazz")->hasNeuralModel());
+            expect (library.findById ("female-jazz")->aiPackName == "Studio Female A", "borrowed: the only female singer");
+            expect (! library.findById ("male-jazz")->hasNeuralModel());
 
             // not an assignment
             auto bogus = work.getChildFile ("voice_assignment.json");

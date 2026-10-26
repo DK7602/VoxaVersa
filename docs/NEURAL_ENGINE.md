@@ -368,7 +368,7 @@ Top level (read by the voice library; all optional except `name`):
 | `formant`, `breathiness`, `rasp`, `vibratoDepth`, `vibratoRate` | DSP voice traits (used by the DSP engine and for blending). |
 | `colour`, `avatar` | Accent colour (`#rrggbb`) and image file in the pack. |
 | `author`, `license` | Credits and terms of use — state what the speaker agreed to. |
-| `factoryVoices` | Built-in voice ids (e.g. `female-pop`, see `VoxaVersaRender --list-voices`) that use this pack's AI model. Each keeps its own DSP colour (EQ), production chain and expression on top of the model's timbre; its synthetic breath noise and rasp are left out (the singer has their own), and its octave placement follows the pack's `range`. If two packs list the same voice, the pack whose folder name sorts first wins. |
+| `factoryVoices` | Built-in voice ids (e.g. `female-pop`, see `VoxaVersaRender --list-voices`) that use this pack's AI model. Each keeps its own DSP colour (EQ), production chain and expression on top of the model's timbre; its synthetic breath noise and rasp are left out (the singer has their own), and its octave placement follows the pack's `range`. A built-in male or female voice that no installed pack lists borrows the installed singer of its gender (one that powers built-in voices) whose range is closest, so every voice has the AI engine until its own singer is installed. If two packs list the same voice, the pack whose folder name sorts first wins. |
 | `listed` | `false` hides the pack as a voice of its own (it then only powers the built-in voices it lists). Default `true`. |
 
 `"model"` (AI engine):

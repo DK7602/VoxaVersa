@@ -212,6 +212,9 @@ public:
             expect (writeWav (wavFile, buf, fileRate));
 
             VoxaVersaProcessor p;
+            // the DSP transform: AI voices installed on this computer would otherwise take over the default voice
+            if (auto* ai = p.getState().getParameter (ParamID::aiEngine))
+                ai->setValueNotifyingHost (0.0f);
             p.prepareToPlay (sr, block);
             juce::String error;
             expect (p.loadSample (wavFile, error), error);
