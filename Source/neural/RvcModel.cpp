@@ -212,9 +212,16 @@ size_t NeuralVoiceModel::Impl::chooseLiveContext (size_t numCandidates, const st
     return numCandidates > 0 ? numCandidates - 1 : 0;
 }
 
-bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& error)
+bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& error, const std::atomic<bool>* cancel)
 {
     config = c;
+    auto cancelled = [cancel, &error]
+    {
+        if (cancel == nullptr || ! cancel->load())
+            return false;
+        error = "Cancelled";
+        return true;
+    };
 
     if (! config.generatorFile.existsAsFile())
     {
@@ -224,7 +231,7 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
 
     generator = OrtModelSession::create (config.generatorFile, error, config.allowAccelerator);
 
-    if (generator == nullptr)
+    if (generator == nullptr || cancelled())
         return false;
 
     if (! discoverGenerator (error))
@@ -276,6 +283,9 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
     else
         sampleRate = readSampleRateFromMetadata (*generator);
 
+    if (cancelled())
+        return false;
+
     if (usesF0)
     {
         juce::String pitchError;
@@ -284,7 +294,7 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
             DBG ("VoxaVersa: " << pitchError << " - the AI voice follows the live pitch detector");
     }
 
-    if (! warmUp (error))
+    if (cancelled() || ! warmUp (error, cancel))
         return false;
 
     juce::StringArray parts;
@@ -453,7 +463,7 @@ bool NeuralVoiceModel::Impl::discoverEncoder (juce::String& error)
     return true;
 }
 
-bool NeuralVoiceModel::Impl::warmUp (juce::String& error)
+bool NeuralVoiceModel::Impl::warmUp (juce::String& error, const std::atomic<bool>* cancel)
 {
     Workspace ws;
 
@@ -538,6 +548,12 @@ bool NeuralVoiceModel::Impl::warmUp (juce::String& error)
         const int chunkFrames = chunkFramesFor (contextFrames);
         makeInput (chunkFrames, audio, f0);
         const auto start = juce::Time::getMillisecondCounterHiRes();
+
+        if (! failed && cancel != nullptr && cancel->load())
+        {
+            error = "Cancelled";
+            failed = true;
+        }
 
         if (! failed && pitchTracker != nullptr)
         {

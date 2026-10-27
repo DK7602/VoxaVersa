@@ -42,8 +42,11 @@ class NeuralVoiceModel
 public:
     ~NeuralVoiceModel();
 
-    /** Loads the model referenced by a voice pack profile. Returns nullptr and sets `error` on failure. */
-    static std::shared_ptr<NeuralVoiceModel> load (const VoiceProfile& profile, juce::String& error);
+    /** Loads the model referenced by a voice pack profile. Returns nullptr and sets `error` on failure.
+        Loading takes seconds (it times the model); `cancel` (optional) stops it between steps, so whoever waits
+        for it (closing the plug-in) never has to kill the thread. */
+    static std::shared_ptr<NeuralVoiceModel> load (const VoiceProfile& profile, juce::String& error,
+                                                   const std::atomic<bool>* cancel = nullptr);
 
     int getModelSampleRate() const noexcept;
     juce::String getDescription() const;

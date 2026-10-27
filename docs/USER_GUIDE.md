@@ -50,7 +50,10 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   or female voice turn **Pitch Preserve** off so any singer lands in that voice's register; *Chipmunk*,
   *Whisper ASMR* and *Live Stage (Low Latency)* use the DSP engine (AI off).
 - **Quality**: *Low Latency* (~35 ms) for live monitoring, *Balanced*, *High Quality* for mixing
-  (latency is reported to the DAW and compensated automatically).
+  (latency is reported to the DAW and compensated automatically). An AI voice adds ~0.85 s, reported as soon
+  as it is chosen, so playback and exports line up. Switching between an AI voice and a DSP-only voice changes
+  the latency: some hosts (Cubase) only pick that up after you stop and restart playback, or switch the
+  plug-in off and on in its slot.
 
 ## 3. Text to Sing
 

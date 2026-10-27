@@ -76,7 +76,8 @@ struct NeuralVoiceModel::Impl
         std::vector<float> tracked;
     };
 
-    bool initialise (const ModelConfig&, juce::String& error);
+    /** `cancel` (optional) is checked between the loading steps and the timing runs. */
+    bool initialise (const ModelConfig&, juce::String& error, const std::atomic<bool>* cancel = nullptr);
 
     /** The core of the pipeline. `audio16k` holds numFrames * 160 + dsp::encoderRightPad16k samples at
         16 kHz, `f0Frames` the target pitch of each of the numFrames 10 ms frames. The content encoder sees
@@ -160,7 +161,7 @@ struct NeuralVoiceModel::Impl
 private:
     bool discoverGenerator (juce::String& error);
     bool discoverEncoder (juce::String& error);
-    bool warmUp (juce::String& error);
+    bool warmUp (juce::String& error, const std::atomic<bool>* cancel);
 };
 
 } // namespace voxa::neural

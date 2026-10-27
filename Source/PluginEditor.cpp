@@ -7,14 +7,6 @@ namespace voxa
 
 namespace
 {
-    // window width in the plug-in state and in settings.xml (<Ui editorSize="...">)
-    constexpr const char* sizeKey = "editorSize";
-
-    juce::File getSettingsFile()
-    {
-        return VoiceLibrary::getUserDataDirectory().getChildFile ("settings.xml");
-    }
-
     juce::String env (const char* name)
     {
         return juce::SystemStats::getEnvironmentVariable (name, {});
@@ -118,7 +110,9 @@ VoxaVersaEditor::VoxaVersaEditor (VoxaVersaProcessor& p)
     if (auto* c = getConstrainer())
         c->setFixedAspectRatio ((double) ui::MainView::designWidth / (double) ui::MainView::designHeight);
 
-    int width = loadSavedWidth();
+    // Opens at 100% every time (a size picked in the menu lasts for the session), smaller only when the screen
+    // can't fit it.
+    int width = defaultWidthForScreen();
 
     // Screenshot / visual-verification hook (opt-in through environment variables).
     const auto snapPath = env ("VOXAVERSA_SNAPSHOT");
@@ -177,7 +171,6 @@ VoxaVersaEditor::VoxaVersaEditor (VoxaVersaProcessor& p)
 VoxaVersaEditor::~VoxaVersaEditor()
 {
     stopTimer();
-    saveWidthToSettings();
     tooltips->setLookAndFeel (nullptr);
     tooltips.reset();
     view.reset();
@@ -201,16 +194,12 @@ void VoxaVersaEditor::resized()
     view->repaint();
     view->setBounds (0, 0, ui::MainView::designWidth, ui::MainView::designHeight);
     view->noteScaleChanged();
-
-    if (snapshot == nullptr)
-        processor.getState().state.setProperty (sizeKey, getWidth(), nullptr);
 }
 
 void VoxaVersaEditor::setUiWidth (int w)
 {
     w = juce::jlimit (minWidth, maxWidth, w);
     setSize (w, juce::roundToInt (w * 2.0 / 3.0));
-    saveWidthToSettings();
 }
 
 int VoxaVersaEditor::defaultWidthForScreen()
@@ -220,51 +209,13 @@ int VoxaVersaEditor::defaultWidthForScreen()
         return defaultWidth;
 
     // 100% (the UI Size menu's 1200 x 800), or the largest size below it that leaves room for the host's
-    // window frame and title bar on a small screen
-    const int fitting = (display->userArea.getHeight() - 80) * 3 / 2;
+    // window frame and title bar on a small screen (or one with large display scaling)
+    const int fitting = juce::jmin ((display->userArea.getHeight() - 80) * 3 / 2, display->userArea.getWidth() - 40);
     int width = minWidth;
     for (int w : ui::HeaderBar::uiWidths)
         if (w <= fitting && w <= defaultWidth)
             width = w;
     return width;
-}
-
-int VoxaVersaEditor::loadSavedWidth() const
-{
-    // Sizes saved by earlier builds ("uiWidth", "width", "editorWidth") are ignored: the editor opens at 100%
-    // once, and then at whatever size the user picks.
-    const auto stored = processor.getState().state.getProperty (sizeKey);
-    if (! stored.isVoid() && (int) stored > 0)
-        return juce::jlimit (minWidth, maxWidth, (int) stored);
-
-    if (auto xml = juce::parseXML (getSettingsFile()))
-        if (auto* ui = xml->getChildByName ("Ui"); ui != nullptr && ui->hasAttribute (sizeKey))
-            return juce::jlimit (minWidth, maxWidth, ui->getIntAttribute (sizeKey, defaultWidth));
-
-    return defaultWidthForScreen();
-}
-
-void VoxaVersaEditor::saveWidthToSettings() const
-{
-    if (snapshot != nullptr)
-        return;
-
-    const auto file = getSettingsFile();
-    std::unique_ptr<juce::XmlElement> xml (juce::parseXML (file));
-    if (xml == nullptr || ! xml->hasTagName ("VoxaVersaSettings"))
-        xml = std::make_unique<juce::XmlElement> ("VoxaVersaSettings");
-
-    auto* ui = xml->getChildByName ("Ui");
-    if (ui == nullptr)
-        ui = xml->createNewChildElement ("Ui");
-
-    if (ui->getIntAttribute (sizeKey) == getWidth())
-        return;
-
-    ui->removeAttribute ("width");
-    ui->setAttribute (sizeKey, getWidth());
-    file.getParentDirectory().createDirectory();
-    xml->writeTo (file);
 }
 
 bool VoxaVersaEditor::keyPressed (const juce::KeyPress& key)

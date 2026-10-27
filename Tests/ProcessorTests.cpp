@@ -73,6 +73,53 @@ public:
             expect (p.detectedPitchHz.load() > 150.0f, "telemetry pitch " + juce::String (p.detectedPitchHz.load()));
         }
 
+        beginTest ("An AI voice's delay is reported at once, not when its model has loaded");
+        {
+            VoxaVersaProcessor p;
+            setParam (p, ParamID::aiEngine, 1.0f);
+            p.setPlayConfigDetails (2, 2, sr, block);
+            p.prepareToPlay (sr, block);
+            const int atStart = p.getLatencySamples();
+
+            if (! p.getSelectedVoice().hasNeuralModel() || ! neural::OnnxRuntime::getInstance().ensureLoaded())
+            {
+                logMessage ("No AI singer installed for the default voice: skipped");
+            }
+            else
+            {
+                // Cubase ignored the change when it came seconds later, when the model had loaded
+                expect (atStart > (int) (sr * 0.3), "AI delay reported up front: " + juce::String (atStart));
+                expect (test::waitFor ([&p] { return p.getNeuralStatus() == VoxaVersaProcessor::NeuralStatus::Active; }, 120000),
+                        "model loaded");
+                expectEquals (p.getLatencySamples(), atStart, "unchanged when the model has loaded");
+
+                setParam (p, ParamID::aiEngine, 0.0f);
+                expect (test::waitFor ([&p, atStart] { return p.getLatencySamples() < atStart; }, 10000),
+                        "the DSP voice's own latency once the AI engine is off");
+            }
+        }
+
+        beginTest ("Closing while an AI voice loads is quick and kills no thread");
+        {
+            VoiceLibrary library;
+            if (! library.getDefaultVoice().hasNeuralModel() || ! neural::OnnxRuntime::getInstance().ensureLoaded())
+            {
+                logMessage ("No AI singer installed for the default voice: skipped");
+            }
+            else
+            {
+                const auto start = juce::Time::getMillisecondCounterHiRes();
+                {
+                    VoxaVersaProcessor p;   // starts loading the default voice's model
+                    p.prepareToPlay (sr, block);
+                    juce::Thread::sleep (300);
+                }
+                const auto ms = juce::Time::getMillisecondCounterHiRes() - start;
+                // the load stops at its cancel flag (a thread killed inside ONNX Runtime would abort the host)
+                expect (ms < 8000.0, "closed after " + juce::String (ms, 0) + " ms");
+            }
+        }
+
         beginTest ("Pitch knob transposes the output");
         {
             VoxaVersaProcessor p;
@@ -109,11 +156,12 @@ public:
             VoxaVersaProcessor p;
             p.prepareToPlay (sr, block);
             setParam (p, ParamID::power, 0.0f);
-            auto in = test::makeVoice (sr, (int) sr, [] (int) { return 200.0f; });
+            const int latency = p.getLatencySamples();   // ~0.86 s with an AI voice installed for the default voice
+            const int length = (int) sr + latency;
+            auto in = test::makeVoice (sr, length, [] (int) { return 200.0f; });
             auto out = run (p, in);
-            const int latency = p.getLatencySamples();
             double err = 0.0, energy = 0.0;
-            for (int i = (int) (sr * 0.2); i < (int) sr - latency; ++i)
+            for (int i = (int) (sr * 0.2); i < length - latency; ++i)
             {
                 const double e = out[(size_t) (i + latency)] - in[(size_t) i];
                 err += e * e;

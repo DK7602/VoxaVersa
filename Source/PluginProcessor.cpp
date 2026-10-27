@@ -178,7 +178,9 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         cancelJobs.store (true);
         cancelRender.store (true);
         cancelSing.store (true);
-        pool.removeAllJobs (true, 10000);
+        // Every job stops at its cancel flag within about a second; it is waited for, never killed (a thread
+        // killed inside ONNX Runtime, e.g. while a voice model loads, takes the host down with it).
+        pool.removeAllJobs (true, -1);
         stopRecordingInternal();
         chain.setNeuralStream (nullptr);
     }
@@ -279,7 +281,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         maxBlock = juce::jmax (64, blockSize);
         neuralStream.prepare (sampleRate, maxBlock);
         chain.prepare (sampleRate, maxBlock, currentQuality());
-        chain.setNeuralStream (neuralAttached.load() ? &neuralStream : nullptr);
+        chain.setNeuralStream (reservesAiLatency() ? &neuralStream : nullptr);
         liveSinger.prepare (sampleRate, maxBlock);
         autoLevel.prepare (sampleRate);
         watermark.prepare (sampleRate);
@@ -311,6 +313,14 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     Quality currentQuality() const
     {
         return (Quality) juce::jlimit (0, 2, ParamCache::idx (params.quality));
+    }
+
+    /** The AI voice's delay is part of the reported latency as soon as an AI voice is chosen, before its model has
+        loaded: Cubase ignored the change when it came seconds later (the AI vocal played 0.86 s late). */
+    bool reservesAiLatency() const
+    {
+        return ParamCache::on (params.aiEngine) && owner.getSelectedVoice().hasNeuralModel()
+            && neural::OnnxRuntime::getInstance().ensureLoaded();
     }
 
     //==========================================================================
@@ -910,8 +920,8 @@ void VoxaVersaProcessor::updateNeuralModel()
             impl->currentModelVoiceId.clear();
             impl->neuralStream.setModel (nullptr);
             impl->neuralAttached.store (false);
-            updateLatency();
         }
+        updateLatency();   // releases the AI voice's delay (also when its model never finished loading)
         impl->neuralMessage = aiOn ? juce::String() : "AI engine switched off";
         neuralStatus.store (voiceHasModel ? NeuralStatus::Unavailable : NeuralStatus::NoModelForVoice);
         return;
@@ -928,6 +938,7 @@ void VoxaVersaProcessor::updateNeuralModel()
     }
 
     neuralStatus.store (NeuralStatus::Loading);
+    updateLatency();   // the AI voice's delay counts from the moment it is chosen
     const int generation = ++impl->modelGeneration;
     const VoiceProfile profile = voice;
     auto alive = impl->alive;
@@ -936,7 +947,7 @@ void VoxaVersaProcessor::updateNeuralModel()
     impl->pool.addJob ([self, alive, profile, generation]
     {
         juce::String error;
-        auto model = neural::NeuralVoiceModel::load (profile, error);
+        auto model = neural::NeuralVoiceModel::load (profile, error, &self->impl->cancelJobs);
 
         juce::MessageManager::callAsync ([self, alive, model, error, generation, id = profile.id]
         {
@@ -967,15 +978,21 @@ void VoxaVersaProcessor::updateLatency()
         return;
 
     suspendProcessing (true);
+    bool changed = false;
     if (impl->currentQuality() != impl->chain.getQuality())
+    {
         impl->chain.prepare (currentSampleRate, impl->maxBlock, impl->currentQuality());
-    impl->chain.setNeuralStream (impl->neuralAttached.load() ? &impl->neuralStream : nullptr);
-    impl->dryDelaySamples = juce::jmin ((int) impl->dryDelay.size() - 1, impl->chain.getLatencySamples());
-    std::fill (impl->dryDelay.begin(), impl->dryDelay.end(), 0.0f);
+        changed = true;
+    }
+    changed = impl->chain.setNeuralStream (impl->reservesAiLatency() ? &impl->neuralStream : nullptr) || changed;
+    if (changed)   // an AI model that just loaded changes nothing here: playback goes on without a gap
+    {
+        impl->dryDelaySamples = juce::jmin ((int) impl->dryDelay.size() - 1, impl->chain.getLatencySamples());
+        std::fill (impl->dryDelay.begin(), impl->dryDelay.end(), 0.0f);
+    }
     suspendProcessing (false);
 
-    setLatencySamples (impl->chain.getLatencySamples());
-    updateHostDisplay (ChangeDetails().withLatencyChanged (true));
+    setLatencySamples (impl->chain.getLatencySamples());   // tells the host only when it differs
 }
 
 //==============================================================================
@@ -1531,7 +1548,7 @@ void VoxaVersaProcessor::generateSinging()
         if (loadModel && ! cancel.load() && result.ok())
         {
             juce::String error;
-            model = neural::NeuralVoiceModel::load (request.voice, error);
+            model = neural::NeuralVoiceModel::load (request.voice, error, &cancel);
         }
 
         if (cancel.load() || ! result.ok())

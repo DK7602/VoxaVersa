@@ -11,7 +11,8 @@ namespace voxa::neural
 NeuralVoiceModel::NeuralVoiceModel() : impl (std::make_unique<Impl>()) {}
 NeuralVoiceModel::~NeuralVoiceModel() = default;
 
-std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& profile, juce::String& error)
+std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& profile, juce::String& error,
+                                                          const std::atomic<bool>* cancel)
 {
     error.clear();
 
@@ -32,7 +33,7 @@ std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& pr
     auto config = ModelConfig::fromProfile (profile);
     std::shared_ptr<NeuralVoiceModel> model (new NeuralVoiceModel());
 
-    if (model->impl->initialise (config, error))
+    if (model->impl->initialise (config, error, cancel))
     {
         // Some (integrated) GPUs run these small chunks slower than the CPU: if this one is too slow for live
         // playback, keep whichever of the two is faster.
@@ -43,13 +44,14 @@ std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& pr
         std::shared_ptr<NeuralVoiceModel> cpu (new NeuralVoiceModel());
         juce::String cpuError;
 
-        if (cpu->impl->initialise (config, cpuError) && cpu->impl->getRealTimeLoad() < model->impl->getRealTimeLoad())
+        if (cpu->impl->initialise (config, cpuError, cancel) && cpu->impl->getRealTimeLoad() < model->impl->getRealTimeLoad())
             return cpu;
 
         return model;
     }
 
-    if (! config.allowAccelerator || runtime.getImpl().getAccelerator() == Accelerator::cpu)
+    if (! config.allowAccelerator || runtime.getImpl().getAccelerator() == Accelerator::cpu
+        || (cancel != nullptr && cancel->load()))
         return nullptr;
 
     // The GPU could not run this model (a driver or operator problem): the CPU can.
@@ -57,7 +59,7 @@ std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& pr
     config.allowAccelerator = false;
     model.reset (new NeuralVoiceModel());
 
-    if (! model->impl->initialise (config, error))
+    if (! model->impl->initialise (config, error, cancel))
     {
         error << " (GPU: " << gpuError << ")";
         return nullptr;

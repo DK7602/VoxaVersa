@@ -501,7 +501,10 @@ models and resets while streaming, and offline bounces.
 
 ## 8. Known limitations
 
-* **Latency** is ~0.83 s in real time (see above). It is constant and reported to the host.
+* **Latency** is ~0.83 s in real time (see above). It is constant and reported to the host from the moment an
+  AI voice is chosen (`VoiceChain::setNeuralStream` reserves it before the model has loaded): Cubase ignored the
+  change when it came seconds later, after the model loaded, and played the AI vocal ~0.86 s late. Switching
+  between an AI and a DSP-only voice still changes it; hosts apply that after a stop/start at the latest.
 * **Feature retrieval** (RVC's `.index` / faiss step) and RVC's `protect` and `rms_mix_rate` options are
   not implemented; the generator receives the raw content features (the input's unvoiced consonants are
   kept after conversion instead, see *Consonants*).

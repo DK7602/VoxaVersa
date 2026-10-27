@@ -81,16 +81,18 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     reset();
 }
 
-void VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
+bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
 {
     neural = stream;
 
-    if (neural != nullptr && neural->hasModel())
-        neuralLatency = detector.getAnalysisDelay() + 2 * detector.getHopSize() + neural->getLatencySamples();
-    else
-        neuralLatency = 0;
+    const int newNeural = neural != nullptr ? detector.getAnalysisDelay() + 2 * detector.getHopSize() + neural->getLatencySamples() : 0;
+    const int newTotal = juce::jmax (dspLatency, newNeural);
 
-    totalLatency = juce::jmax (dspLatency, neuralLatency);
+    if (newNeural == neuralLatency && newTotal == totalLatency && alignL.delay == newTotal - dspLatency)
+        return false;
+
+    neuralLatency = newNeural;
+    totalLatency = newTotal;
     alignL.delay = alignR.delay = alignLead.delay = alignDry.delay = totalLatency - dspLatency;
     alignNeural.delay = alignCoverage.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
     alignL.clear();
@@ -99,6 +101,7 @@ void VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     alignLead.clear();
     alignCoverage.clear();
     alignDry.clear();
+    return true;
 }
 
 void VoiceChain::reset()

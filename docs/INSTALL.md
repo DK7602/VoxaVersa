@@ -29,8 +29,8 @@ copies of `VoxaVersa.vst3` in the VST3 folders (for example an unzipped build in
 load instead; to see which file a DAW loads in Cubase: *Studio > VST Plug-in Manager*, select VoxaVersa, the
 info panel shows its path.
 
-The window opens at 100% (1200 x 800, or smaller on a small screen); menu (gear) > **UI Size** changes it and
-VoxaVersa remembers the choice.
+The window opens at 100% (1200 x 800) every time, or at the largest size that fits a smaller screen; menu
+(gear) > **UI Size** changes it for the session.
 
 Uninstall from *Settings > Apps*. Your voices, presets and settings in `%APPDATA%\VoxaVersa` are kept.
 

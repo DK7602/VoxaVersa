@@ -64,8 +64,11 @@ public:
     void prepare (double sampleRate, int maxBlockSize, Quality quality);
     void reset();
 
-    /** Optional neural lead voice (owned elsewhere, must outlive the chain or be cleared first). */
-    void setNeuralStream (neural::NeuralVoiceStream* stream);
+    /** Optional neural lead voice (owned elsewhere, must outlive the chain or be cleared first). Its latency
+        counts from now on, whether or not it has a model yet: hosts may ignore a latency that changes later
+        (when the model has loaded), so it is reserved up front. Returns true when the chain's latency changed
+        (the alignment buffers are then cleared; otherwise playback continues untouched). */
+    bool setNeuralStream (neural::NeuralVoiceStream* stream);
 
     /** Latency of the DSP path alone, in samples. */
     int getDspLatency() const noexcept { return dspLatency; }

@@ -24,14 +24,13 @@ public:
 
     static constexpr int defaultWidth = 1200, minWidth = 900, maxWidth = 1920;
 
-    /** The largest Settings > UI Size width whose window fits the main display's work area. */
+    /** The size the editor opens at: 100% (1200 x 800), or the largest Settings > UI Size width below it whose
+        window fits the main display's work area. */
     static int defaultWidthForScreen();
 
 private:
     void timerCallback() override;
     void setUiWidth (int width);
-    int loadSavedWidth() const;
-    void saveWidthToSettings() const;
 
     struct Snapshot;
 
