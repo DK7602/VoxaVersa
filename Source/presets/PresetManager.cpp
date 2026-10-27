@@ -50,7 +50,7 @@ juce::String PresetManager::getCurrentName() const
 
 void PresetManager::resetSoundParametersToDefault()
 {
-    static const juce::StringArray sessionSettings { ParamID::power, ParamID::mode, ParamID::inputGain, ParamID::outputGain,
+    static const juce::StringArray sessionSettings { ParamID::bypass, ParamID::mode, ParamID::inputGain, ParamID::outputGain,
                                                      ParamID::key, ParamID::scale, ParamID::midiControl, ParamID::singTempo,
                                                      ParamID::singSyncHost, ParamID::melodySource };
     for (auto* p : apvts.processor.getParameters())
@@ -89,7 +89,7 @@ void PresetManager::applyStateTree (const juce::ValueTree& tree)
         if (! child.hasType ("PARAM"))
             continue;
         const auto id = child.getProperty ("id").toString();
-        if (id == ParamID::power)
+        if (id == ParamID::bypass)
             continue;
         if (auto* p = apvts.getParameter (id))
             p->setValueNotifyingHost (p->convertTo0to1 ((float) child.getProperty ("value")));

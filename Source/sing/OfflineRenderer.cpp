@@ -101,12 +101,6 @@ namespace
             || p == Ph::ZH || p == Ph::CH || p == Ph::JH || p == Ph::TH || p == Ph::DH;
     }
 
-    bool isYouWord (const juce::String& word)
-    {
-        static const juce::StringArray words { "you", "your", "you're", "yours", "yourself", "you'll", "you've", "you'd", "ya" };
-        return words.contains (g2p::normaliseWord (word));
-    }
-
     /** Off-glide timing of a sung diphthong, or of a vowel colouring into a coda R / L: the nucleus is
         held and the glide comes late, but it completes a little before the vowel ends so that the
         off-glide target is actually reached before the consonant transition takes over. */
@@ -393,8 +387,9 @@ void OfflineRenderer::plan()
             s.event.coda = true;
 
             // English final stops are unreleased before another consonant ("kept", "good night", "hold
-            // me"), released into a following vowel or glide ("hold on", "hold you"), and released softly
-            // before a pause.
+            // me"), released into a following vowel or W ("hold on", "stop wasting"), and released softly
+            // before a pause. T and D stay unreleased before Y: released into it they run together as "ch" /
+            // "j" ("can't you" -> "cantchu", heard as sloppy in a sung lyric).
             Ph following = Ph::Sil;
             const bool last = k + 1 == syl.coda.size();
             if (! last)
@@ -405,8 +400,9 @@ void OfflineRenderer::plan()
                 following = next.onset.empty() ? next.nucleus : next.onset.front();
             }
             s.event.linked = last && o.connected && isVowel (following);
+            const bool alveolarBeforeY = following == Ph::Y && (syl.coda[k] == Ph::T || syl.coda[k] == Ph::D);
             s.event.released = ! (isStopLike (syl.coda[k]) && isConsonant (following)
-                                  && following != Ph::W && following != Ph::Y);
+                                  && following != Ph::W && (following != Ph::Y || alveolarBeforeY));
             s.event.tap = last && o.codaTap;
 
             s.start = t;
@@ -478,23 +474,6 @@ void OfflineRenderer::applyConnectedSpeech (std::vector<Occurrence>& occ) const
 
         o.sung.nucleus = o.sung.weakNucleus;
         o.sung.coda = o.sung.weakCoda;
-    }
-
-    // Yod coalescence: "don't you" -> don'-chu, "hold you" -> hol-ju.
-    for (int i = 0; i + 1 < n; ++i)
-    {
-        auto& o = occ[(size_t) i];
-        auto& next = occ[(size_t) i + 1];
-        if (! o.connected || o.sung.coda.empty() || ! o.sung.wordEnd || next.sung.onset.size() != 1
-            || next.sung.onset.front() != Ph::Y || ! isYouWord (script.words[next.sung.wordIndex]))
-            continue;
-
-        const auto last = o.sung.coda.back();
-        if (last == Ph::T || last == Ph::D)
-        {
-            o.sung.coda.pop_back();
-            next.sung.onset.front() = last == Ph::T ? Ph::CH : Ph::JH;
-        }
     }
 
     // Flapping: T / D between a vowel (or R) and an unstressed vowel inside a word ("better", "city",

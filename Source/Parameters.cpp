@@ -120,7 +120,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     namespace P = ParamID;
 
     // Global / IO
-    addBool   (layout, P::power,      "Power", true);
+    addBool   (layout, P::bypass,     "Bypass", false);
     addChoice (layout, P::mode,       "Mode", Choices::mode(), 0);
     addFloat  (layout, P::inputGain,  "Input Gain",  range (-24.0f, 24.0f, 0.1f), 0.0f, dbString, "dB");
     addFloat  (layout, P::outputGain, "Output Gain", range (-24.0f, 24.0f, 0.1f), 0.0f, dbString, "dB");

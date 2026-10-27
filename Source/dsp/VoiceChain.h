@@ -63,6 +63,8 @@ public:
     /** Allocates everything. Not real-time safe. */
     void prepare (double sampleRate, int maxBlockSize, Quality quality);
     void reset();
+    /** Clears the reverb and delay tails (the transport stopped; learned pitch / key / gender state stays). */
+    void clearTails();
 
     /** Optional neural lead voice (owned elsewhere, must outlive the chain or be cleared first). Its latency
         counts from now on, whether or not it has a model yet: hosts may ignore a latency that changes later

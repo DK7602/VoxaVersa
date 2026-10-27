@@ -53,7 +53,12 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   (latency is reported to the DAW and compensated automatically). An AI voice adds ~0.85 s, reported as soon
   as it is chosen, so playback and exports line up. Switching between an AI voice and a DSP-only voice changes
   the latency: some hosts (Cubase) only pick that up after you stop and restart playback, or switch the
-  plug-in off and on in its slot.
+  plug-in off and on in its slot. When the DAW stops, VoxaVersa falls silent with the other tracks instead of
+  singing out the last ~0.9 s it was still processing. While you monitor live through an AI voice you hear
+  yourself ~0.9 s late; record with the AI engine off (or *Low Latency*) and switch it on for playback.
+- **Power** is the DAW's bypass: the power button, the bypass button of the plug-in window and the channel
+  insert's bypass are the same switch. Bypassed, VoxaVersa passes your voice through with its latency kept, so
+  it stays in time.
 
 ## 3. Text to Sing
 

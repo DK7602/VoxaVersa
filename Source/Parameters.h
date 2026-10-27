@@ -9,7 +9,7 @@ namespace voxa
 namespace ParamID
 {
     // Global / IO
-    inline constexpr const char* power        = "power";
+    inline constexpr const char* bypass       = "bypass";   // the Power button, inverted; also the host's bypass
     inline constexpr const char* mode         = "mode";          // Voice Transform | Text to Sing
     inline constexpr const char* inputGain    = "inputGain";     // dB
     inline constexpr const char* outputGain   = "outputGain";    // dB

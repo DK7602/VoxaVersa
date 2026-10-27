@@ -151,11 +151,73 @@ public:
             expect (std::abs (1200.0f * std::log2 (measured / 392.0f)) < 15.0f, "measured " + juce::String (measured));
         }
 
-        beginTest ("Power off passes the (latency-aligned) input through");
+        beginTest ("After Stop the output falls silent at once; a live voice still comes through afterwards");
+        {
+            struct Head : juce::AudioPlayHead
+            {
+                bool playing = true;
+                juce::Optional<PositionInfo> getPosition() const override
+                {
+                    PositionInfo info;
+                    info.setIsPlaying (playing);
+                    return info;
+                }
+            } head;
+            VoxaVersaProcessor p;
+            p.setPlayHead (&head);
+            p.prepareToPlay (sr, block);
+            setParam (p, ParamID::reverbMix, 30.0f);   // a tail to clear too
+            const int latency = p.getLatencySamples();
+            const int played = (int) sr * 2, after = latency + (int) (sr * 0.8);
+            auto voice = test::makeVoice (sr, played + after, [] (int) { return 200.0f; });
+            auto in = voice;
+            std::fill (in.begin() + played, in.end(), 0.0f);   // the vocal track ends at Stop
+
+            auto playingPart = run (p, std::vector<float> (in.begin(), in.begin() + played));
+            head.playing = false;
+            auto stoppedPart = run (p, std::vector<float> (in.begin() + played, in.end()));
+            auto rms = [] (const std::vector<float>& x, int from, int to)
+            {
+                double e = 0.0;
+                for (int i = from; i < to; ++i) e += (double) x[(size_t) i] * x[(size_t) i];
+                return std::sqrt (e / juce::jmax (1, to - from));
+            };
+            const double before = rms (playingPart, played - (int) (sr * 0.5), played);
+            const double tail = rms (stoppedPart, (int) (sr * 0.08), juce::jmin (after, latency + (int) (sr * 0.6)));   // after the 10 ms fade
+            expect (before > 1.0e-3, "sound before Stop");
+            expect (tail < before * 3.0e-3, "after Stop: " + juce::String (juce::Decibels::gainToDecibels (tail / before), 1) + " dB");
+
+            // singing into it with the transport stopped (monitoring) is heard after the usual delay
+            auto live = run (p, std::vector<float> (voice.begin(), voice.begin() + latency + (int) sr));
+            expect (rms (live, latency + (int) (sr * 0.3), latency + (int) sr) > before * 0.1, "live voice after Stop");
+        }
+
+        beginTest ("Power is the host's bypass");
+        {
+            VoxaVersaProcessor p;
+            expect (p.getBypassParameter() != nullptr && p.getBypassParameter() == p.getState().getParameter (ParamID::bypass));
+            expectEquals (p.getBypassParameter()->getValue(), 0.0f, "not bypassed by default");
+
+            // a session saved with the old "power" parameter switched off loads bypassed
+            auto state = p.getState().copyState();
+            juce::ValueTree old ("PARAM");
+            old.setProperty ("id", "power", nullptr).setProperty ("value", 0.0f, nullptr);
+            for (auto child : state)
+                if (child.getProperty ("id").toString() == ParamID::bypass)
+                    state.removeChild (child, nullptr);
+            state.appendChild (old, nullptr);
+            juce::MemoryBlock data;
+            if (auto xml = state.createXml())
+                juce::AudioProcessor::copyXmlToBinary (*xml, data);
+            p.setStateInformation (data.getData(), (int) data.getSize());
+            expectEquals (p.getBypassParameter()->getValue(), 1.0f, "old power off -> bypassed");
+        }
+
+        beginTest ("Power off (host bypass) passes the (latency-aligned) input through");
         {
             VoxaVersaProcessor p;
             p.prepareToPlay (sr, block);
-            setParam (p, ParamID::power, 0.0f);
+            setParam (p, ParamID::bypass, 1.0f);
             const int latency = p.getLatencySamples();   // ~0.86 s with an AI voice installed for the default voice
             const int length = (int) sr + latency;
             auto in = test::makeVoice (sr, length, [] (int) { return 200.0f; });

@@ -115,7 +115,12 @@ HeaderBar::HeaderBar (EditorContext& c) : ctx (c)
     undoButton.onClick = [this] { ctx.undo.undo(); };
     redoButton.onClick = [this] { ctx.undo.redo(); };
 
-    powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (ctx.state, ParamID::power, powerButton);
+    powerAttachment = std::make_unique<juce::ParameterAttachment> (*ctx.state.getParameter (ParamID::bypass), [this] (float bypassed)
+    {
+        powerButton.setToggleState (bypassed < 0.5f, juce::dontSendNotification);
+    }, &ctx.undo);
+    powerButton.onClick = [this] { powerAttachment->setValueAsCompleteGesture (powerButton.getToggleState() ? 0.0f : 1.0f); };
+    powerAttachment->sendInitialUpdate();
 
     ctx.processor.getPresetManager().addChangeListener (this);
     updatePresetLabel();

@@ -2,6 +2,7 @@
 #include "sing/Melody.h"
 #include "sing/OfflineRenderer.h"
 #include "voices/VoiceLibrary.h"
+#include <tuple>
 
 namespace voxa::sing
 {
@@ -69,12 +70,19 @@ public:
             expect (frames > 0 && voiced == frames, "voicing must continue through a flap");
         }
 
-        beginTest ("Yod coalescence: don't you, hold you");
+        beginTest ("No yod coalescence: can't you, hold you keep their T / D (unreleased) and Y");
         {
-            const auto dontYou = plan ("don't you", 1.0, 100.0, male);
-            expect (findSegment (dontYou, Ph::CH) != nullptr && findSegment (dontYou, Ph::T) == nullptr);
-            const auto holdYou = plan ("hold you", 1.0, 100.0, male);
-            expect (findSegment (holdYou, Ph::JH) != nullptr && findSegment (holdYou, Ph::Y) == nullptr);
+            for (auto [lyric, stop, merged] : { std::tuple<const char*, Ph, Ph> { "can't you", Ph::T, Ph::CH },
+                                                { "hold you", Ph::D, Ph::JH } })
+            {
+                const auto r = plan (lyric, 1.0, 100.0, male);
+                const auto* s = findSegment (r, stop);
+                expect (s != nullptr && ! s->event.released, juce::String (lyric) + ": unreleased stop");
+                expect (findSegment (r, Ph::Y) != nullptr && findSegment (r, merged) == nullptr, lyric);
+            }
+            // other stops still release into the glide
+            const auto* k = findSegment (plan ("back you", 1.0, 100.0, male), Ph::K);
+            expect (k != nullptr && k->event.released);
         }
 
         beginTest ("Final stops: soft before a pause, unreleased before a consonant, linked into a vowel");

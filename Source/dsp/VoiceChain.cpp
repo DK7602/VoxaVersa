@@ -108,6 +108,12 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     return true;
 }
 
+void VoiceChain::clearTails()
+{
+    delay.reset();
+    reverb.reset();
+}
+
 void VoiceChain::reset()
 {
     detector.reset();
@@ -133,6 +139,8 @@ void VoiceChain::reset()
     alignNeural.clear();
     alignLead.clear();
     alignCoverage.clear();
+    alignDry.clear();
+    alignAhead.clear();
     for (auto& d : aiDoubler)
         d.clear();
     aiDoublerActive = false;

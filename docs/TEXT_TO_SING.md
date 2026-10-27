@@ -53,7 +53,8 @@ live singer will sing (melisma marks and breaths do not count), so the UI can sh
      [ði] before a vowel;
    - T and D are **flapped** between a vowel (or R) and an unstressed vowel (*better, city, little,
      party*) and at the end of a word before a vowel-initial word (*got it, what about*);
-   - *don't you, what you, hold you* coalesce to *don'-chu, wha-chu, hol-ju*;
+   - *can't you, hold you* keep their T / D, unreleased, before a clean Y (no *cantchu*, *hol-ju*: a user
+     heard the coalesced form as sloppy);
    - voiceless stops are aspirated only at the start of stressed syllables and words (not in *happy*);
      final stops are unreleased before another consonant (*good night*), released into a following
      vowel (*hold on*) and released softly - no voiced "-uh" - before a pause;

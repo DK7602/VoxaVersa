@@ -57,7 +57,7 @@ namespace
                 return p;
             };
             namespace P = ParamID;
-            power = get (P::power); mode = get (P::mode); inputGain = get (P::inputGain); outputGain = get (P::outputGain);
+            bypass = get (P::bypass); mode = get (P::mode); inputGain = get (P::inputGain); outputGain = get (P::outputGain);
             mix = get (P::mix); autoLevel = get (P::autoLevel); quality = get (P::quality); aiEngine = get (P::aiEngine);
             sourceVoice = get (P::sourceVoice);
             pitch = get (P::pitch); fineTune = get (P::fineTune); gender = get (P::gender); age = get (P::age);
@@ -78,7 +78,7 @@ namespace
             singTempo = get (P::singTempo); singSyncHost = get (P::singSyncHost); melodySource = get (P::melodySource);
         }
 
-        std::atomic<float>* power, *mode, *inputGain, *outputGain, *mix, *autoLevel, *quality, *aiEngine, *sourceVoice,
+        std::atomic<float>* bypass, *mode, *inputGain, *outputGain, *mix, *autoLevel, *quality, *aiEngine, *sourceVoice,
                           *pitch, *fineTune, *gender, *age, *tone, *style, *voiceBlend,
                           *pitchPreserve, *formantShift, *expression, *vibe, *intensity,
                           *vibratoDepth, *vibratoRate, *breath, *rasp,
@@ -235,7 +235,19 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     // Mix / gains
     dsp::AutoLevel autoLevel;
     WatermarkEmbedder watermark;
-    dsp::Smoothed inGain, outGain, mixAmount, powerFade;
+    dsp::Smoothed inGain, outGain, mixAmount, powerFade, stopFade;
+    int stopMuteLeft = 0;   // samples the output stays muted after the transport stopped
+
+    /** Output gain after the transport stops (see processBlock). */
+    float nextStopGain() noexcept
+    {
+        if (stopMuteLeft > 0 && --stopMuteLeft == 0)
+            chain.clearTails();
+        stopFade.setTarget (stopMuteLeft > 0 ? 0.0f : 1.0f);
+        if (stopMuteLeft == 0 && stopFade.value > 0.999f)
+            stopFade.reset (1.0f);
+        return stopFade.next();
+    }
     juce::AudioBuffer<float> work;      // [0]=mono source [1]=wetL [2]=wetR [3]=dry
     std::vector<float> dryDelay;
     int dryWrite = 0, dryDelaySamples = 0;
@@ -289,10 +301,13 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         const double blockRate = sampleRate;
         for (auto* s : { &inGain, &outGain, &mixAmount, &powerFade })
             s->prepare (blockRate, 20.0);
+        stopFade.prepare (blockRate, 10.0);
+        stopFade.reset (1.0f);
+        stopMuteLeft = 0;
         inGain.reset (juce::Decibels::decibelsToGain (ParamCache::v (params.inputGain)));
         outGain.reset (juce::Decibels::decibelsToGain (ParamCache::v (params.outputGain)));
         mixAmount.reset (ParamCache::v (params.mix) * 0.01f);
-        powerFade.reset (ParamCache::on (params.power) ? 1.0f : 0.0f);
+        powerFade.reset (ParamCache::on (params.bypass) ? 0.0f : 1.0f);
 
         work.setSize (4, maxBlock, false, true, false);
         dryDelay.assign ((size_t) (sampleRate * 4.0) + 8, 0.0f);
@@ -508,6 +523,13 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     if (playing && ! d.wasPlaying)
         d.liveSinger.restartLyrics();
+
+    // Stop: what is still in the pipeline (an AI voice's ~0.9 s delay) was sung before it, and the other
+    // tracks fall silent at once, so VoxaVersa does too until that has drained; then the reverb and delay
+    // tails it left are cleared (+ 0.3 s: the DSP voice's own ~0.5 s release). A voice monitored live while the
+    // transport stands still is not affected.
+    if (! playing && d.wasPlaying && ! isNonRealtime())
+        d.stopMuteLeft = getLatencySamples() + juce::roundToInt (0.3 * currentSampleRate);
     d.wasPlaying = playing;
 
     // Voice traits (keep the previous copy if the message thread is updating).
@@ -525,7 +547,7 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         : d.audioTraitsA;
     d.liveSinger.setVoice (traits);
 
-    const bool powerOn = ParamCache::on (p.power);
+    const bool powerOn = ! ParamCache::on (p.bypass);   // the Power button and the host's bypass
     d.powerFade.setTarget (powerOn ? 1.0f : 0.0f);
     d.inGain.setTarget (juce::Decibels::decibelsToGain (ParamCache::v (p.inputGain)));
     d.outGain.setTarget (juce::Decibels::decibelsToGain (ParamCache::v (p.outputGain)));
@@ -702,6 +724,15 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             d.watermark.process (wetL, wetR, n, mark);
         }
 
+        // Muted after Stop until the pipeline has drained
+        if (d.stopMuteLeft > 0 || d.stopFade.value < 1.0f)
+            for (int i = 0; i < n; ++i)
+            {
+                const float g = d.nextStopGain();
+                wetL[i] *= g;
+                wetR[i] *= g;
+            }
+
         // 5. Visual feeds
         inputScope.push (mono, n);
         {
@@ -799,6 +830,11 @@ void VoxaVersaProcessor::getStateInformation (juce::MemoryBlock& dest)
         copyXmlToBinary (*xml, dest);
 }
 
+juce::AudioProcessorParameter* VoxaVersaProcessor::getBypassParameter() const
+{
+    return apvts.getParameter (ParamID::bypass);
+}
+
 void VoxaVersaProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
@@ -806,6 +842,12 @@ void VoxaVersaProcessor::setStateInformation (const void* data, int size)
         auto tree = juce::ValueTree::fromXml (*xml);
         if (tree.hasType (apvts.state.getType()))
         {
+            // Sessions saved before the Power button became the host's bypass: "power" off = bypassed.
+            for (auto child : tree)
+                if (child.hasType ("PARAM") && child.getProperty ("id").toString() == "power")
+                    child.setProperty ("id", ParamID::bypass, nullptr)
+                         .setProperty ("value", (float) child.getProperty ("value") < 0.5f ? 1.0f : 0.0f, nullptr);
+
             apvts.replaceState (tree);
             impl->stateJustLoaded = true;
             triggerAsyncUpdate();

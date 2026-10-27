@@ -63,7 +63,7 @@ private:
     IconButton undoButton { "Undo", Icon::Undo };
     IconButton redoButton { "Redo", Icon::Redo };
     PowerButton powerButton;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAttachment;
+    std::unique_ptr<juce::ParameterAttachment> powerAttachment;   // the bypass parameter, inverted
 
     juce::Rectangle<float> presetPill, abPill, undoPill;
     std::unique_ptr<juce::AlertWindow> dialog;

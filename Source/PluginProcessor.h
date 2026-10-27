@@ -36,6 +36,9 @@ public:
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
+    /** The Power button (inverted): hosts show it as their bypass, so both always agree, and a bypassed
+        VoxaVersa keeps its latency (the dry voice stays aligned). */
+    juce::AudioProcessorParameter* getBypassParameter() const override;
 
     const juce::String getName() const override;
     bool acceptsMidi() const override { return true; }
