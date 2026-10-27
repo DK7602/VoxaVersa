@@ -24,25 +24,25 @@
   "female-theatre": "vocalset_female9",
   "female-blues": "studio_female_b",
   "female-smoky-alto": "studio_female_blend",
-  "female-latin": "vocalset_female3",
-  "female-pop": "vocalset_female6",
-  "female-afrobeats": "vocalset_female5",
-  "female-opera": "vocalset_female1",
-  "female-reggae": "vocalset_female4",
-  "female-rock": "vocalset_female8",
-  "female-edm": "vocalset_female9",
   "female-country": "vocalset_female3",
-  "female-soul": "vocalset_female7",
+  "female-opera": "vocalset_female1",
+  "female-rock": "vocalset_female8",
   "female-gospel": "vocalset_female6",
+  "female-soul": "studio_female_blend",
   "female-rap": "studio_female_b",
-  "female-jazz": "vocalset_female4",
   "female-trap": "studio_female_blend",
-  "female-kpop": "vocalset_female1",
-  "female-rnb": "vocalset_female3",
   "female-metal": "vocalset_female7",
   "female-angelic": "vocalset_female5",
+  "female-rnb": "studio_female_a",
+  "female-afrobeats": "studio_female_blend",
   "female-indie": "studio_female_a",
+  "female-jazz": "studio_female_b",
+  "female-reggae": "studio_female_b",
+  "female-kpop": "studio_female_a",
+  "female-latin": "studio_female_b",
+  "female-pop": "studio_female_blend",
   "female-lofi": "studio_female_blend",
+  "female-edm": "studio_female_a",
   "neutral-whisper": "vocalset_male11"
  },
  "costs": {
@@ -70,25 +70,25 @@
   "female-theatre": 1.182,
   "female-blues": 1.321,
   "female-smoky-alto": 1.908,
-  "female-latin": 2.1,
-  "female-pop": 2.107,
-  "female-afrobeats": 2.625,
+  "female-country": 2.709,
   "female-opera": 2.943,
-  "female-reggae": 3.065,
   "female-rock": 3.141,
-  "female-edm": 3.388,
-  "female-country": 3.509,
-  "female-soul": 4.03,
-  "female-gospel": 4.264,
+  "female-gospel": 3.464,
+  "female-soul": 4.336,
   "female-rap": 4.418,
-  "female-jazz": 4.605,
-  "female-trap": 4.605,
-  "female-kpop": 4.721,
-  "female-rnb": 5.287,
-  "female-metal": 6.541,
-  "female-angelic": 6.624,
-  "female-indie": 8.002,
-  "female-lofi": 10.387,
+  "female-trap": 5.405,
+  "female-metal": 5.741,
+  "female-angelic": 5.824,
+  "female-rnb": 6.394,
+  "female-afrobeats": 8.28,
+  "female-indie": 8.802,
+  "female-jazz": 9.295,
+  "female-reggae": 10.218,
+  "female-kpop": 10.985,
+  "female-latin": 11.994,
+  "female-pop": 15.129,
+  "female-lofi": 16.787,
+  "female-edm": 20.065,
   "neutral-whisper": 0.0
  },
  "singers": [
@@ -599,15 +599,24 @@
  ],
  "factory_voices": {
   "studio_female_a": [
-   "female-indie"
+   "female-edm",
+   "female-indie",
+   "female-kpop",
+   "female-rnb"
   ],
   "studio_female_b": [
    "female-blues",
-   "female-rap"
+   "female-jazz",
+   "female-latin",
+   "female-rap",
+   "female-reggae"
   ],
   "studio_female_blend": [
+   "female-afrobeats",
    "female-lofi",
+   "female-pop",
    "female-smoky-alto",
+   "female-soul",
    "female-trap"
   ],
   "studio_male_a": [
@@ -615,36 +624,26 @@
    "male-rnb"
   ],
   "vocalset_female1": [
-   "female-kpop",
    "female-opera"
   ],
   "vocalset_female2": [],
   "vocalset_female3": [
-   "female-country",
-   "female-latin",
-   "female-rnb"
+   "female-country"
   ],
-  "vocalset_female4": [
-   "female-jazz",
-   "female-reggae"
-  ],
+  "vocalset_female4": [],
   "vocalset_female5": [
-   "female-afrobeats",
    "female-angelic"
   ],
   "vocalset_female6": [
-   "female-gospel",
-   "female-pop"
+   "female-gospel"
   ],
   "vocalset_female7": [
-   "female-metal",
-   "female-soul"
+   "female-metal"
   ],
   "vocalset_female8": [
    "female-rock"
   ],
   "vocalset_female9": [
-   "female-edm",
    "female-theatre"
   ],
   "vocalset_male1": [
