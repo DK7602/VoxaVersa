@@ -66,8 +66,11 @@ def cmd_setup(args):
     pitch = os.path.join(args.work, "fcpe.onnx")
     if not os.path.exists(pitch):
         log("exporting the AI pitch tracker (once, ~1 minute)")
-        subprocess.run([args.python, os.path.join(HERE, "export_pitch.py"), "--out", pitch + ".part.onnx"], check=True)
-        os.replace(pitch + ".part.onnx", pitch)
+        p = subprocess.run([args.python, os.path.join(HERE, "export_pitch.py"), "--out", pitch + ".part.onnx"])
+        if p.returncode == 0:
+            os.replace(pitch + ".part.onnx", pitch)
+        else:
+            log("the AI pitch tracker could not be exported (training is not affected); VoxaVersa works without it")
     log("setup complete")
 
 

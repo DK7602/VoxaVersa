@@ -44,6 +44,9 @@ def install():
             "soundfile==0.14.0 av==15.1.0 ffmpeg-python==0.2.0 praat-parselmouth==0.4.7 transformers==4.49.0 "
             "huggingface_hub==0.36.2 tensorboard==2.21.0 matplotlib==3.11.2 scikit-learn==1.9.1 tqdm "
             "onnx==1.17.0 onnxruntime==1.20.1 speechbrain==1.0.3" % PY, show=False)
+    # the AI pitch tracker's export (export_pitch.py); also for runtimes installed before it was added
+    if subprocess.run([PY, "-c", "import torchfcpe"], capture_output=True).returncode != 0:
+        run("uv pip install -q --python %s torchfcpe==0.0.4 einops==0.8.2 local-attention==1.11.2" % PY, show=False)
     out = run("%s -c \"import torch, speechbrain; print(torch.__version__, torch.cuda.is_available())\"" % PY, show=False)
     print("PyTorch", out.strip().splitlines()[-1])
     if not out.strip().endswith("True"):
