@@ -205,8 +205,15 @@ void PitchDetector::analyseFrame() noexcept
                 if (cmnd[(size_t) t] < cmnd[(size_t) doubled])
                     doubled = t;
 
+            // dips compared between whole lags: a high note's period falls between two of them
+            auto dipAt = [this] (int t)
+            {
+                const float a = cmnd[(size_t) t - 1], b = cmnd[(size_t) t], c = cmnd[(size_t) t + 1];
+                const float curvature = a - 2.0f * b + c;
+                return curvature > 1.0e-9f ? juce::jmax (0.0f, b - (a - c) * (a - c) / (8.0f * curvature)) : b;
+            };
             const float above = std::log2 ((float) decimatedRate / (float) tau) - registerLog2;
-            if (above > 0.5f && cmnd[(size_t) doubled] < 0.1f && cmnd[(size_t) doubled] < 0.5f * cmnd[(size_t) tau])
+            if (above > 0.5f && dipAt (doubled) < 0.1f && dipAt (doubled) < 0.5f * dipAt (tau))
                 tau = doubled;
         }
 

@@ -55,6 +55,7 @@ private:
         double attackFrom = 0.0;        // start of the onset consonants (scoop region)
         double voiceEnd = 0.0;          // end of voicing for phrase-final notes
         bool phraseEnd = false;
+        bool stressed = false;          // first note of a stressed syllable (scoops land on these)
     };
 
     /** A syllable plus the melisma notes it is held through. */

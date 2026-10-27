@@ -118,15 +118,22 @@ stress, so unstressed syllables are sung about 1 dB softer than their note veloc
 | `breathiness` | Aspiration noise gated by the glottal cycle (HNR ≈ 29 → 17 → 8 → −1 dB for 0 / 0.4 / 0.6 / 0.9), laxer glottal pulses, louder breaths; above 0.5 the voicing itself fades towards a whisper |
 | `rasp` | Period doubling (subharmonic growl), irregular weak pulses, extra jitter/shimmer, slightly pressed phonation |
 | `tiltDb` | Glottal pulse shape (brighter = tenser) |
-| `vibratoRateHz/DepthCents/OnsetMs` | Vibrato that fades in after the onset time on each held note, with slow rate/depth wander |
-| `scoopCents`, `scoopMs` | Pitch approach from below on fresh attacks |
-| `jitterCents` | Slow pitch drift, cycle-to-cycle jitter and a small fall at phrase ends (0 = robot-steady) |
+| `vibratoRateHz/DepthCents/OnsetMs` | Vibrato only on held notes (≥ 0.5 s), blooming in their second half and slightly different every cycle; phrase-final notes always, others about half the time and lighter. Short notes are sung straight |
+| `scoopCents`, `scoopMs` | How freely the voice bends notes: scoops up into fresh attacks (≈1.8 × scoopCents deep on stressed syllables, less on weak ones), dips into some rising stressed notes, falls through below lower notes and decorates some held notes (soulful styles), and falls off most phrase ends |
+| `jitterCents` | Slow pitch drift and cycle-to-cycle jitter (0 = robot-steady) |
 | `singPortamentoMs` | Glide time between legato notes (centred just before the beat, with a damped overshoot on leaps) |
 | `singLegato` | Gaps between syllables (detached ↔ fully joined) and release times |
 | `singRhythmBusy` | Syllable density, rhythmic grid, phrase-final lengths, repeated-note tendency, consonant speed |
 
 The remaining traits (EQ, presence, air, nasal, "vibe" effects) are applied by the voice chain
 that processes the guide, as for any other input.
+
+The pitch performance follows contemporary studio lead vocals rather than a synthesizer. A regular
+vibrato on every note, gentle attacks and held phrase ends (as earlier versions sang) read as
+synthesized, Vocaloid-like singing, which listeners heard as an East Asian singing style even with
+native English pronunciation. Measured with RMVPE on R&B lead vocals: about half of their sung time is
+steady pitch, attacks start 0.3-3 semitones low, vibrato appears on long notes only, and quick dips and
+falls between notes are common.
 
 Velocity sets loudness (up to −16 dB for soft notes) and brightness (glottal tension).
 

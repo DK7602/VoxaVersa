@@ -65,11 +65,19 @@ PitchFrame YinPitchTracker::estimate (const float* x)
     }
 
     // Octave check: when a strong 2nd harmonic (e.g. on a formant) makes half the period look
-    // periodic enough, the full period is still clearly *more* periodic.
+    // periodic enough, the full period is still clearly *more* periodic. The dips are compared between
+    // whole lags (parabolic minimum): a high note's period falls between two lags, so its whole-lag
+    // value understates how periodic it is, while twice the period lands nearer a whole lag.
+    auto dipAt = [this] (int tau)
+    {
+        const float a = difference[(size_t) tau - 1], b = difference[(size_t) tau], c = difference[(size_t) tau + 1];
+        const float curvature = a - 2.0f * b + c;
+        return curvature > 1.0e-9f ? juce::jmax (0.0f, b - (a - c) * (a - c) / (8.0f * curvature)) : b;
+    };
     for (int pass = 0; pass < 2; ++pass)
     {
         const int target = 2 * best;
-        if (target + 2 >= lastLag || difference[(size_t) best] < 0.02f)
+        if (target + 2 >= lastLag || best <= 1 || dipAt (best) < 0.05f)
             break;
 
         int local = target;
@@ -77,7 +85,7 @@ PitchFrame YinPitchTracker::estimate (const float* x)
             if (difference[(size_t) tau] < difference[(size_t) local])
                 local = tau;
 
-        if (difference[(size_t) local] >= 0.5f * difference[(size_t) best])
+        if (dipAt (local) >= 0.3f * dipAt (best))
             break;
         best = local;
     }

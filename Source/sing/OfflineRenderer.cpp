@@ -427,6 +427,7 @@ void OfflineRenderer::plan()
         for (int n = o.firstNote; n <= o.lastNote; ++n)
         {
             auto& note = notes[(size_t) n];
+            note.stressed = n == o.firstNote && o.sung.stress > 0;
             if (n > o.firstNote || (i > 0 && occ[(size_t) i - 1].connected))
             {
                 const auto& prev = notes[(size_t) n - 1];
@@ -542,8 +543,44 @@ void OfflineRenderer::buildPitchTrack (int numFrames, double frameSeconds, std::
             midi[(size_t) k] = note.midi;
     }
 
-    const float scoop = setup.scoopSemis;
-    const double scoopTau = setup.scoopSeconds / 3.0;
+    // The performance follows contemporary (pop / R&B / soul) singers rather than a synthesizer: notes are
+    // sung straight and only long notes bloom into vibrato late and unevenly; stressed attacks scoop up from
+    // well below; phrase ends fall off; and no note is tuned to the cent. Measured on studio lead vocals:
+    // ~50 % of their sung time is steady pitch (a regular vibrato on every note gave 72 %), attacks start
+    // 0.3-3 semitones low, long notes carry 1-2 semitone vibrato, and melodic movement is fast.
+    juce::Random random ((juce::int64) seed * 7919 + 17);
+    const float scoop = juce::jlimit (0.0f, 3.0f, setup.scoopSemis * 1.8f);
+    const double scoopRise = juce::jlimit (0.06, 0.25, setup.scoopSeconds * (0.6 + 0.2 * scoop));
+    const float fall = juce::jlimit (0.0f, 2.5f, (setup.scoopSemis - 0.15f) * 2.0f);
+
+    const float style = juce::jlimit (0.0f, 1.0f, scoop / 1.5f);   // how freely the genre bends notes (R&B ~0.7)
+
+    for (size_t n = 0; n < notes.size(); ++n)
+    {
+        const auto& note = notes[n];
+
+        // A note is never quite on the grid, and a held one sags or lifts a little as it goes on.
+        const double offset = (random.nextDouble() - 0.5) * 0.06;
+        const double bend = (random.nextDouble() - 0.5) * (0.1 + 0.12 * style);
+        const double length = juce::jmax (0.05, note.end - note.start);
+        for (int k = frameAt (note.start); k < frameAt (note.end); ++k)
+        {
+            const double x = (timeOf (k) - note.start) / length;
+            midi[(size_t) k] += (float) (offset + bend * smoothstep ((x - 0.2) / 0.8));
+        }
+
+        // Soulful styles decorate a held note now and then with a quick dip to the note below and back.
+        if (style > 0.3f && length >= 0.6 && ! note.phraseEnd && random.nextDouble() < 0.35 * style)
+        {
+            const double at = note.start + length * (0.35 + 0.3 * random.nextDouble());
+            const double dip = 1.0 + random.nextDouble();
+            for (int k = frameAt (at); k < frameAt (at + 0.14); ++k)
+            {
+                const double x = (timeOf (k) - at) / 0.14;
+                midi[(size_t) k] -= (float) (dip * std::sin (juce::MathConstants<double>::pi * x));
+            }
+        }
+    }
 
     for (size_t n = 0; n < notes.size(); ++n)
     {
@@ -578,65 +615,103 @@ void OfflineRenderer::buildPitchTrack (int numFrames, double frameSeconds, std::
                         midi[(size_t) k] += (float) (amount * x * std::exp (1.0 - x));
                 }
             }
+
+            // Falling to a lower note, soulful singers pass through below it and come back up.
+            if (delta <= -2.0 && style > 0.3f && random.nextDouble() < 0.6 * style)
+            {
+                const double under = (0.4 + 0.6 * random.nextDouble()) * style;
+                const double t0 = note.start + 0.3 * g;
+                for (int k = frameAt (t0); k < numFrames; ++k)
+                {
+                    const double x = (timeOf (k) - t0) / 0.07;
+                    if (x > 6.0 || timeOf (k) > note.end)
+                        break;
+                    if (x > 0.0)
+                        midi[(size_t) k] -= (float) (under * x * std::exp (1.0 - x));
+                }
+            }
+
+            // Rising onto a stressed syllable, the voice often dips below the note first and slides up into it.
+            if (note.stressed && delta > 0.0 && scoop > 0.0f && random.nextDouble() < 0.4)
+            {
+                const double depth = 0.5 * scoop * (0.7 + 0.6 * random.nextDouble());
+                for (int k = frameAt (note.start); k < numFrames; ++k)
+                {
+                    const double t = timeOf (k);
+                    if (t > note.start + scoopRise || t > note.end)
+                        break;
+                    midi[(size_t) k] -= (float) (depth * (1.0 - smoothstep ((t - note.start) / scoopRise)));
+                }
+            }
         }
         else if (scoop > 0.0f)
         {
-            // Scoop up into a fresh attack (the onset consonants sit at the scooped pitch).
+            // Scoop up into a fresh attack (the onset consonants sit at the scooped pitch): deep on stressed
+            // syllables, slight on weak ones, never the same twice.
+            const double depth = scoop * (note.stressed ? 1.0 : 0.4) * (0.7 + 0.6 * random.nextDouble());
             for (int k = frameAt (note.attackFrom); k < numFrames; ++k)
             {
                 const double t = timeOf (k);
-                if (t > note.start + 5.0 * scoopTau || t > note.end)
+                if (t > note.start + scoopRise || t > note.end)
                     break;
-                const double amount = t < note.start ? 1.0 : std::exp (-(t - note.start) / scoopTau);
-                midi[(size_t) k] -= (float) (scoop * amount);
+                const double amount = t < note.start ? 1.0 : 1.0 - smoothstep ((t - note.start) / scoopRise);
+                midi[(size_t) k] -= (float) (depth * amount);
             }
         }
 
-        if (note.phraseEnd && setup.fallSemis > 0.0f)
+        // Most phrase endings fall away as the voice lets go.
+        if (note.phraseEnd && fall > 0.0f && random.nextDouble() < 0.75)
         {
-            const double f0 = note.voiceEnd - 0.08;
+            const double amount = fall * (0.7 + 0.5 * random.nextDouble());
+            const double f0 = note.voiceEnd - 0.12;
             for (int k = frameAt (f0); k < numFrames; ++k)
             {
                 const double t = timeOf (k);
                 if (t > note.voiceEnd + 0.3)
                     break;
-                midi[(size_t) k] -= (float) (setup.fallSemis * smoothstep ((t - f0) / 0.12));
+                midi[(size_t) k] -= (float) (amount * smoothstep ((t - f0) / 0.18));
             }
         }
     }
 
-    // Vibrato with delayed onset and slight rate/depth wander.
-    juce::Random random ((juce::int64) seed * 7919 + 17);
+    // Vibrato only on held notes, blooming in their second half; every cycle a little different in rate and
+    // depth. Phrase-final notes always get it, others about half the time and lighter.
     const double depth = setup.vibratoDepthSemis;
     if (depth > 0.0)
     {
-        double phase = 0.0;
-        const double rateWanderPhase = random.nextDouble() * juce::MathConstants<double>::twoPi;
-        const double depthWanderPhase = random.nextDouble() * juce::MathConstants<double>::twoPi;
-
         for (size_t n = 0; n < notes.size(); ++n)
         {
             const auto& note = notes[n];
             const bool nextLegato = n + 1 < notes.size() && notes[n + 1].legatoFromPrevious;
-            const double vStart = note.start + setup.vibratoOnsetSeconds;
-            const double vEnd = nextLegato ? notes[n + 1].start - 0.4 * notes[n + 1].glide
-                                           : (note.phraseEnd ? note.voiceEnd + 0.1 : note.end);
-            if (vEnd - vStart < 0.15)
+            const double held = (nextLegato ? notes[n + 1].start - 0.4 * notes[n + 1].glide
+                                            : (note.phraseEnd ? note.voiceEnd : note.end)) - note.start;
+            const bool chosen = note.phraseEnd || random.nextDouble() < 0.5;
+            if (held < 0.5 || ! chosen)
                 continue;
 
-            phase = 0.0;
+            const double vStart = note.start + juce::jmax ((double) setup.vibratoOnsetSeconds, 0.4 * held);
+            const double vEnd = note.start + held + (note.phraseEnd && ! nextLegato ? 0.1 : 0.0);
+            if (vEnd - vStart < 0.2)
+                continue;
+
+            const double noteDepth = depth * (note.phraseEnd ? 1.0 : 0.6);
+            double phase = 0.0, cycleRate = setup.vibratoRateHz, cycleDepth = noteDepth;
             for (int k = frameAt (vStart); k < numFrames; ++k)
             {
                 const double t = timeOf (k);
                 if (t >= vEnd)
                     break;
 
-                const double fadeIn = smoothstep ((t - vStart) / 0.3);
+                const double fadeIn = smoothstep ((t - vStart) / 0.4);
                 const double fadeOut = nextLegato ? 1.0 - smoothstep ((t - (vEnd - 0.07)) / 0.07) : 1.0;
-                const double rate = setup.vibratoRateHz * (1.0 + 0.05 * std::sin (0.7 * t + rateWanderPhase));
-                const double d = depth * (1.0 + 0.15 * std::sin (1.3 * t + depthWanderPhase));
-                phase += juce::MathConstants<double>::twoPi * rate * frameSeconds;
-                midi[(size_t) k] += (float) (d * fadeIn * fadeOut * std::sin (phase));
+                phase += juce::MathConstants<double>::twoPi * cycleRate * frameSeconds;
+                if (phase >= juce::MathConstants<double>::twoPi)
+                {
+                    phase -= juce::MathConstants<double>::twoPi;
+                    cycleRate = setup.vibratoRateHz * (0.93 + 0.14 * random.nextDouble());
+                    cycleDepth = noteDepth * (0.75 + 0.5 * random.nextDouble());
+                }
+                midi[(size_t) k] += (float) (cycleDepth * fadeIn * fadeOut * std::sin (phase));
             }
         }
     }
@@ -650,7 +725,7 @@ void OfflineRenderer::buildPitchTrack (int numFrames, double frameSeconds, std::
             freq[i] = (0.6 + random.nextDouble() * 0.8) * (1 << i);
             ph[i] = random.nextDouble() * juce::MathConstants<double>::twoPi;
         }
-        const double amp = setup.driftSemis * 0.8;
+        const double amp = setup.driftSemis * 0.8 + 0.015;
         for (int k = 0; k < numFrames; ++k)
         {
             const double t = timeOf (k);
