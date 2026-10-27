@@ -97,13 +97,15 @@ def download(url, dst, tries=6):
 
 # ------------------------------------------------------------------------------------------------- stages
 
-def fetch(args, raw):
+def fetch(args, raw, vocals):
+    """Downloads the songs not separated yet (the downloads live on the session's local disk, the separated
+    voices on Drive: after a disconnect only the songs still to separate are fetched again)."""
     rows = list(csv.DictReader(open(args.sources, encoding="utf-8")))[: args.limit or None]
     os.makedirs(raw, exist_ok=True)
     failed = []
     for i, r in enumerate(rows):
         dst = os.path.join(raw, r["file"])
-        if os.path.exists(dst):
+        if os.path.exists(dst) or os.path.exists(os.path.join(vocals, os.path.splitext(r["file"])[0] + ".flac")):
             continue
         status(args.work, "military-band singers: downloading song %d of %d" % (i + 1, len(rows)))
         if not download(r["url"], dst):
@@ -339,10 +341,8 @@ def cmd_run(args):
     # the separated voices are the expensive part: kept on Drive, so a disconnect never repeats them
     vocals = os.path.join(state, "vocals")
     try:
-        if not done(state, "fetch"):
-            fetch(args, raw)
-            mark(state, "fetch")
         if not done(state, "separate"):
+            fetch(args, raw, vocals)
             separate(args, raw, vocals)
             mark(state, "separate")
             shutil.rmtree(raw, ignore_errors=True)
