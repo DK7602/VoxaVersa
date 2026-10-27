@@ -6,8 +6,10 @@ each step is safe to repeat.
 
     colab_queue.py setup --work W --rvc /content/rvc --python PY     RVC + base models; RVC's logs/ (the
                                                                      experiments) linked into W; ONNX encoder
-    colab_queue.py data  --work W --kit KIT.zip [--vocalset]         training data kit -> W/data; VocalSet
-                                                                     downloaded and cleaned -> W/data
+    colab_queue.py data  --work W --kit KIT.zip [--vocalset] [--military]
+                                                                     training data kit -> W/data; VocalSet
+                                                                     downloaded and cleaned -> W/data; the
+                                                                     military-band singers (military_test.py)
     colab_queue.py queue --work W --rvc ... --python ... [--vocalset] [--precision mixed|full] [--batch 8]
                                                                      writes W/queue.json for train_queue.py
 
@@ -113,14 +115,52 @@ def cmd_data(args):
             log("VocalSet (20 free singers) is being downloaded and cleaned in the background, ~30 - 60 minutes; "
                 "training starts now with the singers in the kit")
 
+    if args.military:
+        if os.path.exists(os.path.join(args.work, "military", ".pick_done")):
+            log("military-band singers already prepared (report: queue/military/report.md)")
+        elif job_running(args.work, "military"):
+            log("military-band singers are still being prepared in the background (progress: step 6)")
+        else:
+            start_job(args, "military", ["--rvc", args.rvc])
+            log("military-band singers (public-domain US Air Force and Navy band recordings) are being downloaded, "
+                "separated from the band and sorted by singer in the background, ~1 - 2 hours; the best male and "
+                "female singer then go to the front of the training queue")
 
-def vocalset_job_running(work):
+
+def start_job(args, name, extra=()):
+    """Runs `colab_queue.py <name>` in the background, logging to colab_logs/<name>.log."""
+    os.makedirs(os.path.join(args.work, "colab_logs"), exist_ok=True)
+    logf = open(os.path.join(args.work, "colab_logs", name + ".log"), "a")
+    p = subprocess.Popen([sys.executable, os.path.abspath(__file__), name, "--work", args.work, "--python", args.python,
+                          "--scratch", args.scratch] + list(extra),
+                         stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    with open(os.path.join(args.work, "colab_logs", name + ".pid"), "w") as f:
+        f.write(str(p.pid))
+
+
+def job_running(work, name):
     try:
-        pid = int(open(os.path.join(work, "colab_logs", "vocalset.pid")).read().strip())
+        pid = int(open(os.path.join(work, "colab_logs", name + ".pid")).read().strip())
         os.kill(pid, 0)
         return b"colab_queue.py" in open("/proc/%d/cmdline" % pid, "rb").read()
     except (OSError, ValueError):
         return False
+
+
+def cmd_military(args):
+    """Background job: the military-band singer test (military_test.py), then its singers join the queue."""
+    p = subprocess.run([sys.executable, os.path.join(HERE, "military_test.py"), "run", "--work", args.work,
+                        "--rvc", args.rvc, "--scratch", args.scratch])
+    if p.returncode != 0:
+        sys.exit(p.returncode)
+    qargs = load(os.path.join(args.work, "colab_queue_args.json"))
+    if qargs:
+        write_queue(argparse.Namespace(**qargs))
+        subprocess.run([qargs["python"], os.path.join(HERE, "train_queue.py"), "resume", "--work", args.work])
+
+
+def vocalset_job_running(work):
+    return job_running(work, "vocalset")
 
 
 def set_vocalset_status(work, text):
@@ -257,19 +297,25 @@ def write_queue(args):
         return os.path.isdir(os.path.join(data, v["dataset"]))
 
     voices = [presentation(v) for v in voices if available(v)]
+    # the military-band singers (military_test.py), once prepared: a test, so they go before the other new singers
+    military = [v for v in (load(os.path.join(data, "voices_military.json")) or {}).get("voices", [])
+                if os.path.isdir(os.path.join(data, v["dataset"]))]
+    voices += military
     if args.only:
         voices = [v for v in voices if v["name"] in args.only]
     # voices already started keep going first, so adding singers later never interrupts one
     state = load(os.path.join(args.work, "queue_state.json")) or {}
     started = [v for v in voices if state.get(v["name"], {}).get("status") not in (None, "pending")]
-    voices = started + alternate_genders([v for v in voices if v not in started], started, state)
+    first = [v for v in voices if v in military and v not in started]
+    voices = started + first + alternate_genders([v for v in voices if v not in started and v not in first], started, state)
     q = {
         "rvc_dir": args.rvc, "python": args.python, "device": "cuda", "amp": args.precision == "mixed",
         "batch": args.batch, "threads": 2, "max_threads": 2, "ckpt_every": args.ckpt_every,
         "min_epochs": 100, "max_epochs": 300, "eval_every": 10, "patience": 3,
         "encoder": os.path.join(args.work, "contentvec-768.onnx"), "data_root": data,
         "install": False, "cleanup_finished": True, "ecapa_dir": "/content/ecapa_model",
-        "status_extra": os.path.join(args.work, "colab_vocalset_status.txt"), "voices": voices,
+        "status_extra": [os.path.join(args.work, "colab_vocalset_status.txt"),
+                         os.path.join(args.work, "colab_military_status.txt")], "voices": voices,
     }
     path = os.path.join(args.work, "queue.json")
     tmp = path + ".tmp"
@@ -290,6 +336,8 @@ def main():
     d.add_argument("--work", required=True)
     d.add_argument("--kit", required=True)
     d.add_argument("--vocalset", action="store_true")
+    d.add_argument("--military", action="store_true", help="also the military-band singer test (military_test.py)")
+    d.add_argument("--rvc", default="/content/rvc")
     d.add_argument("--python", default=sys.executable, help="interpreter with numpy/scipy/soundfile (prepare_dataset.py)")
     d.add_argument("--scratch", default="/content/scratch", help="local (not Drive) folder for the raw download")
     vs = sub.add_parser("vocalset", help="(internal) background VocalSet download + cleaning")
@@ -297,6 +345,11 @@ def main():
     vs.add_argument("--python", default=sys.executable)
     vs.add_argument("--scratch", default="/content/scratch")
     vs.add_argument("--singers", nargs="*", help="(testing) only these VocalSet singers")
+    mj = sub.add_parser("military", help="(internal) background military-band singer test")
+    mj.add_argument("--work", required=True)
+    mj.add_argument("--python", default=sys.executable)
+    mj.add_argument("--scratch", default="/content/scratch")
+    mj.add_argument("--rvc", default="/content/rvc")
     q = sub.add_parser("queue")
     q.add_argument("--work", required=True)
     q.add_argument("--rvc", required=True)
@@ -307,7 +360,7 @@ def main():
     q.add_argument("--ckpt-every", type=int, default=5)
     q.add_argument("--only", nargs="*", help="train only these voices (names from voices.json)")
     args = p.parse_args()
-    {"setup": cmd_setup, "data": cmd_data, "queue": cmd_queue, "vocalset": cmd_vocalset}[args.cmd](args)
+    {"setup": cmd_setup, "data": cmd_data, "queue": cmd_queue, "vocalset": cmd_vocalset, "military": cmd_military}[args.cmd](args)
 
 
 if __name__ == "__main__":

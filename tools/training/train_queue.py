@@ -213,9 +213,11 @@ def write_status(w, note=None):
                   "| Memory | %.1f GB RSS%s |" % (v.get("rss_gb", 0), (" (cap %.1f GB address space)" % v["mem_limit_gb"]) if v.get("mem_limit_gb") else ""),
                   "| Last losses | %s |" % v.get("losses", "-"),
                   "| Heartbeat | %s UTC (pid %s) |" % (v.get("time"), v.get("pid")), ""]
-    extra = cfg.get("status_extra")      # e.g. Colab: the background VocalSet download
-    if extra and os.path.exists(extra):
-        lines += ["VocalSet singers: %s" % open(extra, encoding="utf-8").read().strip(), ""]
+    extras = cfg.get("status_extra") or []   # e.g. Colab: the background VocalSet download, the military-band test
+    for extra in [extras] if isinstance(extras, str) else extras:
+        if os.path.exists(extra):
+            text = open(extra, encoding="utf-8").read().strip()
+            lines += [("VocalSet singers: " + text) if "vocalset" in os.path.basename(extra) else text, ""]
     lines += ["## Queue", "", "| # | Voice | Status | Epoch | Best eval (epoch: val mel, similarity) | Last eval |", "|---|---|---|---|---|---|"]
     for i, v in enumerate(cfg["voices"]):
         s = st.get(v["name"], {})

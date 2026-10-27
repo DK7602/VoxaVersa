@@ -56,9 +56,10 @@ def setup(work):
     print("OK - trainer ready")
 
 
-def data(work, kit, vocalset=True, precision="mixed", batch=8):
+def data(work, kit, vocalset=True, precision="mixed", batch=8, military=True):
     flag = "--vocalset" if vocalset else ""
-    run("%s %s/colab_queue.py data --work %s --kit '%s' --python %s %s" % (PY, TOOLS, work, kit, PY, flag))
+    run("%s %s/colab_queue.py data --work %s --kit '%s' --python %s --rvc %s %s %s"
+        % (PY, TOOLS, work, kit, PY, RVC, flag, "--military" if military else ""))
     run("%s %s/colab_queue.py queue --work %s --rvc %s --python %s --precision %s --batch %d %s"
         % (PY, TOOLS, work, RVC, PY, precision, batch, flag))
     print("OK - training data ready")
@@ -74,12 +75,25 @@ def train(work, every=120):
         clear_output(wait=True)
         print(time.strftime("%H:%M:%S UTC"), "\n")
         print(st.split("Resume (idempotent)")[0])
-        if "queue complete" in st or "supervisor: not running" in st:
+        if ("queue complete" in st or "supervisor: not running" in st) and not background_jobs(work):
             try:
                 print("--- supervisor log ---\n" + open(work + "/queue_logs/supervisor.log").read()[-1500:])
             except OSError:
                 pass
             break
+
+
+def background_jobs(work):
+    """VocalSet or the military-band test still preparing singers: they add them to the queue and restart it."""
+    running = []
+    for name in ("vocalset", "military"):
+        try:
+            pid = int(open(os.path.join(work, "colab_logs", name + ".pid")).read().strip())
+            os.kill(pid, 0)
+            running.append(name)
+        except (OSError, ValueError):
+            pass
+    return running
 
 
 def results(work):
@@ -98,3 +112,9 @@ def results(work):
     table = os.path.join(work, "factory_assignment.md")
     if os.path.exists(table):
         display(Markdown(open(table).read()))
+    report = os.path.join(work, "military", "report.md")
+    if os.path.exists(report):
+        display(Markdown(open(report).read()))
+        for wav in sorted(glob.glob(os.path.join(work, "military", "previews", "*.wav"))):
+            print(os.path.basename(wav))
+            display(Audio(wav))

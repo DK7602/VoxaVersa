@@ -362,6 +362,7 @@ you can, or use it as the timbre and let VoxaVersa's input performance supply th
 | [RVC WebUI](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) at commit `81eed5e` (release 2.3.260718 + fixes) | slicing, f0, features, training code, model definitions | MIT |
 | Pretrained v2 base (`f0G40k/f0D40k`, `f0G48k/f0D48k`), RMVPE (`rmvpe.pt`), ContentVec/HuBERT (`hubert_base/`, = RVC's `hubert_base.pt`) from [lj1995/VoiceConversionWebUI](https://huggingface.co/lj1995/VoiceConversionWebUI) at revision `e6d0c1a` | training base, pitch, content features | MIT (repository licence); ContentVec itself is MIT |
 | `contentvec-768.onnx` made by `export_encoder.py` | VoxaVersa's content encoder | MIT (derived from the above) |
+| BS-Roformer vocals model (viperx, `model_bs_roformer_ep_317_sdr_12.9755`, UVR public models) and Mel-Band-Roformer de-reverb (anvuew, GPL-3.0) via the RVC WebUI's `tools/pymss` | the military-band test only: separating singers from band recordings (not shipped) | as published by their authors |
 | [FCPE](https://github.com/CNChTu/FCPE) (`torchfcpe` 0.0.4, bundled `fcpe_c_v001` weights) -> `fcpe.onnx` made by `export_pitch.py` | the AI voices' pitch tracker | MIT |
 | [SpeechBrain](https://github.com/speechbrain/speechbrain) + [`speechbrain/spkrec-ecapa-voxceleb`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) | singer clustering only (not shipped) | Apache-2.0 (model trained on VoxCeleb) |
 | PyTorch, transformers, ONNX, ONNX Runtime, librosa, NumPy, SciPy | tooling | BSD / Apache-2.0 / MIT / ISC |

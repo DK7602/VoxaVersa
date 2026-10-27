@@ -37,6 +37,17 @@ just faster: about 1 - 3 hours per singer instead of 14 - 45.
 5. Step 6 refreshes every 2 minutes: which singer is training, its epoch, the speed, and the time left.
    Leave the browser tab open.
 
+**Military-band singers (a test, on by default).** Step 5 also starts a second background job: it downloads
+about 90 songs by US Air Force and Navy band groups from Wikimedia Commons (recordings made by service members
+on duty are public domain in the US), separates the voice from the band and removes its reverb (two
+Roformer separation models, on the GPU), cuts clean solo clips (sections with backing harmonies are left out),
+groups them by singer and puts the male and the female singer with the most clean minutes (at least 10) at the
+front of the queue as **Band Male 1** and **Band Female 1**. It takes about 1 - 2 hours next to training; the
+line "military-band singers:" in step 6 shows how far it is. Afterwards *My Drive > VoxaVersa > queue >
+military* holds `report.md` (every singer found: minutes, songs, pitch, male/female) and 20 s previews, which
+step 7 also plays. The singers stay unnamed; many songs are covers, but only the voice is used. If Wikimedia
+refuses downloads for a while, the job stops and the next Run all continues it.
+
 **When Colab disconnects** (free accounts get a few GPU hours a day, and Colab stops idle sessions): nothing is
 lost except the minutes since the last checkpoint (saved to Drive every 5 epochs, and before every quality
 check). Come back later, open the notebook and do **Runtime > Run all** again. It continues where it stopped.
@@ -56,7 +67,8 @@ singers first), after the singer already in training.
 | `PRECISION` | mixed | RVC's standard GPU training (fp16 mixed precision). *full* = fp32 like the CPU trainer, ~2x slower. |
 | `BATCH_SIZE` | 8 | RVC's usual GPU batch. Out of GPU memory: the trainer halves it by itself. |
 
-**Google Drive space:** about 5 - 8 GB while training (VocalSet 1.7 GB, the singer in training ~1.7 GB,
+**Google Drive space:** about 5 - 8 GB while training, plus ~1 GB for the military-band test's separated
+voices (VocalSet 1.7 GB, the singer in training ~1.7 GB,
 ~0.15 GB per finished singer). Finished singers are cleaned up automatically, so the voice pack and the chosen
 checkpoint are all that stay.
 
