@@ -7,6 +7,7 @@ not show what a subprocess prints on its own).
 import glob
 import json
 import os
+import shlex
 import subprocess
 import time
 
@@ -68,10 +69,10 @@ def setup(work):
     print("OK - trainer ready")
 
 
-def data(work, kit, vocalset=True, precision="mixed", batch=8, military=True):
+def data(work, kit, vocalset=True, precision="mixed", batch=8, military=True, band_singers=""):
     flag = "--vocalset" if vocalset else ""
-    run("%s %s/colab_queue.py data --work %s --kit '%s' --python %s --rvc %s %s %s"
-        % (PY, TOOLS, work, kit, PY, RVC, flag, "" if military else "--no-military"))
+    run("%s %s/colab_queue.py data --work %s --kit '%s' --python %s --rvc %s %s %s --band-singers %s"
+        % (PY, TOOLS, work, kit, PY, RVC, flag, "" if military else "--no-military", shlex.quote(band_singers or "")))
     run("%s %s/colab_queue.py queue --work %s --rvc %s --python %s --precision %s --batch %d %s"
         % (PY, TOOLS, work, RVC, PY, precision, batch, flag))
     print("OK - training data ready")

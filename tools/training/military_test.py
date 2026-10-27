@@ -19,6 +19,10 @@ Runs on the Colab GPU as a background job of colab_queue.py (docs/COLAB.md); eve
   pick      the singer of each gender with the most clean minutes (at least --min-minutes) becomes a training set
             in <work>/data/datasets_military/, listed in <work>/data/voices_military.json for the queue;
             <work>/military/report.md (with 20 s previews) says what was found
+  more      --singers "2, 4, 5 male theatre, 6 male country": more of the previewed singers become training
+            sets (Band Male 2, ...), by their preview number; male / female for the unclear ones, and genres
+            they suit (the built-in voices of those genres prefer them). Works after a new Colab session too:
+            the clips are cut and grouped again and each preview is matched to its singer by voice print.
 
     military_test.py run --work W --rvc /content/rvc --scratch /content/scratch [--limit N --seconds S]
 
@@ -233,9 +237,10 @@ def gender_directions(data, clusters, per_voice=12):
     return out
 
 
-def pick(args, clips, clusters, data):
-    """The singer of each gender with the most clean minutes; their clips that sound like someone else go."""
-    import soundfile as sf
+def describe(clusters, data):
+    """Every singer the clustering found: gender, clean minutes, and the clips that sound like them (a clip goes
+    when it sounds more like another singer, or far less like this one than usual: another member singing a
+    verse of the song)."""
     result = json.load(open(os.path.join(clusters, "clusters.json"), encoding="utf-8"))
     emb = clip_embeddings(clusters)
     by_stem = {}
@@ -251,14 +256,12 @@ def pick(args, clips, clusters, data):
         centres.append(m / np.linalg.norm(m))
     directions = gender_directions(data, clusters)
 
-    chosen, report = {}, []
+    report = []
     for k, (c, members) in enumerate(groups):
         E = np.stack([emb[p][0] for p in members])
         own = E @ centres[k]
         other = np.max(np.stack([E @ centres[j] for j in range(len(groups)) if j != k]), axis=0) if len(groups) > 1 \
             else np.full(len(members), -1.0)
-        # a clip stays when it sounds more like this singer than like any other one and is not far below the
-        # singer's typical similarity (another member singing a verse of the song)
         keep = [p for p, o, x in zip(members, own, other) if o >= x + 0.02 and o >= float(np.median(own)) - 0.15]
         minutes = sum(emb[p][1] for p in keep) / 60
         if directions:
@@ -269,9 +272,47 @@ def pick(args, clips, clusters, data):
             gender = "male" if 0 < c["median_f0"] < MALE_MAX_F0 else ("female" if c["median_f0"] > FEMALE_MIN_F0 else None)
         report.append(dict(cluster=c["cluster"], gender=gender or "unclear", minutes=round(minutes, 1),
                            songs=len(c["stems"]), median_f0=c["median_f0"], confidence=(c.get("confidence") or "").split(" ")[0],
-                           lean=lean, dropped_clips=len(members) - len(keep), keep=keep))
-        if gender and minutes >= args.min_minutes and gender not in chosen:
-            chosen[gender] = report[-1]
+                           lean=lean, dropped_clips=len(members) - len(keep), keep=keep, centre=centres[k]))
+    return report
+
+
+def voice_entry(gender, number, r, genres=()):
+    name = "military_%s_%d" % (gender, number)
+    return {
+        "name": name, "dataset": "datasets_military/" + name,
+        "display_name": "Band %s %d" % (gender.capitalize(), number), "gender": gender,
+        "genre": "Pop", "styles": "Clean,Powerful", "cluster": r["cluster"], "genres": list(genres),
+        "license": "Public domain recordings: works of US military band members made as part of their duties "
+                   "(not eligible for US copyright), via Wikimedia Commons; the singer is not named",
+        "tests": [["tests/light_male_25s.wav", 0 if gender == "male" else 12],
+                  ["tests/notmine_female_25s.wav", -12 if gender == "male" else 0]],
+        "description": "RVC v2 voice trained on %.0f min of a US military band %s singer (public domain recordings)"
+                       % (r["minutes"], gender),
+        "listed": False, "corpus": "military", "style": "contemporary"}
+
+
+def copy_clips(data, voice, r):
+    dst = os.path.join(data, voice["dataset"])
+    shutil.rmtree(dst, ignore_errors=True)
+    os.makedirs(dst)
+    for p in r["keep"]:
+        shutil.copy2(p, dst)
+
+
+def save_voices(data, voices):
+    with open(os.path.join(data, "voices_military.json.tmp"), "w", encoding="utf-8") as f:
+        json.dump({"voices": voices}, f, indent=1)
+    os.replace(os.path.join(data, "voices_military.json.tmp"), os.path.join(data, "voices_military.json"))
+
+
+def pick(args, clips, clusters, data):
+    """The singer of each gender with the most clean minutes."""
+    import soundfile as sf
+    report = describe(clusters, data)
+    chosen = {}
+    for r in report:
+        if r["gender"] != "unclear" and r["minutes"] >= args.min_minutes and r["gender"] not in chosen:
+            chosen[r["gender"]] = r
 
     # preview: 20 s of each singer with at least 3 minutes
     previews = os.path.join(args.work, "military", "previews")
@@ -290,26 +331,9 @@ def pick(args, clips, clusters, data):
 
     voices = []
     for gender, r in sorted(chosen.items()):
-        name = "military_%s_1" % gender
-        dst = os.path.join(data, "datasets_military", name)
-        shutil.rmtree(dst, ignore_errors=True)
-        os.makedirs(dst)
-        for p in r["keep"]:
-            shutil.copy2(p, dst)
-        voices.append({
-            "name": name, "dataset": "datasets_military/" + name,
-            "display_name": "Band %s 1" % gender.capitalize(), "gender": gender,
-            "genre": "Pop", "styles": "Clean,Powerful",
-            "license": "Public domain recordings: works of US military band members made as part of their duties "
-                       "(not eligible for US copyright), via Wikimedia Commons; the singer is not named",
-            "tests": [["tests/light_male_25s.wav", 0 if gender == "male" else 12],
-                      ["tests/notmine_female_25s.wav", -12 if gender == "male" else 0]],
-            "description": "RVC v2 voice trained on %.0f min of a US military band %s singer (public domain recordings)"
-                           % (r["minutes"], "male" if gender == "male" else "female"),
-            "listed": False, "corpus": "military", "style": "contemporary"})
-    with open(os.path.join(data, "voices_military.json.tmp"), "w", encoding="utf-8") as f:
-        json.dump({"voices": voices}, f, indent=1)
-    os.replace(os.path.join(data, "voices_military.json.tmp"), os.path.join(data, "voices_military.json"))
+        voices.append(voice_entry(gender, 1, r))
+        copy_clips(data, voices[-1], r)
+    save_voices(data, voices)
 
     lines = ["# Military-band singers", "",
              "Songs downloaded, voices separated from the band and de-reverbed, cut into clean clips and grouped "
@@ -330,6 +354,144 @@ def pick(args, clips, clusters, data):
     open(os.path.join(args.work, "military", "report.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     log("\n".join(lines))
     return voices
+
+
+GENRES = {"pop", "kpop", "latin", "edm", "afrobeats", "rnb", "soul", "jazz", "blues", "lofi", "gospel", "rock", "metal",
+          "opera", "theatre", "rap", "trap", "reggae", "country", "indie"}
+ALIASES = {"r&b": "rnb", "rb": "rnb", "theater": "theatre", "broadway": "theatre", "k-pop": "kpop", "lo-fi": "lofi",
+           "hip-hop": "rap", "hiphop": "rap"}
+MORE_MIN_MINUTES = 5.0   # thinner than the --min-minutes singers, but RVC still learns a voice from it
+
+
+def parse_singers(spec):
+    """ "2, 4, 5 male theatre, 6 male country" -> [{"number": 2, "gender": None, "genres": []}, ...]"""
+    wanted = []
+    for part in spec.replace(";", ",").split(","):
+        words = part.lower().split()
+        if not words:
+            continue
+        number = int("".join(ch for ch in words[0] if ch.isdigit()) or 0)
+        if not number:
+            raise ValueError("'%s': start with the singer's number from the previews" % part.strip())
+        gender, genres = None, []
+        for w in words[1:]:
+            w = ALIASES.get(w, w)
+            if w in ("male", "man", "m"):
+                gender = "male"
+            elif w in ("female", "woman", "f"):
+                gender = "female"
+            elif w in GENRES:
+                genres.append(w)
+            else:
+                log("  singer %d: '%s' is not a gender or a genre VoxaVersa has - ignored" % (number, w))
+        wanted.append({"number": number, "gender": gender, "genres": genres})
+    return wanted
+
+
+def preview_of(work, number):
+    found = glob.glob(os.path.join(work, "military", "previews", "singer_%02d_*.wav" % number))
+    return found[0] if found else None
+
+
+def match_previews(work, clusters, report, wanted):
+    """The singer behind each wanted preview, by voice print (a new session groups the clips again, and its
+    numbering may differ from the previews')."""
+    import torch
+    from speechbrain.inference.speaker import EncoderClassifier
+    sys.path.insert(0, HERE)
+    from cluster_singers import MODEL, load_16k
+    model = EncoderClassifier.from_hparams(source=MODEL, savedir=os.path.join(clusters, "ecapa_model"), run_opts={"device": "cpu"})
+    C = np.stack([r["centre"] for r in report])
+    found = {}
+    for w in wanted:
+        path = preview_of(work, w["number"])
+        if not path:
+            continue
+        with torch.no_grad():
+            e = model.encode_batch(torch.from_numpy(load_16k(path))[None]).squeeze().numpy()
+        sims = C @ (e / (np.linalg.norm(e) + 1e-9))
+        order = np.argsort(sims)[::-1]
+        log("  preview %d: closest singer %s (similarity %.2f, next %.2f)" % (
+            w["number"], report[order[0]]["cluster"], sims[order[0]], sims[order[1]] if len(order) > 1 else 0))
+        if sims[order[0]] >= 0.3:
+            found[w["number"]] = report[order[0]]
+    return found
+
+
+def add_singers(args, vocals, clips, clusters, data, spec):
+    """Trains more of the previewed singers (--singers); the ones already in training stay as they are."""
+    wanted = parse_singers(spec)
+    status(args.work, "military-band singers: preparing the extra singers (%s)" % spec)
+    regrouped = not os.path.exists(os.path.join(clusters, "clusters.json"))
+    if regrouped:   # a new Colab session: the clips and the grouping were on the old session's disk
+        clean(args, vocals, clips)
+        singers(args, clips, clusters)
+    report = describe(clusters, data)
+    if regrouped:
+        by_number = match_previews(args.work, clusters, report, wanted)
+    else:
+        by_number = {int(r["cluster"].rsplit("_", 1)[-1]): r for r in report if r["cluster"].rsplit("_", 1)[-1].isdigit()}
+
+    voices = json.load(open(os.path.join(data, "voices_military.json"), encoding="utf-8"))["voices"]
+
+    def trained_as(r):
+        clipnames = {os.path.basename(p) for p in r["keep"]}
+        for v in voices:
+            if v.get("cluster") == r["cluster"] and not regrouped:
+                return v
+            have = set(os.listdir(os.path.join(data, v["dataset"]))) if os.path.isdir(os.path.join(data, v["dataset"])) else set()
+            if clipnames and len(clipnames & have) > 0.3 * len(clipnames):
+                return v
+        return None
+
+    lines = ["", "## More singers (asked for: %s)" % spec, ""]
+    for w in wanted:
+        r = by_number.get(w["number"])
+        if r is None:
+            lines.append("* singer %d: not found%s" % (w["number"], "" if preview_of(args.work, w["number"]) else
+                                                       " (no preview with that number)"))
+            continue
+        already = trained_as(r)
+        if already:
+            if w["genres"] and not already.get("genres"):
+                already["genres"] = w["genres"]
+            lines.append("* singer %d: already in training as %s" % (w["number"], already["display_name"]))
+            continue
+        gender = w["gender"] or (r["gender"] if r["gender"] != "unclear" else None)
+        if gender is None:
+            lines.append("* singer %d: male or female? Add it after the number (e.g. \"%d male\")" % (w["number"], w["number"]))
+            continue
+        if r["minutes"] < MORE_MIN_MINUTES:
+            lines.append("* singer %d: only %.1f clean minutes - too little to train (at least %.0f)"
+                         % (w["number"], r["minutes"], MORE_MIN_MINUTES))
+            continue
+        number = 1 + max([int(v["name"].rsplit("_", 1)[-1]) for v in voices if v["gender"] == gender] or [0])
+        v = voice_entry(gender, number, r, w["genres"])
+        copy_clips(data, v, r)
+        voices.append(v)
+        lines.append("* singer %d: %s, %.1f clean minutes%s%s" % (
+            w["number"], v["display_name"], r["minutes"], (", suits " + ", ".join(w["genres"])) if w["genres"] else "",
+            " (under %.0f minutes: may sound thinner)" % args.min_minutes if r["minutes"] < args.min_minutes else ""))
+    save_voices(data, voices)
+    with open(os.path.join(args.work, "military", "report.md"), "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    log("\n".join(lines))
+    with open(os.path.join(args.work, "military", ".more_singers"), "w", encoding="utf-8") as f:
+        f.write(normalise(spec))
+    return voices
+
+
+def normalise(spec):
+    return ",".join(" ".join(part.lower().split()) for part in spec.replace(";", ",").split(",") if part.strip())
+
+
+def more_wanted(work, spec):
+    """True when --singers asks for something the last run didn't."""
+    try:
+        done_spec = open(os.path.join(work, "military", ".more_singers"), encoding="utf-8").read()
+    except OSError:
+        done_spec = ""
+    return bool(spec.strip()) and normalise(spec) != done_spec
 
 
 def cmd_run(args):
@@ -353,6 +515,8 @@ def cmd_run(args):
             mark(state, "pick")
         else:
             voices = json.load(open(os.path.join(data, "voices_military.json")))["voices"]
+        if more_wanted(args.work, args.singers):
+            voices = add_singers(args, vocals, clips, clusters, data, args.singers)
         names = ", ".join(v["display_name"] for v in voices) or "none"
         status(args.work, "military-band singers: ready (%s in the queue; report in queue/military/report.md)" % names)
     except BaseException as e:
@@ -371,6 +535,7 @@ def main():
     r.add_argument("--scratch", default="/content/scratch", help="local (not Drive) working folder")
     r.add_argument("--ecapa", default="/content/ecapa_model", help="speaker model folder, if already downloaded")
     r.add_argument("--min-minutes", type=float, default=10.0, help="least clean audio for a singer to be trained")
+    r.add_argument("--singers", default="", help='more previewed singers to train, e.g. "2, 4, 5 male theatre, 6 male country"')
     r.add_argument("--sources", default=SOURCES, help="CSV with the columns file,url (default: military_sources.csv)")
     r.add_argument("--limit", type=int, default=0, help="(testing) only the first N songs")
     r.add_argument("--seconds", type=float, default=0.0, help="(testing) only the first S seconds of each song")

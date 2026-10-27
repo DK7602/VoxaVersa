@@ -6,10 +6,11 @@ each step is safe to repeat.
 
     colab_queue.py setup --work W --rvc /content/rvc --python PY     RVC + base models; RVC's logs/ (the
                                                                      experiments) linked into W; ONNX encoder
-    colab_queue.py data  --work W --kit KIT.zip [--vocalset] [--no-military]
+    colab_queue.py data  --work W --kit KIT.zip [--vocalset] [--no-military] [--band-singers "2, 5 male"]
                                                                      training data kit -> W/data; VocalSet
                                                                      downloaded and cleaned -> W/data; the
-                                                                     military-band singers (military_test.py)
+                                                                     military-band singers (military_test.py),
+                                                                     and more of them by preview number
     colab_queue.py queue --work W --rvc ... --python ... [--vocalset] [--precision mixed|full] [--batch 8]
                                                                      writes W/queue.json for train_queue.py
 
@@ -124,12 +125,19 @@ def cmd_data(args):
                 "training starts now with the singers in the kit")
 
     if args.military:
-        if os.path.exists(os.path.join(args.work, "military", ".pick_done")):
-            log("military-band singers already prepared (report: queue/military/report.md)")
-        elif job_running(args.work, "military"):
+        sys.path.insert(0, HERE)
+        from military_test import more_wanted
+        more = more_wanted(args.work, args.band_singers)
+        if job_running(args.work, "military"):
             log("military-band singers are still being prepared in the background (progress: step 6)")
+        elif os.path.exists(os.path.join(args.work, "military", ".pick_done")) and more:
+            start_job(args, "military", ["--rvc", args.rvc, "--singers", args.band_singers])
+            log("more military-band singers (%s) are being prepared in the background (~10 - 30 minutes); they then "
+                "join the training queue" % args.band_singers)
+        elif os.path.exists(os.path.join(args.work, "military", ".pick_done")):
+            log("military-band singers already prepared (report: queue/military/report.md)")
         else:
-            start_job(args, "military", ["--rvc", args.rvc])
+            start_job(args, "military", ["--rvc", args.rvc, "--singers", args.band_singers])
             log("military-band singers (public-domain US Air Force and Navy band recordings) are being downloaded, "
                 "separated from the band and sorted by singer in the background, ~1 - 2 hours; the best male and "
                 "female singer then go to the front of the training queue")
@@ -158,7 +166,7 @@ def job_running(work, name):
 def cmd_military(args):
     """Background job: the military-band singer test (military_test.py), then its singers join the queue."""
     p = subprocess.run([sys.executable, os.path.join(HERE, "military_test.py"), "run", "--work", args.work,
-                        "--rvc", args.rvc, "--scratch", args.scratch])
+                        "--rvc", args.rvc, "--scratch", args.scratch, "--singers", args.singers])
     if p.returncode != 0:
         sys.exit(p.returncode)
     qargs = load(os.path.join(args.work, "colab_queue_args.json"))
@@ -348,6 +356,8 @@ def main():
     d.add_argument("--military", action="store_true", default=True, help=argparse.SUPPRESS)
     d.add_argument("--no-military", dest="military", action="store_false",
                    help="skip the military-band singer test (military_test.py)")
+    d.add_argument("--band-singers", default="", help='more previewed military-band singers to train, '
+                                                     'e.g. "2, 4, 5 male theatre, 6 male country"')
     d.add_argument("--rvc", default="/content/rvc")
     d.add_argument("--python", default=sys.executable, help="interpreter with numpy/scipy/soundfile (prepare_dataset.py)")
     d.add_argument("--scratch", default="/content/scratch", help="local (not Drive) folder for the raw download")
@@ -361,6 +371,7 @@ def main():
     mj.add_argument("--python", default=sys.executable)
     mj.add_argument("--scratch", default="/content/scratch")
     mj.add_argument("--rvc", default="/content/rvc")
+    mj.add_argument("--singers", default="")
     q = sub.add_parser("queue")
     q.add_argument("--work", required=True)
     q.add_argument("--rvc", required=True)

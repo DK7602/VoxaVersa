@@ -48,6 +48,15 @@ military* holds `report.md` (every singer found: minutes, songs, pitch, male/fem
 step 7 also plays. The singers stay unnamed; many songs are covers, but only the voice is used. If Wikimedia
 refuses downloads for a while, the job stops and the next Run all continues it.
 
+**More military-band singers.** After listening to the previews, type the ones you want in step 2's
+*BAND_SINGERS* box by their number, with *male* or *female* for the "unclear" ones and, if you like, the styles
+they suit (the built-in voices of those styles then prefer them), e.g. `2, 4, 5 male theatre, 6 male country`,
+and do Run all. They train as **Band Male 2**, **Band Female 2**, ... after the voices already training (each
+about 1 - 3 hours of GPU time). A singer needs at least 5 clean minutes (the report says what each has; under
+10 they may sound thinner); singers already in training are skipped, and the styles still apply to them. In a
+new Colab session the clips are cut and grouped again first (~10 - 30 minutes), and each preview is matched to
+its singer by voice print, so the numbers stay those of the previews. `report.md` lists what was added.
+
 **When Colab disconnects** (free accounts get a few GPU hours a day, and Colab stops idle sessions): nothing is
 lost except the minutes since the last checkpoint (saved to Drive every 5 epochs, and before every quality
 check). Come back later, open the notebook and do **Runtime > Run all** again. It continues where it stopped.

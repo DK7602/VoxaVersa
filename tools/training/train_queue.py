@@ -1114,7 +1114,7 @@ def apply_factory_voices(w, cfg, current=None):
                 continue
             t["name"] = v["name"]
             save_json(tpath, t)
-        t["corpus"], t["style"] = v.get("corpus"), v.get("style", "contemporary")
+        t["corpus"], t["style"], t["genres"] = v.get("corpus"), v.get("style", "contemporary"), v.get("genres", [])
         singers.append(t)
     if not singers:
         return {}

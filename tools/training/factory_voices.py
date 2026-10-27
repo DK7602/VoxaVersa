@@ -27,7 +27,7 @@ first, with two rules:
     processing differ more between vendors than voices do), and a singer's "style" ("classical" for trained
     classical singers, else contemporary) costs STYLE_PENALTY when it differs from the genre's (opera,
     theatre and angelic are classical); pop, soulful and rhythmic voices get contemporary singers only once a
-    gender has at least MIN_CONTEMPORARY of them.
+    gender has at least MIN_CONTEMPORARY of them; a singer's "genres" (optional) favour those genres' voices.
 Specialty voices: male-deep-bass, female-angelic, female-smoky-alto and neutral-whisper (any gender) are
 matched the same way. Writes <out>.json (for the training queue) and <out>.md (the table).
 Requirements: numpy, scipy, soundfile.
@@ -65,6 +65,9 @@ STYLE_PENALTY = 1.5
 # voices (fewer would put one voice on most of the gender's avatars; the style penalty decides until then).
 CONTEMPORARY_FIRST = {"bright pop", "soulful", "rhythmic"}
 MIN_CONTEMPORARY = 3
+# A singer's "genres" (heard by the owner, e.g. a military-band singer who sings country) make the built-in
+# voices of those genres prefer them.
+GENRE_BONUS = 1.0
 
 
 # -------------------------------------------------------------------------------------------- measure
@@ -234,6 +237,8 @@ def assign(singers, voices):
                         d += STYLE_PENALTY
                     if contemporary_first and style == "classical" and group in CONTEMPORARY_FIRST:
                         d += 100.0
+                    if idp in (s.get("genres") or ()):
+                        d -= GENRE_BONUS
                     if best is None or d < best[0]:
                         best = (d, i, j)
             d, i, j = best
