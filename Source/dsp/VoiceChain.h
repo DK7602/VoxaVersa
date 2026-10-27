@@ -103,8 +103,8 @@ public:
 
 private:
     float computeFormantSemis (const ChainSettings&) const noexcept;
-    /** voicedBuf[i] = 1 where the pitch detector heard the input voiced at input time `from + i`. */
-    void fillInputVoicing (juce::int64 from, int n) noexcept;
+    /** dest[i] = 1 where the pitch detector heard the input voiced at input time `from + i`. */
+    void fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept;
 
     double sr = 48000.0;
     int maxBlock = 512;
@@ -125,6 +125,7 @@ private:
 
     ConsonantKeeper consonants;
     RKeeper rKeeper;
+    BreathKeeper breaths;
     CharacterProcessor character;
     DeEsser deEsser;
     VocalCompressor compressor;
@@ -132,7 +133,7 @@ private:
     StereoDelay delay;
     FdnReverb reverb;
 
-    std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
+    std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, voicedNowBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
 
     // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
     // is active, the DSP lead that fills its gaps, the neural coverage that crossfades the two and the dry input

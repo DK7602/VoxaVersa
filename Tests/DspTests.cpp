@@ -760,7 +760,60 @@ public:
     }
 };
 
+class BreathKeeperTests : public juce::UnitTest
+{
+public:
+    BreathKeeperTests() : juce::UnitTest ("Breath keeper", "DSP") {}
+
+    void runTest() override
+    {
+        constexpr double sr = 48000.0;
+        const int seg = (int) sr;   // sung 1 s, breath 1 s, sung 1 s
+        std::vector<float> input ((size_t) seg * 3), voiced ((size_t) seg * 3), lead ((size_t) seg * 3);
+        juce::Random rng (3);
+        for (int i = 0; i < seg * 3; ++i)
+        {
+            const bool sung = i < seg || i >= 2 * seg;
+            const float tone = 0.3f * std::sin ((float) (juce::MathConstants<double>::twoPi * 220.0 * i / sr));
+            const float noise = rng.nextFloat() * 2.0f - 1.0f;
+            input[(size_t) i] = sung ? tone : 0.01f * noise;   // breath ~33 dB below the singing
+            lead[(size_t) i] = sung ? tone : 0.04f * noise;    // the AI singer's breath: 12 dB louder
+            voiced[(size_t) i] = sung ? 1.0f : 0.0f;
+        }
+        auto out = lead;
+        dsp::BreathKeeper keeper;
+        keeper.prepare (sr);
+        for (int pos = 0; pos < seg * 3; pos += 512)
+            keeper.process (out.data() + pos, nullptr, input.data() + pos, voiced.data() + pos, juce::jmin (512, seg * 3 - pos));
+
+        auto db = [] (const std::vector<float>& x, int from, int to)
+        {
+            double e = 0.0;
+            for (int i = from; i < to; ++i) e += (double) x[(size_t) i] * x[(size_t) i];
+            return 10.0 * std::log10 (e / (to - from) + 1.0e-20);
+        };
+        beginTest ("An AI breath louder than the singer's is brought to the singer's level");
+        {
+            const double inRel = db (input, seg + seg / 10, 2 * seg) - db (input, seg / 2, seg);
+            const double outRel = db (out, seg + seg / 10, 2 * seg) - db (out, seg / 2, seg);
+            expect (outRel - inRel < 2.5 && outRel - inRel > -1.0, "breath vs singing: input " + juce::String (inRel, 1)
+                    + " dB, output " + juce::String (outRel, 1) + " dB");
+        }
+        beginTest ("Sung notes are untouched");
+        {
+            double err = 0.0, energy = 0.0;
+            for (int i = 2 * seg + seg / 10; i < 3 * seg; ++i)
+            {
+                err += std::pow ((double) out[(size_t) i] - lead[(size_t) i], 2.0);
+                energy += (double) lead[(size_t) i] * lead[(size_t) i];
+            }
+            expect (10.0 * std::log10 (err / energy + 1.0e-20) < -60.0);
+        }
+    }
+};
+
 static PitchDetectorTests pitchDetectorTests;
+static BreathKeeperTests breathKeeperTests;
 static RKeeperTests rKeeperTests;
 static ConsonantKeeperTests consonantKeeperTests;
 static GenderEstimatorTests genderEstimatorTests;

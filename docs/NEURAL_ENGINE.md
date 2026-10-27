@@ -164,6 +164,22 @@ same proportion and its F3 is cut (up to ±15 dB, Q 5). The dry voice is read 17
 (from the input already buffered for the DSP voice, so without extra latency), which puts the analysis
 on time. Result on the same vocal: the AI voice's R moments at 2251 Hz against 2768 Hz (a 19 % dip),
 other words unchanged. `VoxaVersaRender --rkeeper dry.wav ai.wav out.wav` runs it on two files.
+The two filters glide to each frame's targets (frequencies over ~15 ms, strength ~8 ms up / ~15 ms down,
+coefficients updated every 0.33 ms) and the resonance goes at most 35 % below the AI voice's F3: set afresh
+every 5 ms they jumped by hundreds of Hz at up to 15 dB, which spiked and rang on deep r's (a user heard a
+strange tone on "friend"; the deepest cuts went from -34 to -19 dB, the r measures the same).
+
+### Breaths (`BreathKeeper`)
+
+RVC renders a breath the way its training singer breathed. Measured on a male vocal (effects off), breaths
+came out up to 13 dB louder against the singing than the singer's own through Female Pop (12 dB through Male
+Pop), and brighter; a compressor lifts them further (a user heard the singers "picking up breaths"). After the
+voice's EQ, de-esser, compressor and saturation (before delay and reverb), wherever the input is unvoiced and
+more than 15 dB below its sung level (the sung level: a 0.4 s average while voiced), the voice is turned down
+to the input's level relative to the singing, +1.5 dB (3 ms down, 5 ms back up so the next note starts at full
+level, at most -30 dB). It never turns anything up and leaves sung notes alone. On that vocal the worst breath
+went from +12.9 to +4.5 dB over the singer's (Female Pop) and +11.9 to +5.8 dB (Male Pop). Not used for Text
+to Sing's synthesized guide. `VoxaVersaRender --breaths dry.wav ai.wav out.wav` runs it on two files.
 
 ### Offline conversion
 

@@ -304,6 +304,56 @@ namespace
     }
 }
 
+//==============================================================================
+void BreathKeeper::prepare (double sampleRate)
+{
+    envCoeff = (float) std::exp (-1.0 / (0.010 * sampleRate));
+    sungCoeff = (float) std::exp (-1.0 / (0.400 * sampleRate));
+    attack = (float) std::exp (-1.0 / (0.003 * sampleRate));
+    release = (float) std::exp (-1.0 / (0.005 * sampleRate));   // the next note starts at full level
+    reset();
+}
+
+void BreathKeeper::reset()
+{
+    inEnv = outEnv = inSung = outSung = 0.0f;
+    gain = 1.0f;
+}
+
+void BreathKeeper::process (float* left, float* right, const float* input, const float* inputVoiced, int n) noexcept
+{
+    constexpr float quiet = 0.0316f;    // -15 dB below the singing: breaths, not consonants or notes
+    constexpr float leeway = 1.41f;     // +1.5 dB
+    constexpr float floorGain = 0.03f;  // -30 dB at most
+    constexpr float silence = 1.0e-9f;  // -90 dB
+
+    for (int i = 0; i < n; ++i)
+    {
+        const float x = input[i], y = right != nullptr ? 0.5f * (left[i] + right[i]) : left[i];
+        inEnv = x * x + envCoeff * (inEnv - x * x);
+        outEnv = y * y + envCoeff * (outEnv - y * y);
+        const bool voiced = inputVoiced[i] > 0.5f;
+
+        if (voiced)
+        {
+            inSung = inEnv + sungCoeff * (inSung - inEnv);
+            outSung = outEnv + sungCoeff * (outSung - outEnv);
+        }
+
+        float target = 1.0f;
+        if (! voiced && inSung > silence && outSung > silence && inEnv < inSung * quiet)
+        {
+            const float allowed = inEnv / inSung * outSung * leeway;
+            if (outEnv > allowed)
+                target = juce::jmax (floorGain, std::sqrt (allowed / outEnv));
+        }
+        gain = target + (target < gain ? attack : release) * (gain - target);
+        left[i] *= gain;
+        if (right != nullptr)
+            right[i] *= gain;
+    }
+}
+
 void RKeeper::FormantTracker::prepare (double sampleRate, double ceilingHz)
 {
     sr = sampleRate;
@@ -431,6 +481,11 @@ void RKeeper::prepare (double sampleRate)
 {
     sr = sampleRate;
     hop = juce::jmax (1, juce::roundToInt (0.005 * sr));
+    updateEvery = juce::jmax (1, juce::roundToInt (sr / 3000.0));
+    auto per = [this] (double ms) { return (float) (1.0 - std::exp (-updateEvery / (0.001 * ms * sr))); };
+    glide = per (15.0);
+    rise = per (8.0);
+    fall = per (15.0);
     dry.prepare (sr, maleCeilingHz);
     ai.prepare (sr, femaleCeilingHz);
     constexpr int history = 300;   // 1.5 s of 5 ms frames
@@ -445,6 +500,8 @@ void RKeeper::reset()
     dry.reset();
     ai.reset();
     boost.c = cut.c = BiquadCoeffs();
+    wantedWeight = 0.0f;
+    untilUpdate = 0;
     boost.reset();
     cut.reset();
     dryCount = aiCount = frames = sinceFrame = 0;
@@ -526,27 +583,38 @@ void RKeeper::process (float* lead, const float* input, const float* inputVoiced
             }
 
             // An r: the dry F3 8 % below its vowels starts it, 20 % is a full one.
-            float wanted = 0.0f;
+            wantedWeight = 0.0f;
             if (sung && aiF3 > 0.0f && dryBase > 0.0f && aiBase > 0.0f)
             {
                 const float depth = (dryBase - dryF3) / dryBase;
                 const float w = juce::jlimit (0.0f, 1.0f, (depth - 0.08f) / 0.12f);
-                const float target = aiBase * (1.0f - depth);
+                const float target = aiBase * (1.0f - juce::jmin (depth, maxDepth));
                 if (w > 0.0f && target < 0.97f * aiF3)
                 {
-                    wanted = w;
-                    boostHz = target;
-                    cutHz = aiF3;
+                    wantedWeight = w;
+                    boostTarget = target;
+                    cutTarget = aiF3;
                 }
             }
-            weight += (wanted - weight) * (wanted > weight ? 0.5f : 0.3f);
             stats.sungFrames += sung ? 1 : 0;
             stats.rFrames += weight > 0.1f ? 1 : 0;
             stats.dryBase = dryBase;
             stats.aiBase = aiBase;
+        }
+
+        // The filters glide (frequencies over ~15 ms, strength ~8 ms up and ~15 ms down): set afresh every 5 ms,
+        // they jumped by hundreds of Hz at up to 15 dB, which spiked and rang on deep r's ("friend", heard as a
+        // strange tone).
+        if (--untilUpdate <= 0)
+        {
+            untilUpdate = updateEvery;
+            const bool idle = weight < 0.02f;
+            logBoost = idle ? std::log (boostTarget) : logBoost + glide * (std::log (boostTarget) - logBoost);
+            logCut = idle ? std::log (cutTarget) : logCut + glide * (std::log (cutTarget) - logCut);
+            weight += (wantedWeight - weight) * (wantedWeight > weight ? rise : fall);
             const float gainDb = maxGainDb * weight;
-            boost.c = BiquadCoeffs::peak (sr, boostHz, 5.0, gainDb);
-            cut.c = BiquadCoeffs::peak (sr, cutHz, 5.0, -gainDb);
+            boost.c = BiquadCoeffs::peak (sr, std::exp (logBoost), 5.0, gainDb);
+            cut.c = BiquadCoeffs::peak (sr, std::exp (logCut), 5.0, -gainDb);
         }
 
         lead[i] = boost.process (cut.process (y));

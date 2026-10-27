@@ -59,6 +59,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
 
     consonants.prepare (sr);
     rKeeper.prepare (sr);
+    breaths.prepare (sr);
     character.prepare (sr);
     deEsser.prepare (sr);
     compressor.prepare (sr);
@@ -66,7 +67,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -128,6 +129,7 @@ void VoiceChain::reset()
     for (auto& a : doublerActive) a = false;
     consonants.reset();
     rKeeper.reset();
+    breaths.reset();
     character.reset();
     deEsser.reset();
     compressor.reset();
@@ -167,11 +169,11 @@ float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Set
     return pf.globalOffset + moves;
 }
 
-void VoiceChain::fillInputVoicing (juce::int64 from, int n) noexcept
+void VoiceChain::fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept
 {
     PitchFrame pf;
     for (int i = 0; i < n; ++i)
-        voicedBuf[(size_t) i] = timeline.lookup ((double) (from + i), pf) && pf.voiced ? 1.0f : 0.0f;
+        dest[(size_t) i] = timeline.lookup ((double) (from + i), pf) && pf.voiced ? 1.0f : 0.0f;
 }
 
 float VoiceChain::computeFormantSemis (const ChainSettings& s) const noexcept
@@ -300,7 +302,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         if (s.aiLead)
         {
             consonants.process (leadBuf.data(), dryBuf.data(), n);
-            fillInputVoicing (aheadStart, n);
+            fillInputVoicing (aheadStart, n, voicedBuf);
             rKeeper.process (leadBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
         }
     }
@@ -442,7 +444,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         if (neuralActive)
         {
             consonants.process (voiceBuf.data(), dryBuf.data(), n);
-            fillInputVoicing (aheadStart - alignAhead.delay, n);
+            fillInputVoicing (aheadStart - alignAhead.delay, n, voicedBuf);
             rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
             for (int i = 0; i < n; ++i)
             {
@@ -523,6 +525,14 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     deEsser.process (busL.data(), busR.data(), n, deEss);
     compressor.process (busL.data(), busR.data(), n, comp);
     saturator.process (busL.data(), busR.data(), n, sat);
+
+    // Breaths at the singer's own level (after the EQ and compressor, which lift them too; `dryBuf` is aligned
+    // with the bus here). Not for the Text to Sing guide, whose breaths are synthesized.
+    if (! synth)
+    {
+        fillInputVoicing (tStart - alignDry.delay, n, voicedNowBuf);
+        breaths.process (busL.data(), busR.data(), dryBuf.data(), voicedNowBuf.data(), n);
+    }
     delay.process (busL.data(), busR.data(), n, delayMix, delaySeconds, s.delayFeedback);
     reverb.process (busL.data(), busR.data(), n, reverbMix, reverbSize);
 

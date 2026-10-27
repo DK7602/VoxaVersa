@@ -87,6 +87,27 @@ private:
     float leadLevel = 0.0f, inputLevel = 0.0f, levelCoeff = 0.0f, gain = 1.0f;
 };
 
+/** Keeps an AI lead voice's breaths (and other quiet, unvoiced sounds) as loud as the singer's own. RVC renders a
+    breath the way its training singer breathed: measured on a user's song through Female Pop, breaths came out up
+    to 13 dB louder against the singing than the singer's own, and brighter. Where the input is unvoiced and more
+    than 15 dB below its sung level, the AI voice is turned down to the input's level relative to the singing
+    (+1.5 dB of leeway); it is never turned up, and sung notes are untouched. It runs after the voice's EQ and the
+    compressor, which lift breaths too. */
+class BreathKeeper
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    /** The voice (`left`, and `right` unless it is nullptr) is processed in place; `input` is the dry voice
+        aligned with it and `inputVoiced` (> 0.5) where the pitch detector hears that input voiced, per sample. */
+    void process (float* left, float* right, const float* input, const float* inputVoiced, int numSamples) noexcept;
+    float getGain() const noexcept { return gain; }
+
+private:
+    float inEnv = 0.0f, outEnv = 0.0f, inSung = 0.0f, outSung = 0.0f;   // mean squares: now, and while sung
+    float envCoeff = 0.0f, sungCoeff = 0.0f, gain = 1.0f, attack = 0.0f, release = 0.0f;
+};
+
 /** Gives an AI lead voice the input's American "r". An r is sung with the third formant (F3) dipping ~20 - 25 %
     below the vowels around it; the AI singers barely follow (measured on a user's song: the dry R at ~1.98 kHz
     against 2.56 kHz on the other words, the AI voice 2.50 against 2.95 kHz), so "friend" drifts toward "fwend".
@@ -138,6 +159,7 @@ public:
     };
 
     static constexpr float maxGainDb = 15.0f;
+    static constexpr float maxDepth = 0.35f;   // deeper dips (a mis-tracked frame) don't push the resonance lower
 
     /** Frames analysed while the input was sung, and those with an r applied (weight > 0.1), since reset(). */
     struct Stats { int sungFrames = 0, rFrames = 0; float dryBase = 0.0f, aiBase = 0.0f; };
@@ -152,9 +174,13 @@ private:
     FormantTracker dry, ai;
     float dryRecent[3] {}, aiRecent[3] {};   // the last frames' F3: a median of 3 ignores one-frame slips
     Biquad boost, cut;
+    // the filters glide toward the frame's targets, their coefficients updated every `updateEvery` samples
+    float wantedWeight = 0.0f, boostTarget = 2000.0f, cutTarget = 2500.0f, logBoost = 7.6f, logCut = 7.8f;
+    float glide = 0.0f, rise = 0.0f, fall = 0.0f;
+    int updateEvery = 16, untilUpdate = 0;
     std::vector<float> dryHistory, aiHistory, scratch;   // F3 of recent voiced frames (~1.5 s)
     int dryCount = 0, aiCount = 0, frames = 0;
-    float dryBase = 0.0f, aiBase = 0.0f, peakDb = -100.0f, weight = 0.0f, boostHz = 2000.0f, cutHz = 2500.0f;
+    float dryBase = 0.0f, aiBase = 0.0f, peakDb = -100.0f, weight = 0.0f;
     int voicedSamples = 0, frameSamples = 0, hop = 240, sinceFrame = 0;
     Stats stats;
 };

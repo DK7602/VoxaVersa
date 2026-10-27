@@ -11,8 +11,8 @@
 //                                             its phoneme plan (one row per segment) and, with --chain, the
 //                                             take rendered through the voice chain exactly as Generate +
 //                                             export do in the plug-in (DSP path, AI engine off).
-//   VoxaVersaRender --rkeeper <dry.wav> <ai.wav> <out.wav> [ai-lag-seconds] [f3.csv]
-//                                             developer check of the R keeper on its own
+//   VoxaVersaRender --rkeeper|--breaths <dry.wav> <ai.wav> <out.wav> [ai-lag-seconds] [f3.csv]
+//                                             developer check of the R keeper / breath keeper on its own
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // --realtime feeds the blocks at the pace of live playback (what a DAW does while playing);
@@ -271,8 +271,17 @@ static int rKeeperTool (const juce::StringArray& args)
         }
     }
     auto out = lead;
+    voxa::dsp::BreathKeeper breaths;
+    breaths.prepare (sr);
+    const bool breathsOnly = args[0] == "--breaths";
     for (int pos = 0; pos < n; pos += 512)
-        keeper.process (out.data() + pos, dryv.data() + pos, voiced.data() + pos, juce::jmin (512, n - pos));
+    {
+        const int m = juce::jmin (512, n - pos);
+        if (breathsOnly)
+            breaths.process (out.data() + pos, nullptr, dryv.data() + pos, voiced.data() + pos, m);
+        else
+            keeper.process (out.data() + pos, dryv.data() + pos, voiced.data() + pos, m);
+    }
 
     juce::AudioBuffer<float> buf (1, n);
     buf.copyFrom (0, 0, out.data(), n);
@@ -314,7 +323,7 @@ int main (int argc, char* argv[])
     if (args.size() > 0 && args[0] == "--sing")
         return renderSing (processor, args);
 
-    if (args.size() >= 4 && args[0] == "--rkeeper")
+    if (args.size() >= 4 && (args[0] == "--rkeeper" || args[0] == "--breaths"))
         return rKeeperTool (args);
 
     if (args.size() < 2 && ! args.contains ("--analyse") && ! args.contains ("--detect"))
