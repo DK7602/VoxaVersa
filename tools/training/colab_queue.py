@@ -66,10 +66,11 @@ def cmd_setup(args):
     pitch = os.path.join(args.work, "fcpe.onnx")
     if not os.path.exists(pitch):
         log("exporting the AI pitch tracker (once, ~1 minute)")
-        # runtimes set up by older notebooks don't have its package yet
+        # runtimes set up by older notebooks don't have its package yet (without dependencies: the newest ones
+        # want a newer PyTorch than the trainer's)
         if subprocess.run([args.python, "-c", "import torchfcpe"], capture_output=True).returncode != 0 and shutil.which("uv"):
-            subprocess.run(["uv", "pip", "install", "-q", "--python", args.python, "torchfcpe==0.0.4", "einops==0.8.2",
-                            "local-attention==1.11.2"])
+            subprocess.run(["uv", "pip", "install", "-q", "--no-deps", "--python", args.python, "torchfcpe==0.0.4",
+                            "local-attention==1.11.2", "hyper-connections==0.4.2", "einops==0.8.2"])
         p = subprocess.run([args.python, os.path.join(HERE, "export_pitch.py"), "--out", pitch + ".part.onnx"])
         if p.returncode == 0:
             os.replace(pitch + ".part.onnx", pitch)

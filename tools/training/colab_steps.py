@@ -12,6 +12,7 @@ import time
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 PY = "/content/rvc-env/bin/python"
+PITCH_PACKAGES = "torchfcpe==0.0.4 local-attention==1.11.2 hyper-connections==0.4.2 einops==0.8.2"
 RVC = "/content/rvc"
 
 
@@ -44,9 +45,17 @@ def install():
             "soundfile==0.14.0 av==15.1.0 ffmpeg-python==0.2.0 praat-parselmouth==0.4.7 transformers==4.49.0 "
             "huggingface_hub==0.36.2 tensorboard==2.21.0 matplotlib==3.11.2 scikit-learn==1.9.1 tqdm "
             "onnx==1.17.0 onnxruntime==1.20.1 speechbrain==1.0.3" % PY, show=False)
-    # the AI pitch tracker's export (export_pitch.py); also for runtimes installed before it was added
+    # The AI pitch tracker's export (export_pitch.py); also for runtimes installed before it was added. Without
+    # their dependencies: the newest hyper-connections wants PyTorch >= 2.5 and would replace the trainer's.
     if subprocess.run([PY, "-c", "import torchfcpe"], capture_output=True).returncode != 0:
-        run("uv pip install -q --python %s torchfcpe==0.0.4 einops==0.8.2 local-attention==1.11.2" % PY, show=False)
+        run("uv pip install -q --no-deps --python %s %s" % (PY, PITCH_PACKAGES), show=False)
+    # Repairs a runtime where an earlier version of this step let PyTorch be upgraded (speechbrain then fails).
+    versions = subprocess.run([PY, "-c", "import torch, torchaudio; print(torch.__version__, torchaudio.__version__)"],
+                              capture_output=True, text=True).stdout.split()
+    if len(versions) != 2 or not all(v.startswith("2.4.1") for v in versions):
+        print("Restoring PyTorch 2.4.1 (about 2 minutes)...", flush=True)
+        run("uv pip install -q --python %s torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121"
+            % PY, show=False)
     out = run("%s -c \"import torch, speechbrain; print(torch.__version__, torch.cuda.is_available())\"" % PY, show=False)
     print("PyTorch", out.strip().splitlines()[-1])
     if not out.strip().endswith("True"):
