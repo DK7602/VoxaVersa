@@ -110,6 +110,7 @@ private:
     float maxHalfGrain = 1000.0f;
     juce::int64 blockStart = 0;
 
+    ConsonantKeeper consonants;
     CharacterProcessor character;
     DeEsser deEsser;
     VocalCompressor compressor;
@@ -117,10 +118,11 @@ private:
     StereoDelay delay;
     FdnReverb reverb;
 
-    std::vector<float> leadBuf, voiceBuf, f0Buf, neuralIn, neuralOut, neuralCoverage, busL, busR;
+    std::vector<float> leadBuf, voiceBuf, dryBuf, f0Buf, neuralIn, neuralOut, neuralCoverage, busL, busR;
 
     // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
-    // is active, the DSP lead that fills its gaps and the neural coverage that crossfades the two.
+    // is active, the DSP lead that fills its gaps, the neural coverage that crossfades the two and the dry input
+    // whose consonants the AI lead keeps.
     struct DelayLine
     {
         std::vector<float> buffer;
@@ -138,7 +140,7 @@ private:
             return buffer[(size_t) r];
         }
     };
-    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage;
+    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignDry;
 
     // Doubler voices of an AI lead: copies of the AI singer itself, slightly late and slowly drifting in pitch
     // (a modulated delay), so the double has the lead's own timbre rather than the DSP voice's.

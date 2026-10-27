@@ -191,6 +191,86 @@ void DeEsser::process (float* left, float* right, int n, float amount) noexcept
 }
 
 //==============================================================================
+void ConsonantKeeper::prepare (double sampleRate)
+{
+    sr = sampleRate;
+    constexpr double split = 2500.0;
+    for (int k = 0; k < 2; ++k)
+    {
+        leadLow[k].c = BiquadCoeffs::lowPass (sr, split);
+        leadHigh[k].c = inputHigh[k].c = BiquadCoeffs::highPass (sr, split);
+        inputHiss[k].c = leadHiss[k].c = BiquadCoeffs::highPass (sr, 3500.0);
+    }
+    inputBody.c = leadBody.c = BiquadCoeffs::lowPass (sr, 1500.0);
+    envCoeff = coeffForMs (sr, 4.0);
+    attack = coeffForMs (sr, 2.0);
+    release = coeffForMs (sr, 12.0);
+    levelCoeff = coeffForMs (sr, 3000.0);
+    reset();
+}
+
+void ConsonantKeeper::reset()
+{
+    for (auto* b : { &leadLow[0], &leadLow[1], &leadHigh[0], &leadHigh[1], &inputHigh[0], &inputHigh[1],
+                     &inputHiss[0], &inputHiss[1], &inputBody, &leadHiss[0], &leadHiss[1], &leadBody })
+        b->reset();
+    inHiss = inBody = aiHiss = aiBody = 0.0f;
+    weight = 0.0f;
+    leadLevel = inputLevel = 0.0f;
+    gain = 1.0f;
+}
+
+void ConsonantKeeper::process (float* lead, const float* input, int n) noexcept
+{
+    constexpr float floor = 1.0e-10f;   // -100 dB
+    constexpr float gate = 1.0e-7f;     // -70 dB: quieter than this is silence, not a consonant
+
+    for (int i = 0; i < n; ++i)
+    {
+        const float x = input[i], y = lead[i];
+
+        const float hissIn = inputHiss[1].process (inputHiss[0].process (x));
+        const float bodyIn = inputBody.process (x);
+        const float hissAi = leadHiss[1].process (leadHiss[0].process (y));
+        const float bodyAi = leadBody.process (y);
+        inHiss = hissIn * hissIn + envCoeff * (inHiss - hissIn * hissIn);
+        inBody = bodyIn * bodyIn + envCoeff * (inBody - bodyIn * bodyIn);
+        aiHiss = hissAi * hissAi + envCoeff * (aiHiss - hissAi * hissAi);
+        aiBody = bodyAi * bodyAi + envCoeff * (aiBody - bodyAi * bodyAi);
+
+        const float inRatio = 10.0f * std::log10 ((inHiss + floor) / (inBody + floor));
+        const float aiRatio = 10.0f * std::log10 ((aiHiss + floor) / (aiBody + floor));
+        const bool audible = inHiss + inBody > gate;
+
+        // The input hisses (2 dB above its body, fully at 10 dB), or the AI hisses where the input has no voiced
+        // sound (breaths, consonant tails): both are the input's own consonant.
+        float target = audible ? juce::jlimit (0.0f, 1.0f, (inRatio - 2.0f) * 0.125f) : 0.0f;
+        target = juce::jmax (target, juce::jlimit (0.0f, 1.0f, (aiRatio - 2.0f) * 0.125f)
+                                     * juce::jlimit (0.0f, 1.0f, (inRatio + 8.0f) * 0.25f));
+        weight = target + (target > weight ? attack : release) * (weight - target);
+
+        // Level match on clearly voiced sound (vowels) of both.
+        if (audible && inRatio < -10.0f)
+        {
+            leadLevel = y * y + levelCoeff * (leadLevel - y * y);
+            inputLevel = x * x + levelCoeff * (inputLevel - x * x);
+        }
+
+        const float low = leadLow[1].process (leadLow[0].process (y));
+        const float high = leadHigh[1].process (leadHigh[0].process (y));
+        const float kept = inputHigh[1].process (inputHigh[0].process (x));
+        lead[i] = low + high + weight * (gain * kept - high);
+    }
+
+    if (inputLevel > gate)
+        gain = juce::jlimit (0.5f, 2.0f, std::sqrt (leadLevel / inputLevel));
+
+    for (auto* b : { &leadLow[0], &leadLow[1], &leadHigh[0], &leadHigh[1], &inputHigh[0], &inputHigh[1],
+                     &inputHiss[0], &inputHiss[1], &inputBody, &leadHiss[0], &leadHiss[1], &leadBody })
+        b->sanitise();
+}
+
+//==============================================================================
 void VocalCompressor::prepare (double sampleRate)
 {
     sr = sampleRate;

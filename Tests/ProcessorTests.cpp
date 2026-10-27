@@ -2,6 +2,7 @@
 #include "core/Watermark.h"
 #include "core/AudioUtils.h"
 #include "dsp/PitchDetector.h"
+#include "neural/NeuralVoice.h"
 #include "TestSignals.h"
 
 namespace voxa
@@ -260,6 +261,8 @@ public:
         beginTest ("Text to Sing generation completes");
         {
             VoxaVersaProcessor p;
+            // the synthesized take: AI voices installed on this computer would otherwise sing it
+            setParam (p, ParamID::aiEngine, 0.0f);
             p.prepareToPlay (sr, block);
             setParam (p, ParamID::mode, 1.0f);
             setParam (p, ParamID::melodySource, (float) MelodySource::AutoMelody);
@@ -306,6 +309,44 @@ public:
             else
             {
                 logMessage ("Text to Sing not available: " + p.getSingError());
+            }
+        }
+
+        beginTest ("Text to Sing: the first Generate after choosing a voice uses its AI singer");
+        {
+            VoxaVersaProcessor p;
+            setParam (p, ParamID::aiEngine, 1.0f);
+            p.prepareToPlay (sr, block);   // starts loading the voice's AI singer (attached later, on the message thread)
+
+            if (! p.getSelectedVoice().hasNeuralModel() || ! neural::OnnxRuntime::getInstance().ensureLoaded())
+            {
+                logMessage ("No AI singer installed for the default voice: skipped");
+            }
+            else
+            {
+                setParam (p, ParamID::mode, 1.0f);
+                setParam (p, ParamID::melodySource, (float) MelodySource::AutoMelody);
+                p.setLyrics ("Shine a little light tonight");
+                p.generateSinging();   // before the model has been attached
+                expect (test::waitFor ([&p] { return p.getSingState() != VoxaVersaProcessor::SingState::Rendering; }, 240000));
+                expect (p.getSingState() == VoxaVersaProcessor::SingState::Ready, p.getSingError());
+
+                p.startOfflineRender (VoxaVersaProcessor::RenderTarget::SingTake);
+                expect (test::waitFor ([&p] { return ! p.isOfflineRendering(); }, 240000), "sing render finished");
+                const auto rendered = p.getLastRenderedFile();
+                juce::AudioFormatManager fm;
+                fm.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (rendered));
+                expect (reader != nullptr, "sung export: " + p.getLastRenderError());
+                if (reader != nullptr)
+                {
+                    juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+                    reader->read (&audio, 0, (int) reader->lengthInSamples, 0, true, true);
+                    const auto mark = detectWatermark (audio, reader->sampleRate);
+                    expect (mark.kind == WatermarkKind::AiVoice, "sung by the AI singer: " + watermarkKindName (mark.kind));
+                }
+                reader.reset();
+                rendered.deleteFile();
             }
         }
     }

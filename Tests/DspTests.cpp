@@ -3,6 +3,7 @@
 #include "dsp/PitchMapper.h"
 #include "dsp/VoiceChain.h"
 #include "dsp/VoiceGenderEstimator.h"
+#include "dsp/VocalFx.h"
 #include "voices/VoiceLibrary.h"
 #include "TestSignals.h"
 
@@ -520,7 +521,107 @@ public:
     }
 };
 
+class ConsonantKeeperTests : public juce::UnitTest
+{
+public:
+    ConsonantKeeperTests() : juce::UnitTest ("Consonant keeper", "DSP") {}
+
+    void runTest() override
+    {
+        constexpr double sr = 48000.0;
+        const int seg = (int) (sr * 0.5);
+
+        // A sung vowel, then an "s" (the input hisses above 6.5 kHz, the AI smears it down to ~4 kHz), then the vowel.
+        dsp::Noise noise;
+        dsp::Biquad sHigh[2], smearLow[2], smearHigh[2];
+        for (int k = 0; k < 2; ++k)
+        {
+            sHigh[k].c = dsp::BiquadCoeffs::highPass (sr, 6500.0);
+            smearHigh[k].c = dsp::BiquadCoeffs::highPass (sr, 3500.0);
+            smearLow[k].c = dsp::BiquadCoeffs::lowPass (sr, 4500.0);
+        }
+        std::vector<float> input ((size_t) seg * 3), lead ((size_t) seg * 3);
+        for (int i = 0; i < seg * 3; ++i)
+        {
+            const bool hiss = i >= seg && i < 2 * seg;
+            const double t = i / sr;
+            float vowelIn = 0.0f, vowelAi = 0.0f;
+            for (int h = 1; h <= 8; ++h)
+            {
+                vowelIn += 0.2f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 150.0 * h * t);
+                vowelAi += 0.2f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * t + h);
+            }
+            const float s = sHigh[1].process (sHigh[0].process (noise.next()));
+            const float smear = smearLow[1].process (smearLow[0].process (smearHigh[1].process (smearHigh[0].process (noise.next()))));
+            input[(size_t) i] = hiss ? 0.3f * s : vowelIn;
+            lead[(size_t) i] = hiss ? 0.3f * smear : vowelAi;
+        }
+
+        auto out = lead;
+        dsp::ConsonantKeeper keeper;
+        keeper.prepare (sr);
+        for (int pos = 0; pos < seg * 3; pos += 512)
+            keeper.process (out.data() + pos, input.data() + pos, juce::jmin (512, seg * 3 - pos));
+
+        // Band level from averaged Hann-windowed spectra (sharp band edges: the "s" is far louder overall).
+        auto bandDb = [sr] (const std::vector<float>& x, int from, int to, double lo, double hi)
+        {
+            constexpr int order = 12, size = 1 << order;
+            juce::dsp::FFT fft (order);
+            std::vector<float> frame ((size_t) size * 2);
+            double e = 0.0;
+            for (int pos = from; pos + size <= to; pos += size / 2)
+            {
+                std::fill (frame.begin(), frame.end(), 0.0f);
+                for (int i = 0; i < size; ++i)
+                    frame[(size_t) i] = x[(size_t) (pos + i)] * 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) size));
+                fft.performFrequencyOnlyForwardTransform (frame.data());
+                for (int b = (int) std::ceil (lo * size / sr); b <= (int) (hi * size / sr); ++b)
+                    e += (double) frame[(size_t) b] * frame[(size_t) b];
+            }
+            return 10.0 * std::log10 (e + 1.0e-20);
+        };
+
+        beginTest ("The input's own \"s\" replaces the AI's smeared one");
+        {
+            const int from = seg + seg / 5, to = 2 * seg - seg / 5;
+            const double keptHigh = bandDb (out, from, to, 7000.0, 16000.0) - bandDb (input, from, to, 7000.0, 16000.0);
+            const double smearLeft = bandDb (out, from, to, 3800.0, 4200.0) - bandDb (lead, from, to, 3800.0, 4200.0);
+            expect (std::abs (keptHigh) < 3.0, "input hiss kept: " + juce::String (keptHigh, 1) + " dB");
+            expect (smearLeft < -8.0, "AI smear removed: " + juce::String (smearLeft, 1) + " dB");
+        }
+
+        beginTest ("Sung vowels stay the AI voice");
+        {
+            // Untouched lead = its Linkwitz-Riley split summed back (an all-pass): compare against that.
+            dsp::Biquad low[2], high[2];
+            for (int k = 0; k < 2; ++k)
+            {
+                low[k].c = dsp::BiquadCoeffs::lowPass (sr, 2500.0);
+                high[k].c = dsp::BiquadCoeffs::highPass (sr, 2500.0);
+            }
+            std::vector<float> untouched (lead.size());
+            for (size_t i = 0; i < lead.size(); ++i)
+                untouched[i] = low[1].process (low[0].process (lead[i])) + high[1].process (high[0].process (lead[i]));
+
+            for (int start : { seg / 5, 2 * seg + seg / 5 })
+            {
+                double eLead = 0.0, eDiff = 0.0;
+                for (int i = start; i < start + seg / 2; ++i)
+                {
+                    const double d = (double) out[(size_t) i] - untouched[(size_t) i];
+                    eLead += (double) untouched[(size_t) i] * untouched[(size_t) i];
+                    eDiff += d * d;
+                }
+                const double changeDb = 10.0 * std::log10 (eDiff / eLead + 1.0e-20);
+                expect (changeDb < -40.0, "vowel changed by " + juce::String (changeDb, 1) + " dB");
+            }
+        }
+    }
+};
+
 static PitchDetectorTests pitchDetectorTests;
+static ConsonantKeeperTests consonantKeeperTests;
 static GenderEstimatorTests genderEstimatorTests;
 static VoiceChainTests voiceChainTests;
 static PitchMapperTests pitchMapperTests;

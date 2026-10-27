@@ -1494,7 +1494,18 @@ void VoxaVersaProcessor::generateSinging()
         return;
     }
 
-    const auto model = ParamCache::on (p.aiEngine) ? impl->currentModel : nullptr;
+    // The selected voice's own AI singer. Right after a voice change its model may still be loading (the
+    // loaded one then still belongs to the previous voice): the take loads it itself rather than being
+    // sung by another singer or by none.
+    std::shared_ptr<neural::NeuralVoiceModel> model;
+    bool loadModel = false;
+    if (ParamCache::on (p.aiEngine) && request.voice.hasNeuralModel())
+    {
+        if (impl->currentModel != nullptr && impl->currentModelVoiceId == request.voice.id)
+            model = impl->currentModel;
+        else
+            loadModel = neural::OnnxRuntime::getInstance().ensureLoaded();
+    }
 
     impl->cancelSing.store (false);
     singProgress.store (0.0f);
@@ -1502,14 +1513,20 @@ void VoxaVersaProcessor::generateSinging()
     singPreviewPlaying.store (false);
 
     auto* self = this;
-    impl->pool.addJob ([self, request, model]
+    impl->pool.addJob ([self, request, model, loadModel]() mutable
     {
         auto& cancel = self->impl->cancelSing;
         sing::SingEngine engine;
-        auto result = engine.render (request, &cancel, [self, hasModel = model != nullptr] (float progress)
+        auto result = engine.render (request, &cancel, [self, hasModel = model != nullptr || loadModel] (float progress)
         {
             self->singProgress.store (progress * (hasModel ? 0.6f : 0.98f));
         });
+
+        if (loadModel && ! cancel.load() && result.ok())
+        {
+            juce::String error;
+            model = neural::NeuralVoiceModel::load (request.voice, error);
+        }
 
         if (cancel.load() || ! result.ok())
         {

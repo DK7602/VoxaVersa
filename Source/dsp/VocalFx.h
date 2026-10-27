@@ -63,6 +63,30 @@ private:
     float reductionDb = 0.0f;
 };
 
+/** Keeps the singer's own unvoiced consonants ("s", "sh", "t", "k", "f") in an AI lead voice.
+    Voice conversion re-synthesises them from noise and smears them down toward "sh" and "th": a lisp. They carry
+    almost no voice identity, so where the input hisses (or the AI hisses over a sound the input did not voice)
+    the AI voice above ~2.5 kHz is replaced by the input's, level-matched to the AI voice. */
+class ConsonantKeeper
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice, aligned with it. */
+    void process (float* lead, const float* input, int numSamples) noexcept;
+
+private:
+    double sr = 48000.0;
+    // Linkwitz-Riley split (low + high sum to an all-pass, so the AI voice is untouched where nothing is kept)
+    Biquad leadLow[2], leadHigh[2], inputHigh[2];
+    // hiss detectors: energy above 3.5 kHz against below 1.5 kHz
+    Biquad inputHiss[2], inputBody, leadHiss[2], leadBody;
+    float inHiss = 0.0f, inBody = 0.0f, aiHiss = 0.0f, aiBody = 0.0f, envCoeff = 0.0f;
+    float weight = 0.0f, attack = 0.0f, release = 0.0f;
+    // voiced levels of both voices, to match the kept consonants to the AI voice's loudness
+    float leadLevel = 0.0f, inputLevel = 0.0f, levelCoeff = 0.0f, gain = 1.0f;
+};
+
 /** One-knob vocal compressor (feed-forward, soft knee, stereo linked, auto make-up). */
 class VocalCompressor
 {

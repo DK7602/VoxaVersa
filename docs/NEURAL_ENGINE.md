@@ -111,6 +111,19 @@ Contents
   and at full quality even on a computer that is too slow for live playback. In real time this never
   happens.
 
+### Consonants (`ConsonantKeeper`)
+
+RVC re-synthesises unvoiced consonants from noise through the singer's learned spectral envelope, and
+models trained on little data smear them: measured on a male vocal through Male Pop, the "s" sounds came
+out 6–9 dB too strong between 2 and 7 kHz with their peak moved from 7.1 to 5.0 kHz, toward "sh" and "th"
+(heard as a lisp). Unvoiced consonants carry almost no voice identity, so `VoiceChain` keeps the input's
+own (as RVC's `protect` option does for the content features): where the dry input hisses (energy above
+3.5 kHz more than 2 dB over that below 1.5 kHz, fully at 10 dB), or the AI hisses over a sound the input did
+not voice, the AI lead above 2.5 kHz (Linkwitz-Riley split, so it is untouched elsewhere) is replaced by the
+input's, level-matched to the AI voice on vowels. This applies to the live stream and to offline renders
+of an AI lead; on the test vocal it brought the "s" spectrum to within 0.6 dB (RMS over 2–12 kHz) of the
+singer's own, from 2.3 dB.
+
 ### Offline conversion
 
 `NeuralVoiceModel::convert` resamples the clip to 16 kHz, interpolates the target f0 contour onto 10 ms
@@ -465,7 +478,8 @@ models and resets while streaming, and offline bounces.
 
 * **Latency** is ~0.83 s in real time (see above). It is constant and reported to the host.
 * **Feature retrieval** (RVC's `.index` / faiss step) and RVC's `protect` and `rms_mix_rate` options are
-  not implemented; the generator receives the raw content features.
+  not implemented; the generator receives the raw content features (the input's unvoiced consonants are
+  kept after conversion instead, see *Consonants*).
 * **Pitch** must be supplied by the caller (target f0); the engine does not estimate pitch.
 * **GPU providers** (CUDA, DirectML, CoreML) are wired up through ONNX Runtime's generic APIs; the automated
   tests run on CPU builds only. A provider that fails to load or run a model falls back to the CPU.
