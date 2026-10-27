@@ -149,6 +149,22 @@ input's, level-matched to the AI voice on vowels. This applies to the live strea
 of an AI lead; on the test vocal it brought the "s" spectrum to within 0.6 dB (RMS over 2–12 kHz) of the
 singer's own, from 2.3 dB.
 
+### American R (`RKeeper`)
+
+An American "r" is sung with the third formant (F3) dipping ~20–25 % below the vowels around it. The AI
+singers barely follow: measured with Praat on a male vocal through Female R&B, the singer's R moments sat at
+1980 Hz against 2564 Hz on the other words (a 23 % dip), the AI voice's at 2545 against 2763 Hz (8 %), so
+"friend" drifted toward "fwend". `RKeeper` tracks F3 of the dry voice and of the AI voice, the way Praat
+does: each resampled to twice its analysis ceiling (5000 Hz for a man, 5500 Hz for a woman, from the
+Source Voice setting or the gender estimate, and from the AI voice's gender), LPC of order 10 over 25 ms
+every 5 ms, a 3-frame median. The ceiling matters: one F3 setting for every voice confused F3 with F2 or F4
+on a third of the frames. Where the dry voice's F3 dips more than 8 % below its recent vowels (the 70th
+percentile of the last 1.5 s; fully at 20 %), the AI voice gets a resonance at its own F3 lowered by the
+same proportion and its F3 is cut (up to ±15 dB, Q 5). The dry voice is read 17.5 ms ahead of the lead
+(from the input already buffered for the DSP voice, so without extra latency), which puts the analysis
+on time. Result on the same vocal: the AI voice's R moments at 2251 Hz against 2768 Hz (a 19 % dip),
+other words unchanged. `VoxaVersaRender --rkeeper dry.wav ai.wav out.wav` runs it on two files.
+
 ### Offline conversion
 
 `NeuralVoiceModel::convert` resamples the clip to 16 kHz, interpolates the target f0 contour onto 10 ms

@@ -101,6 +101,8 @@ public:
 
 private:
     float computeFormantSemis (const ChainSettings&) const noexcept;
+    /** voicedBuf[i] = 1 where the pitch detector heard the input voiced at input time `from + i`. */
+    void fillInputVoicing (juce::int64 from, int n) noexcept;
 
     double sr = 48000.0;
     int maxBlock = 512;
@@ -120,6 +122,7 @@ private:
     juce::int64 blockStart = 0;
 
     ConsonantKeeper consonants;
+    RKeeper rKeeper;
     CharacterProcessor character;
     DeEsser deEsser;
     VocalCompressor compressor;
@@ -127,7 +130,7 @@ private:
     StereoDelay delay;
     FdnReverb reverb;
 
-    std::vector<float> leadBuf, voiceBuf, dryBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
+    std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
 
     // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
     // is active, the DSP lead that fills its gaps, the neural coverage that crossfades the two and the dry input
@@ -149,7 +152,8 @@ private:
             return buffer[(size_t) r];
         }
     };
-    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignDry;
+    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignDry, alignAhead;
+    int rLookAhead = 0;   // samples: the dry voice for the R keeper, RKeeper::lookAheadSeconds early
 
     // Doubler voices of an AI lead: copies of the AI singer itself, slightly late and slowly drifting in pitch
     // (a modulated delay), so the double has the lead's own timbre rather than the DSP voice's.

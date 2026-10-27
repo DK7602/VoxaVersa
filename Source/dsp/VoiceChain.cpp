@@ -51,12 +51,14 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     timeOffset = lowLatency ? 0 : detector.getAnalysisDelay();
     placementLag = lowLatency ? 0 : detector.getAnalysisDelay() + 2 * detector.getHopSize();
     dspLatency = (int) std::ceil (juce::jmax (2.75f * tMax, (float) placementLag + 2.0f * tMax)) + 16;
+    rLookAhead = juce::jmin (juce::roundToInt (RKeeper::lookAheadSeconds * sr), dspLatency);
 
     lead.prepare (dspLatency);
     for (auto& h : harmony) h.prepare (dspLatency);
     for (auto& d : doubler) d.prepare (dspLatency);
 
     consonants.prepare (sr);
+    rKeeper.prepare (sr);
     character.prepare (sr);
     deEsser.prepare (sr);
     compressor.prepare (sr);
@@ -64,7 +66,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -74,6 +76,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     alignLead.prepare (maxAlign);
     alignCoverage.prepare (maxAlign);
     alignDry.prepare (maxAlign);
+    alignAhead.prepare (maxAlign);
     for (auto& d : aiDoubler)
         d.prepare ((int) std::ceil (sr * 0.04));
 
@@ -93,7 +96,7 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
 
     neuralLatency = newNeural;
     totalLatency = newTotal;
-    alignL.delay = alignR.delay = alignLead.delay = alignDry.delay = totalLatency - dspLatency;
+    alignL.delay = alignR.delay = alignLead.delay = alignDry.delay = alignAhead.delay = totalLatency - dspLatency;
     alignNeural.delay = alignCoverage.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
     alignL.clear();
     alignR.clear();
@@ -101,6 +104,7 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     alignLead.clear();
     alignCoverage.clear();
     alignDry.clear();
+    alignAhead.clear();
     return true;
 }
 
@@ -117,6 +121,7 @@ void VoiceChain::reset()
     for (auto& a : harmonyActive) a = false;
     for (auto& a : doublerActive) a = false;
     consonants.reset();
+    rKeeper.reset();
     character.reset();
     deEsser.reset();
     compressor.reset();
@@ -152,6 +157,13 @@ float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Set
     // anything bigger is the live detector reading a different note than the one the input sings.
     const float moves = pf.voiced ? juce::jlimit (-1.5f, 1.5f, pf.mainShift - pf.globalOffset) : 0.0f;
     return pf.globalOffset + moves;
+}
+
+void VoiceChain::fillInputVoicing (juce::int64 from, int n) noexcept
+{
+    PitchFrame pf;
+    for (int i = 0; i < n; ++i)
+        voicedBuf[(size_t) i] = timeline.lookup ((double) (from + i), pf) && pf.voiced ? 1.0f : 0.0f;
 }
 
 float VoiceChain::computeFormantSemis (const ChainSettings& s) const noexcept
@@ -264,11 +276,25 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     for (int i = 0; i < n; ++i)
         dryBuf[(size_t) i] = analyzer.interpolate ((double) (tStart + i));
 
+    // ... and a little earlier for the R keeper (the input is ahead of the lead by dspLatency).
+    const auto aheadStart = tStart + rLookAhead;
+    for (int i = 0; i < n; ++i)
+        aheadBuf[(size_t) i] = analyzer.interpolate ((double) (aheadStart + i));
+    {
+        const int source = s.pitch.sourceGender != 0 ? s.pitch.sourceGender : (int) genderEstimator.getGender();
+        rKeeper.setCeilings (source == 2 ? RKeeper::femaleCeilingHz : RKeeper::maleCeilingHz,
+                             s.pitch.traits.gender == VoiceGender::Male ? RKeeper::maleCeilingHz : RKeeper::femaleCeilingHz);
+    }
+
     if (leadOverride != nullptr)
     {
         std::copy (leadOverride, leadOverride + n, leadBuf.begin());
         if (s.aiLead)
+        {
             consonants.process (leadBuf.data(), dryBuf.data(), n);
+            fillInputVoicing (aheadStart, n);
+            rKeeper.process (leadBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
+        }
     }
 
     if (! neuralActive)
@@ -401,12 +427,15 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             const float c = alignCoverage.process (neuralCoverage[(size_t) i]);
             const float fill = alignLead.process (leadBuf[(size_t) i]);
             dryBuf[(size_t) i] = alignDry.process (dryBuf[(size_t) i]);   // now aligned with the neural lead
+            aheadBuf[(size_t) i] = alignAhead.process (aheadBuf[(size_t) i]);
             voiceBuf[(size_t) i] = v + fill * (1.0f - c);
         }
 
         if (neuralActive)
         {
             consonants.process (voiceBuf.data(), dryBuf.data(), n);
+            fillInputVoicing (aheadStart - alignAhead.delay, n);
+            rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
             for (int i = 0; i < n; ++i)
             {
                 busL[(size_t) i] += voiceBuf[(size_t) i];

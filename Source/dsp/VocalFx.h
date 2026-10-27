@@ -87,6 +87,78 @@ private:
     float leadLevel = 0.0f, inputLevel = 0.0f, levelCoeff = 0.0f, gain = 1.0f;
 };
 
+/** Gives an AI lead voice the input's American "r". An r is sung with the third formant (F3) dipping ~20 - 25 %
+    below the vowels around it; the AI singers barely follow (measured on a user's song: the dry R at ~1.98 kHz
+    against 2.56 kHz on the other words, the AI voice 2.50 against 2.95 kHz), so "friend" drifts toward "fwend".
+    F3 of the dry voice and of the AI voice are tracked (LPC, 25 ms frames every 5 ms); where the dry voice's F3
+    dips, the AI voice gets a resonance at its own F3 lowered by the same proportion, and its F3 is cut.
+    Which LPC pole is "the third formant" depends on the analysis ceiling (Praat's maximum formant: 5000 Hz for
+    men, 5500 Hz for women); the wrong one confuses F3 with F2 or F4 on a third of the frames, so each voice is
+    analysed with its own (setCeilings). */
+class RKeeper
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice lookAheadSeconds ahead of it
+        and `inputVoiced` (> 0.5) where the pitch detector hears that input voiced, per sample. */
+    void process (float* lead, const float* input, const float* inputVoiced, int numSamples) noexcept;
+
+    /** How early the dry voice should arrive: the analysis looks back half its 25 ms window and the 3-frame
+        median 5 ms more, so an r lands on time (measured: the r's F3 then ~140 Hz lower than without). */
+    static constexpr double lookAheadSeconds = 0.0175;
+
+    static constexpr double maleCeilingHz = 5000.0, femaleCeilingHz = 5500.0;
+    /** The analysis ceilings of the input and the AI voice (maleCeilingHz or femaleCeilingHz); a change restarts
+        that voice's analysis. */
+    void setCeilings (double inputHz, double leadHz) noexcept;
+
+    /** Third-formant tracker, as Praat measures it: the audio resampled to twice the ceiling, LPC (order 10, five
+        formants) over 25 ms, the poles' frequencies. */
+    struct FormantTracker
+    {
+        static constexpr double maxCeilingHz = 6000.0;
+        void prepare (double sampleRate, double ceilingHz);
+        /** A new ceiling (up to maxCeilingHz) without allocating. */
+        void setCeiling (double ceilingHz) noexcept;
+        double getCeiling() const noexcept { return ceiling; }
+        void reset();
+        /** One full-rate sample. */
+        void push (float x) noexcept;
+        /** F3 (Hz, 0 when none was found) and level of the latest 25 ms. */
+        void analyse() noexcept;
+        float f3 = 0.0f, levelDb = -100.0f;
+
+    private:
+        double sr = 48000.0, ceiling = maleCeilingHz, rate = 10000.0, step = 0.2, phase = 0.0;
+        float previousInput = 0.0f;
+        int window = 250, write = 0;
+        Biquad aa[4];
+        std::vector<float> ring, frame, hamming;
+    };
+
+    static constexpr float maxGainDb = 15.0f;
+
+    /** Frames analysed while the input was sung, and those with an r applied (weight > 0.1), since reset(). */
+    struct Stats { int sungFrames = 0, rFrames = 0; float dryBase = 0.0f, aiBase = 0.0f; };
+    const Stats& getStats() const noexcept { return stats; }
+
+private:
+    float baseline (std::vector<float>& history, int count, std::vector<float>& scratch) const;
+
+    float steady (float* recent, float latest) const noexcept;
+
+    double sr = 48000.0;
+    FormantTracker dry, ai;
+    float dryRecent[3] {}, aiRecent[3] {};   // the last frames' F3: a median of 3 ignores one-frame slips
+    Biquad boost, cut;
+    std::vector<float> dryHistory, aiHistory, scratch;   // F3 of recent voiced frames (~1.5 s)
+    int dryCount = 0, aiCount = 0, frames = 0;
+    float dryBase = 0.0f, aiBase = 0.0f, peakDb = -100.0f, weight = 0.0f, boostHz = 2000.0f, cutHz = 2500.0f;
+    int voicedSamples = 0, frameSamples = 0, hop = 240, sinceFrame = 0;
+    Stats stats;
+};
+
 /** One-knob vocal compressor (feed-forward, soft knee, stereo linked, auto make-up). */
 class VocalCompressor
 {

@@ -11,6 +11,8 @@
 //                                             its phoneme plan (one row per segment) and, with --chain, the
 //                                             take rendered through the voice chain exactly as Generate +
 //                                             export do in the plug-in (DSP path, AI engine off).
+//   VoxaVersaRender --rkeeper <dry.wav> <ai.wav> <out.wav> [ai-lag-seconds] [f3.csv]
+//                                             developer check of the R keeper on its own
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // --realtime feeds the blocks at the pace of live playback (what a DAW does while playing);
@@ -24,6 +26,7 @@
 #include "core/Watermark.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/VoiceGenderEstimator.h"
+#include "dsp/VocalFx.h"
 #include "sing/Lyrics.h"
 #include "sing/Melody.h"
 #include "sing/OfflineRenderer.h"
@@ -209,6 +212,81 @@ namespace
     }
 }
 
+/** Developer check of the R keeper on files: --rkeeper dry.wav ai.wav out.wav [ai-lag-seconds] [f3.csv]
+    (the AI file may be a DAW bounce that starts `lag` seconds late). Voicing from the live pitch detector. */
+static int rKeeperTool (const juce::StringArray& args)
+{
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    auto load = [&] (const juce::String& path, double& rate)
+    {
+        std::unique_ptr<juce::AudioFormatReader> r (formats.createReaderFor (juce::File::getCurrentWorkingDirectory().getChildFile (path)));
+        if (r == nullptr) return juce::AudioBuffer<float>();
+        rate = r->sampleRate;
+        juce::AudioBuffer<float> b ((int) r->numChannels, (int) r->lengthInSamples);
+        r->read (&b, 0, (int) r->lengthInSamples, 0, true, true);
+        return voxa::toMono (b);
+    };
+    double sr = 0.0, sr2 = 0.0;
+    auto dry = load (args[1], sr), ai = load (args[2], sr2);
+    if (dry.getNumSamples() == 0 || ai.getNumSamples() == 0 || sr != sr2)
+        return fail ("cannot read the two files (same sample rate needed)");
+    const int lag = args.size() > 4 ? juce::roundToInt (args[4].getDoubleValue() * sr) : 0;
+    const int n = juce::jmin (dry.getNumSamples(), ai.getNumSamples() - lag);
+
+    const int hop = 240;
+    auto frames = voxa::dsp::PitchDetector::analyse (dry.getReadPointer (0), n, sr, hop);
+    std::vector<float> voiced ((size_t) n), lead ((size_t) n), dryv ((size_t) n);
+    for (int i = 0; i < n; ++i)
+    {
+        voiced[(size_t) i] = frames[(size_t) juce::jmin ((int) frames.size() - 1, i / hop)].voiced ? 1.0f : 0.0f;
+        lead[(size_t) i] = ai.getSample (0, i + lag);
+        dryv[(size_t) i] = dry.getSample (0, i);
+    }
+
+    using voxa::dsp::RKeeper;
+    using voxa::dsp::VoiceGenderEstimator;
+    auto ceilingOf = [&] (const float* x)
+    {
+        return VoiceGenderEstimator::analyse (x, n, sr) == VoiceGenderEstimator::Gender::Female ? RKeeper::femaleCeilingHz
+                                                                                                 : RKeeper::maleCeilingHz;
+    };
+    const double dryCeiling = ceilingOf (dryv.data()), aiCeiling = ceilingOf (lead.data());
+    RKeeper keeper;
+    keeper.prepare (sr);
+    keeper.setCeilings (dryCeiling, aiCeiling);
+    RKeeper::FormantTracker td, ta;
+    td.prepare (sr, dryCeiling);
+    ta.prepare (sr, aiCeiling);
+    juce::String csv ("time,dry_f3,ai_f3,dry_db,voiced\n");
+    for (int i = 0; i < n; ++i)
+    {
+        ta.push (lead[(size_t) i]);
+        td.push (dryv[(size_t) i]);
+        if ((i + 1) % 240 == 0)
+        {
+            td.analyse();
+            ta.analyse();
+            csv << juce::String (i / sr, 3) << "," << td.f3 << "," << ta.f3 << "," << td.levelDb << "," << voiced[(size_t) i] << "\n";
+        }
+    }
+    auto out = lead;
+    for (int pos = 0; pos < n; pos += 512)
+        keeper.process (out.data() + pos, dryv.data() + pos, voiced.data() + pos, juce::jmin (512, n - pos));
+
+    juce::AudioBuffer<float> buf (1, n);
+    buf.copyFrom (0, 0, out.data(), n);
+    if (! voxa::writeWav (juce::File::getCurrentWorkingDirectory().getChildFile (args[3]), buf, sr, {}))
+        return fail ("cannot write " + args[3]);
+    if (args.size() > 5)
+        juce::File::getCurrentWorkingDirectory().getChildFile (args[5]).replaceWithText (csv);
+    const auto& st = keeper.getStats();
+    std::printf ("ceilings: input %.0f Hz, AI %.0f Hz\n", dryCeiling, aiCeiling);
+    std::printf ("R keeper: %d sung frames, r applied in %d (%.1f%%); F3 baselines dry %.0f Hz, AI %.0f Hz\n",
+                 st.sungFrames, st.rFrames, 100.0 * st.rFrames / juce::jmax (1, st.sungFrames), st.dryBase, st.aiBase);
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -235,6 +313,9 @@ int main (int argc, char* argv[])
 
     if (args.size() > 0 && args[0] == "--sing")
         return renderSing (processor, args);
+
+    if (args.size() >= 4 && args[0] == "--rkeeper")
+        return rKeeperTool (args);
 
     if (args.size() < 2 && ! args.contains ("--analyse") && ! args.contains ("--detect"))
         return fail ("usage: VoxaVersaRender <in.wav> <out.wav> [--voice id] [--preset name] [--quality 0|1|2] [--set id=value ...]");

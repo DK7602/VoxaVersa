@@ -1,5 +1,6 @@
 #include "VocalFx.h"
 #include <algorithm>
+#include <complex>
 
 namespace voxa::dsp
 {
@@ -268,6 +269,291 @@ void ConsonantKeeper::process (float* lead, const float* input, int n) noexcept
     for (auto* b : { &leadLow[0], &leadLow[1], &leadHigh[0], &leadHigh[1], &inputHigh[0], &inputHigh[1],
                      &inputHiss[0], &inputHiss[1], &inputBody, &leadHiss[0], &leadHiss[1], &leadBody })
         b->sanitise();
+}
+
+//==============================================================================
+namespace
+{
+    /** Roots of z^p + a[1] z^(p-1) + ... + a[p] (Durand-Kerner; p <= 16). */
+    void polynomialRoots (const double* a, int p, std::complex<double>* roots) noexcept
+    {
+        for (int k = 0; k < p; ++k)
+            roots[k] = std::polar (0.9, juce::MathConstants<double>::twoPi * k / p + 0.4);
+
+        for (int iteration = 0; iteration < 80; ++iteration)
+        {
+            double change = 0.0;
+            for (int k = 0; k < p; ++k)
+            {
+                const auto z = roots[k];
+                std::complex<double> value = 1.0, denominator = 1.0;
+                for (int j = 1; j <= p; ++j)
+                    value = value * z + a[j];
+                for (int j = 0; j < p; ++j)
+                    if (j != k)
+                        denominator *= z - roots[j];
+                if (std::abs (denominator) < 1.0e-300)
+                    continue;
+                const auto delta = value / denominator;
+                roots[k] = z - delta;
+                change = juce::jmax (change, std::abs (delta));
+            }
+            if (change < 1.0e-9)
+                break;
+        }
+    }
+}
+
+void RKeeper::FormantTracker::prepare (double sampleRate, double ceilingHz)
+{
+    sr = sampleRate;
+    const auto longest = (size_t) std::ceil (0.025 * 2.0 * maxCeilingHz) + 1;
+    ring.assign (longest, 0.0f);
+    frame.assign (longest, 0.0f);
+    hamming.assign (longest, 0.0f);
+    ceiling = 0.0;
+    setCeiling (ceilingHz);
+}
+
+void RKeeper::FormantTracker::setCeiling (double ceilingHz) noexcept
+{
+    ceilingHz = juce::jlimit (3000.0, maxCeilingHz, ceilingHz);
+    if (juce::exactlyEqual (ceilingHz, ceiling))
+        return;
+    ceiling = ceilingHz;
+    rate = juce::jmin (sr, 2.0 * ceiling);
+    step = rate / sr;
+    // 8th-order Butterworth anti-alias filter just below the new Nyquist
+    const double cutoff = 0.46 * rate;
+    const double q[] = { 0.5098, 0.6013, 0.9000, 2.5629 };
+    for (int k = 0; k < 4; ++k)
+        aa[k].c = BiquadCoeffs::lowPass (sr, cutoff, q[k]);
+    window = juce::jmin ((int) ring.size(), juce::roundToInt (0.025 * rate));
+    for (int i = 0; i < window; ++i)
+        hamming[(size_t) i] = 0.54f - 0.46f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) (window - 1));
+    reset();
+}
+
+void RKeeper::FormantTracker::reset()
+{
+    for (auto& f : aa)
+        f.reset();
+    std::fill (ring.begin(), ring.end(), 0.0f);
+    write = 0;
+    phase = 0.0;
+    previousInput = 0.0f;
+    f3 = 0.0f;
+    levelDb = -100.0f;
+}
+
+void RKeeper::FormantTracker::push (float x) noexcept
+{
+    float y = x;
+    for (auto& f : aa)
+        y = f.process (y);
+
+    // resampled to `rate` by linear interpolation (the filtered audio is ~10x oversampled)
+    phase += step;
+    if (phase >= 1.0)
+    {
+        phase -= 1.0;
+        const float back = (float) (phase / step);   // how far before this sample the output instant lies
+        ring[(size_t) write] = y - back * (y - previousInput);
+        write = (write + 1) % window;
+    }
+    previousInput = y;
+}
+
+void RKeeper::FormantTracker::analyse() noexcept
+{
+    constexpr int order = 10;
+    double energy = 0.0;
+    float previous = ring[(size_t) write];
+    for (int i = 0; i < window; ++i)
+    {
+        const float x = ring[(size_t) ((write + i) % window)];
+        energy += (double) x * x;
+        frame[(size_t) i] = (x - 0.97f * previous) * hamming[(size_t) i];   // pre-emphasis, window
+        previous = x;
+    }
+    levelDb = (float) (10.0 * std::log10 (energy / window + 1.0e-20));
+    f3 = 0.0f;
+
+    double r[order + 1];
+    for (int lag = 0; lag <= order; ++lag)
+    {
+        double acc = 0.0;
+        for (int i = lag; i < window; ++i)
+            acc += (double) frame[(size_t) i] * frame[(size_t) (i - lag)];
+        r[lag] = acc;
+    }
+    if (r[0] < 1.0e-12)
+        return;
+    r[0] *= 1.0 + 1.0e-9;
+
+    // Levinson-Durbin: A(z) = 1 + a1 z^-1 + ... + a12 z^-12
+    double a[order + 1] = { 1.0 }, previousA[order + 1];
+    double error = r[0];
+    for (int i = 1; i <= order; ++i)
+    {
+        double acc = r[i];
+        for (int j = 1; j < i; ++j)
+            acc += a[j] * r[i - j];
+        const double k = -acc / error;
+        std::copy (a, a + order + 1, previousA);
+        for (int j = 1; j < i; ++j)
+            a[j] = previousA[j] + k * previousA[i - j];
+        a[i] = k;
+        error *= 1.0 - k * k;
+        if (error <= 0.0)
+            return;
+    }
+
+    std::complex<double> roots[order];
+    polynomialRoots (a, order, roots);
+
+    float formants[order];
+    int count = 0;
+    for (const auto& z : roots)
+    {
+        if (z.imag() <= 0.0)
+            continue;
+        const double hz = std::atan2 (z.imag(), z.real()) * rate / juce::MathConstants<double>::twoPi;
+        if (hz > 50.0 && hz < 0.5 * rate - 50.0)   // every pole counts, like Praat: a bandwidth limit skips formants
+            formants[count++] = (float) hz;
+    }
+    std::sort (formants, formants + count);
+    if (count >= 3)
+        f3 = formants[2];
+}
+
+void RKeeper::prepare (double sampleRate)
+{
+    sr = sampleRate;
+    hop = juce::jmax (1, juce::roundToInt (0.005 * sr));
+    dry.prepare (sr, maleCeilingHz);
+    ai.prepare (sr, femaleCeilingHz);
+    constexpr int history = 300;   // 1.5 s of 5 ms frames
+    dryHistory.assign (history, 0.0f);
+    aiHistory.assign (history, 0.0f);
+    scratch.assign (history, 0.0f);
+    reset();
+}
+
+void RKeeper::reset()
+{
+    dry.reset();
+    ai.reset();
+    boost.c = cut.c = BiquadCoeffs();
+    boost.reset();
+    cut.reset();
+    dryCount = aiCount = frames = sinceFrame = 0;
+    std::fill (std::begin (dryRecent), std::end (dryRecent), 0.0f);
+    std::fill (std::begin (aiRecent), std::end (aiRecent), 0.0f);
+    dryBase = aiBase = 0.0f;
+    peakDb = -100.0f;
+    weight = 0.0f;
+    voicedSamples = frameSamples = 0;
+    stats = {};
+}
+
+void RKeeper::setCeilings (double inputHz, double leadHz) noexcept
+{
+    if (! juce::exactlyEqual (juce::jlimit (3000.0, FormantTracker::maxCeilingHz, inputHz), dry.getCeiling()))
+    {
+        dry.setCeiling (inputHz);
+        dryCount = 0;
+        dryBase = 0.0f;
+    }
+    if (! juce::exactlyEqual (juce::jlimit (3000.0, FormantTracker::maxCeilingHz, leadHz), ai.getCeiling()))
+    {
+        ai.setCeiling (leadHz);
+        aiCount = 0;
+        aiBase = 0.0f;
+    }
+}
+
+float RKeeper::steady (float* recent, float latest) const noexcept
+{
+    recent[0] = recent[1];
+    recent[1] = recent[2];
+    recent[2] = latest;
+    return juce::jmax (juce::jmin (recent[0], recent[1]), juce::jmin (juce::jmax (recent[0], recent[1]), recent[2]));
+}
+
+float RKeeper::baseline (std::vector<float>& history, int count, std::vector<float>& work) const
+{
+    const int n = juce::jmin (count, (int) history.size());
+    if (n < 20)
+        return 0.0f;
+    std::copy (history.begin(), history.begin() + n, work.begin());
+    auto middle = work.begin() + (n * 7) / 10;   // the 70th percentile: the vowels, not the r's dips
+    std::nth_element (work.begin(), middle, work.begin() + n);
+    return *middle;
+}
+
+void RKeeper::process (float* lead, const float* input, const float* inputVoiced, int n) noexcept
+{
+    for (int i = 0; i < n; ++i)
+    {
+        const float y = lead[i];
+        voicedSamples += inputVoiced[i] > 0.5f ? 1 : 0;
+        ++frameSamples;
+        ai.push (y);   // the AI voice as it came, before this
+        dry.push (input[i]);
+
+        if (++sinceFrame >= hop)   // a frame every 5 ms, the same moment in both voices
+        {
+            sinceFrame = 0;
+            dry.analyse();
+            ai.analyse();
+            const float dryF3 = steady (dryRecent, dry.f3), aiF3 = steady (aiRecent, ai.f3);
+            const bool voiced = voicedSamples * 2 > frameSamples;
+            voicedSamples = frameSamples = 0;
+            peakDb = juce::jmax (dry.levelDb, peakDb - 0.01f);   // forgets ~2 dB a second
+            const bool sung = voiced && dry.levelDb > peakDb - 25.0f && dryF3 > 0.0f;
+
+            if (sung)
+            {
+                dryHistory[(size_t) (dryCount++ % (int) dryHistory.size())] = dryF3;
+                if (aiF3 > 0.0f)
+                    aiHistory[(size_t) (aiCount++ % (int) aiHistory.size())] = aiF3;
+            }
+            if (++frames % 10 == 0)
+            {
+                dryBase = baseline (dryHistory, dryCount, scratch);
+                aiBase = baseline (aiHistory, aiCount, scratch);
+            }
+
+            // An r: the dry F3 8 % below its vowels starts it, 20 % is a full one.
+            float wanted = 0.0f;
+            if (sung && aiF3 > 0.0f && dryBase > 0.0f && aiBase > 0.0f)
+            {
+                const float depth = (dryBase - dryF3) / dryBase;
+                const float w = juce::jlimit (0.0f, 1.0f, (depth - 0.08f) / 0.12f);
+                const float target = aiBase * (1.0f - depth);
+                if (w > 0.0f && target < 0.97f * aiF3)
+                {
+                    wanted = w;
+                    boostHz = target;
+                    cutHz = aiF3;
+                }
+            }
+            weight += (wanted - weight) * (wanted > weight ? 0.5f : 0.3f);
+            stats.sungFrames += sung ? 1 : 0;
+            stats.rFrames += weight > 0.1f ? 1 : 0;
+            stats.dryBase = dryBase;
+            stats.aiBase = aiBase;
+            const float gainDb = maxGainDb * weight;
+            boost.c = BiquadCoeffs::peak (sr, boostHz, 5.0, gainDb);
+            cut.c = BiquadCoeffs::peak (sr, cutHz, 5.0, -gainDb);
+        }
+
+        lead[i] = boost.process (cut.process (y));
+    }
+
+    boost.sanitise();
+    cut.sanitise();
 }
 
 //==============================================================================

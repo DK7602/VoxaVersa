@@ -1,4 +1,5 @@
 #include <juce_dsp/juce_dsp.h>
+#include <functional>
 #include "dsp/PitchDetector.h"
 #include "dsp/PitchMapper.h"
 #include "dsp/VoiceChain.h"
@@ -639,7 +640,128 @@ public:
     }
 };
 
+class RKeeperTests : public juce::UnitTest
+{
+public:
+    RKeeperTests() : juce::UnitTest ("R keeper", "DSP") {}
+
+    /** A sung vowel: pulses at `f0` through resonators at F1 600, F2 1200, F3 (`f3` per sample), F4 and F5. */
+    static std::vector<float> formantVoice (double sr, int n, double f0, const std::function<double (int)>& f3,
+                                            double f4, double f5)
+    {
+        std::vector<float> out ((size_t) n);
+        double phase = 0.0, z[5][2] = {};
+        const double bandwidths[] = { 80.0, 90.0, 120.0, 150.0, 200.0 };
+        for (int i = 0; i < n; ++i)
+        {
+            phase += f0 / sr;
+            double x = 0.0;
+            if (phase >= 1.0) { phase -= 1.0; x = 1.0; }
+            const double freqs[] = { 600.0, 1200.0, f3 (i), f4, f5 };
+            for (int k = 0; k < 5; ++k)
+            {
+                const double r = std::exp (-juce::MathConstants<double>::pi * bandwidths[k] / sr);
+                const double c = 2.0 * r * std::cos (juce::MathConstants<double>::twoPi * freqs[k] / sr);
+                const double y = x * (1.0 - r) + c * z[k][0] - r * r * z[k][1];
+                z[k][1] = z[k][0];
+                z[k][0] = y;
+                x = y;
+            }
+            out[(size_t) i] = (float) x;
+        }
+        float peak = 0.0f;
+        for (auto v : out) peak = juce::jmax (peak, std::abs (v));
+        for (auto& v : out) v *= 0.3f / peak;
+        return out;
+    }
+
+    void runTest() override
+    {
+        constexpr double sr = 48000.0;
+        const int total = (int) (sr * 3.0), rFrom = (int) (sr * 2.0), rTo = (int) (sr * 2.25);
+        // a man says an r from 2.0 to 2.25 s (F3 2600 -> 1750 Hz); the AI voice, a woman, keeps F3 at 2900 Hz
+        auto dry = formantVoice (sr, total, 150.0, [=] (int i) { return i >= rFrom && i < rTo ? 1750.0 : 2600.0; }, 3500.0, 4400.0);
+        auto lead = formantVoice (sr, total, 220.0, [] (int) { return 2900.0; }, 4000.0, 4900.0);
+        std::vector<float> voiced ((size_t) total, 1.0f);
+
+        beginTest ("Formant tracker finds F3 (a man's and a woman's ceiling)");
+        {
+            auto track = [&] (const std::vector<float>& voice, double ceiling)
+            {
+                dsp::RKeeper::FormantTracker tracker;
+                tracker.prepare (sr, dsp::RKeeper::femaleCeilingHz);
+                tracker.setCeiling (ceiling);   // as the plug-in changes it: no allocation, a fresh start
+                std::vector<float> vowel, r;
+                for (int i = 0; i < total; ++i)
+                {
+                    tracker.push (voice[(size_t) i]);
+                    if ((i + 1) % 240 != 0)
+                        continue;
+                    tracker.analyse();
+                    if (i > (int) (sr * 0.5) && i < rFrom) vowel.push_back (tracker.f3);
+                    if (i > rFrom + (int) (sr * 0.05) && i < rTo) r.push_back (tracker.f3);
+                }
+                auto median = [] (std::vector<float> v) { std::sort (v.begin(), v.end()); return v[v.size() / 2]; };
+                return std::make_pair (median (vowel), median (r));
+            };
+            const auto man = track (dry, dsp::RKeeper::maleCeilingHz);
+            expectWithinAbsoluteError (man.first, 2600.0f, 130.0f, "vowel F3");
+            expectWithinAbsoluteError (man.second, 1750.0f, 90.0f, "r F3");
+            expectWithinAbsoluteError (track (lead, dsp::RKeeper::femaleCeilingHz).first, 2900.0f, 145.0f, "AI voice F3");
+        }
+
+        beginTest ("The AI voice gets the r, and the vowels stay untouched");
+        {
+            auto out = lead;
+            dsp::RKeeper keeper;
+            keeper.prepare (sr);
+            keeper.setCeilings (dsp::RKeeper::maleCeilingHz, dsp::RKeeper::femaleCeilingHz);
+            for (int pos = 0; pos < total; pos += 512)
+            {
+                const int n = juce::jmin (512, total - pos);
+                keeper.process (out.data() + pos, dry.data() + pos, voiced.data() + pos, n);
+            }
+
+            auto bandDb = [sr] (const std::vector<float>& x, int from, int to, double lo, double hi)
+            {
+                constexpr int order = 11, size = 1 << order;
+                juce::dsp::FFT fft (order);
+                std::vector<float> frame ((size_t) size * 2);
+                double e = 0.0;
+                for (int pos = from; pos + size <= to; pos += size / 2)
+                {
+                    std::fill (frame.begin(), frame.end(), 0.0f);
+                    for (int i = 0; i < size; ++i)
+                        frame[(size_t) i] = x[(size_t) (pos + i)] * 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) size));
+                    fft.performFrequencyOnlyForwardTransform (frame.data());
+                    for (int b = (int) std::ceil (lo * size / sr); b <= (int) (hi * size / sr); ++b)
+                        e += (double) frame[(size_t) b] * frame[(size_t) b];
+                }
+                return 10.0 * std::log10 (e + 1.0e-20);
+            };
+
+            // r: the AI F3 (2900 Hz) lowered, a resonance near 2900 * 1750 / 2600 = 1950 Hz
+            const int a = rFrom + (int) (sr * 0.06), b = rTo;
+            const double raised = bandDb (out, a, b, 1800.0, 2100.0) - bandDb (lead, a, b, 1800.0, 2100.0);
+            const double lowered = bandDb (out, a, b, 2750.0, 3050.0) - bandDb (lead, a, b, 2750.0, 3050.0);
+            expect (raised > 4.0, "r resonance raised by " + juce::String (raised, 1) + " dB");
+            expect (lowered < -4.0, "AI F3 lowered by " + juce::String (lowered, 1) + " dB");
+
+            // vowels before the r: unchanged
+            double eLead = 0.0, eDiff = 0.0;
+            for (int i = (int) (sr * 0.8); i < (int) (sr * 1.8); ++i)
+            {
+                const double d = (double) out[(size_t) i] - lead[(size_t) i];
+                eLead += (double) lead[(size_t) i] * lead[(size_t) i];
+                eDiff += d * d;
+            }
+            expect (10.0 * std::log10 (eDiff / eLead + 1.0e-20) < -30.0, "vowels changed");
+        }
+    }
+};
+
 static PitchDetectorTests pitchDetectorTests;
+static RKeeperTests rKeeperTests;
 static ConsonantKeeperTests consonantKeeperTests;
 static GenderEstimatorTests genderEstimatorTests;
 static VoiceChainTests voiceChainTests;
