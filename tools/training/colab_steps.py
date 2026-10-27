@@ -62,7 +62,7 @@ def setup(work):
 def data(work, kit, vocalset=True, precision="mixed", batch=8, military=True):
     flag = "--vocalset" if vocalset else ""
     run("%s %s/colab_queue.py data --work %s --kit '%s' --python %s --rvc %s %s %s"
-        % (PY, TOOLS, work, kit, PY, RVC, flag, "--military" if military else ""))
+        % (PY, TOOLS, work, kit, PY, RVC, flag, "" if military else "--no-military"))
     run("%s %s/colab_queue.py queue --work %s --rvc %s --python %s --precision %s --batch %d %s"
         % (PY, TOOLS, work, RVC, PY, precision, batch, flag))
     print("OK - training data ready")

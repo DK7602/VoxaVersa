@@ -6,7 +6,7 @@ each step is safe to repeat.
 
     colab_queue.py setup --work W --rvc /content/rvc --python PY     RVC + base models; RVC's logs/ (the
                                                                      experiments) linked into W; ONNX encoder
-    colab_queue.py data  --work W --kit KIT.zip [--vocalset] [--military]
+    colab_queue.py data  --work W --kit KIT.zip [--vocalset] [--no-military]
                                                                      training data kit -> W/data; VocalSet
                                                                      downloaded and cleaned -> W/data; the
                                                                      military-band singers (military_test.py)
@@ -66,6 +66,10 @@ def cmd_setup(args):
     pitch = os.path.join(args.work, "fcpe.onnx")
     if not os.path.exists(pitch):
         log("exporting the AI pitch tracker (once, ~1 minute)")
+        # runtimes set up by older notebooks don't have its package yet
+        if subprocess.run([args.python, "-c", "import torchfcpe"], capture_output=True).returncode != 0 and shutil.which("uv"):
+            subprocess.run(["uv", "pip", "install", "-q", "--python", args.python, "torchfcpe==0.0.4", "einops==0.8.2",
+                            "local-attention==1.11.2"])
         p = subprocess.run([args.python, os.path.join(HERE, "export_pitch.py"), "--out", pitch + ".part.onnx"])
         if p.returncode == 0:
             os.replace(pitch + ".part.onnx", pitch)
@@ -339,7 +343,10 @@ def main():
     d.add_argument("--work", required=True)
     d.add_argument("--kit", required=True)
     d.add_argument("--vocalset", action="store_true")
-    d.add_argument("--military", action="store_true", help="also the military-band singer test (military_test.py)")
+    # on unless --no-military: notebooks saved before the test existed don't pass a flag
+    d.add_argument("--military", action="store_true", default=True, help=argparse.SUPPRESS)
+    d.add_argument("--no-military", dest="military", action="store_false",
+                   help="skip the military-band singer test (military_test.py)")
     d.add_argument("--rvc", default="/content/rvc")
     d.add_argument("--python", default=sys.executable, help="interpreter with numpy/scipy/soundfile (prepare_dataset.py)")
     d.add_argument("--scratch", default="/content/scratch", help="local (not Drive) folder for the raw download")
