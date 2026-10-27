@@ -6,7 +6,7 @@
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //   VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice <id>] [--bpm 120] [--seed 1]
-//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai]]
+//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai]] [--melody <file.mid>]
 //                                             Text to Sing with an automatic melody: the plain guide vocal,
 //                                             its phoneme plan (one row per segment) and, with --chain, the
 //                                             take rendered through the voice chain exactly as Generate +
@@ -27,6 +27,7 @@
 #include "sing/Lyrics.h"
 #include "sing/Melody.h"
 #include "sing/OfflineRenderer.h"
+#include "sing/SingEngine.h"
 #include <map>
 
 namespace
@@ -88,14 +89,27 @@ namespace
         const auto script = parseLyrics (lyrics);
         if (script.isEmpty())
             return fail ("no lyrics in " + args[1]);
-        const auto score = melody::compose (script, voice.traits, -1, voxa::ScaleType::Major, seed);
+        // --melody <file.mid>: sing a given melody (as the plug-in's MIDI File melody source) instead of composing one
+        const auto melodyFile = optionValue (args, "--melody", {});
+        std::vector<voxa::sing::Note> provided;
+        if (melodyFile.isNotEmpty())
+        {
+            double fileBpm = bpm;
+            juce::String error;
+            provided = voxa::sing::SingEngine::melodyFromMidiFile (cwd.getChildFile (melodyFile), fileBpm, error);
+            if (provided.empty())
+                return fail ("melody: " + error);
+        }
+        const auto score = provided.empty() ? melody::compose (script, voice.traits, -1, voxa::ScaleType::Major, seed)
+                                            : melody::fitProvided (script, provided, voice.traits, -1, voxa::ScaleType::Major, bpm);
         OfflineRenderer renderer (script, score, voice.traits, bpm, sr, seed);
         if (! renderer.render (nullptr, {}))
             return fail ("render failed");
         if (! voxa::writeWav (guideFile, renderer.audio, sr, voxa::disclosureMetadata (voxa::VocalOrigin::SynthesizedSinging, voice.name)))
             return fail ("cannot write " + guideFile.getFullPathName());
-        std::printf ("%s: %s, %.1f s, %d syllables\n", guideFile.getFileName().toRawUTF8(), voice.name.toRawUTF8(),
-                     renderer.audio.getNumSamples() / sr, script.getNumSyllables());
+        std::printf ("%s: %s, %.1f s, %d syllables, key %s %s\n", guideFile.getFileName().toRawUTF8(), voice.name.toRawUTF8(),
+                     renderer.audio.getNumSamples() / sr, script.getNumSyllables(),
+                     voxa::music::getKeyNames()[score.keyRoot % 12].toRawUTF8(), voxa::music::getScaleNames()[(int) score.scale].toRawUTF8());
 
         if (const auto plan = optionValue (args, "--segments", {}); plan.isNotEmpty())
         {
@@ -135,7 +149,9 @@ namespace
                 p->setValueNotifyingHost (p->convertTo0to1 (value));
         };
         set (voxa::ParamID::mode, (float) (int) voxa::Mode::TextToSing);
-        set (voxa::ParamID::melodySource, 1.0f);   // Auto Melody
+        set (voxa::ParamID::melodySource, melodyFile.isNotEmpty() ? 2.0f : 1.0f);   // MIDI File or Auto Melody
+        if (melodyFile.isNotEmpty())
+            state.state.setProperty (voxa::StateID::melodyFile, cwd.getChildFile (melodyFile).getFullPathName(), nullptr);
         set (voxa::ParamID::singTempo, (float) bpm);
         set (voxa::ParamID::key, 0.0f);            // automatic
         set (voxa::ParamID::aiEngine, args.contains ("--ai") ? 1.0f : 0.0f);   // --ai: the AI singer sings the take
