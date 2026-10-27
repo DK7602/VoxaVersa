@@ -81,7 +81,8 @@ public:
                 expect (findSegment (r, Ph::Y) != nullptr && findSegment (r, merged) == nullptr, lyric);
             }
             // other stops still release into the glide
-            const auto* k = findSegment (plan ("back you", 1.0, 100.0, male), Ph::K);
+            const auto backYou = plan ("back you", 1.0, 100.0, male);
+            const auto* k = findSegment (backYou, Ph::K);
             expect (k != nullptr && k->event.released);
         }
 
