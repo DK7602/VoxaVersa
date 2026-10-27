@@ -886,7 +886,12 @@ void VoxaVersaProcessor::setNeuralCpuOnly (bool cpuOnly)
         return;
 
     runtime.getImpl().setAndSaveAccelerator (cpuOnly ? neural::Accelerator::cpu : neural::Accelerator::automatic);
-    impl->currentModelVoiceId.clear();   // reload the model on the chosen device
+    reloadNeuralModel();   // on the chosen device
+}
+
+void VoxaVersaProcessor::reloadNeuralModel()
+{
+    impl->currentModelVoiceId.clear();
     updateNeuralModel();
 }
 
@@ -1209,9 +1214,10 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
         juce::AudioBuffer<float> neuralLead;
         if (model != nullptr)
         {
-            std::vector<float> f0;
+            std::vector<float> f0, shift;
             f0.reserve ((size_t) (total / sr * 100.0) + 16);
-            chain.setF0Capture (&f0, 100.0);
+            shift.reserve (f0.capacity());
+            chain.setF0Capture (&f0, 100.0, &shift);
             juce::AudioBuffer<float> scratch (2, 1024);
             for (int pos = 0; pos < total && ! cancel.load(); pos += 1024)
             {
@@ -1222,7 +1228,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
             chain.setF0Capture (nullptr, 100.0);
 
             juce::AudioBuffer<float> converted;
-            if (! cancel.load() && model->convert (source, sr, f0, 100.0, converted, &cancel, error))
+            if (! cancel.load() && model->convert (source, sr, f0, 100.0, converted, &cancel, error, &shift))
             {
                 // Align to the chain's output timeline (DSP latency).
                 neuralLead.setSize (1, total);

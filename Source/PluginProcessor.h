@@ -96,6 +96,8 @@ public:
         The choice is saved for the next sessions; the current voice's model is reloaded. Message thread. */
     bool isNeuralCpuOnly() const;
     void setNeuralCpuOnly (bool cpuOnly);
+    /** Reloads the current voice's AI model (e.g. after the AI pitch tracker was installed). Message thread. */
+    void reloadNeuralModel();
 
     //==============================================================================
     // Input source: live input or a loaded voice sample (drag & drop onto the input panel)

@@ -2,10 +2,13 @@
 #include "neural/NeuralRuntime.h"
 #include "neural/NeuralDsp.h"
 #include "neural/RvcModel.h"
+#include "neural/NeuralPitch.h"
+#include "dsp/Biquad.h"
 #include "voices/VoiceLibrary.h"
 #include "dsp/VoiceChain.h"
 
 #include <cmath>
+#include <limits>
 #include <ctime>
 #include <thread>
 
@@ -266,6 +269,33 @@ public:
             expectEquals (dsp::frameF0 (samples.data(), 480), 0.0f);
         }
 
+        beginTest ("Pitch shift lane");
+        {
+            constexpr float none = std::numeric_limits<float>::quiet_NaN();
+            std::vector<float> samples (480, 12.0f);
+            expectWithinAbsoluteError (dsp::frameShift (samples.data(), 480), 12.0f, 0.001f);
+            std::fill (samples.begin(), samples.begin() + 100, none);
+            expectWithinAbsoluteError (dsp::frameShift (samples.data(), 480), 12.0f, 0.001f);   // mostly numbers
+            std::fill (samples.begin(), samples.begin() + 300, none);
+            expect (std::isnan (dsp::frameShift (samples.data(), 480)), "mostly NaN: the caller's pitch");
+
+            std::vector<float> contour { 0.0f, 12.0f, none, none };
+            std::vector<float> frames (6);
+            dsp::resampleShift (contour, 100.0, frames.data(), (int) frames.size());
+            expectWithinAbsoluteError (frames[0], 0.0f, 0.001f);
+            expectWithinAbsoluteError (frames[1], 12.0f, 0.001f);
+            expect (std::isnan (frames[2]) && std::isnan (frames[3]) && std::isnan (frames[5]));
+
+            // the tracked pitch, shifted; NaN frames keep their target
+            const float tracked[] { 200.0f, 0.0f, 300.0f };
+            const float shift[] { 12.0f, 12.0f, none };
+            float target[] { 150.0f, 150.0f, 150.0f };
+            applyTrackedPitch (tracked, shift, target, 3);
+            expectWithinAbsoluteError (target[0], 400.0f, 0.01f);
+            expectEquals (target[1], 0.0f);   // the tracker hears no pitch: unvoiced
+            expectEquals (target[2], 150.0f);
+        }
+
         beginTest ("SOLA alignment and crossfades");
         {
             const int length = 2400, search = 500;
@@ -398,6 +428,8 @@ public:
         }
 
         expect (runtime.ensureLoaded());   // idempotent
+
+        testPitchTracker();
         expect (runtime.getStatusMessage().startsWith ("AI engine ready (ONNX Runtime "), runtime.getStatusMessage());
         expect (runtime.getLoadedLibraryFile().existsAsFile());
         logMessage ("  loaded " + runtime.getLoadedLibraryFile().getFullPathName());
@@ -985,6 +1017,86 @@ private:
         const double median = sorted[sorted.size() / 2], quietest = sorted.front();
         logMessage ("  quietest 20 ms window " + juce::String (juce::Decibels::gainToDecibels (quietest / median), 1) + " dB vs the median");
         expect (quietest > 0.25 * median, "gap in the lead voice: quietest window " + juce::String (quietest) + ", median " + juce::String (median));
+    }
+
+    /** The neural pitch tracker, when installed (<Encoders>/fcpe.onnx, or VOXAVERSA_TEST_PITCH_MODEL). */
+    void testPitchTracker()
+    {
+        beginTest ("Neural pitch tracker follows runs and leaves hiss unvoiced");
+
+        auto file = juce::File (juce::SystemStats::getEnvironmentVariable ("VOXAVERSA_TEST_PITCH_MODEL", {}));
+        if (! file.existsAsFile())
+            file = NeuralPitchTracker::getDefaultFile();
+        juce::String error;
+        auto tracker = file.existsAsFile() ? NeuralPitchTracker::load (error, file) : nullptr;
+
+        if (tracker == nullptr)
+        {
+            expect (error.isEmpty(), error);
+            logMessage ("  No pitch tracker installed - skipped (tools/training/export_pitch.py)");
+            return;
+        }
+
+        // 16 kHz: a run gliding 200 -> 400 Hz in 0.4 s (30 cents per 10 ms), a 0.3 s "s", then a held 300 Hz.
+        constexpr int rate = 16000, glide = 64, hiss = 30, held = 40, lead = 30;
+        const int frames = lead + glide + hiss + held;
+        std::vector<float> audio ((size_t) frames * 160, 0.0f), truth ((size_t) frames, 0.0f);
+        juce::Random random (7);
+        double phase = 0.0;
+        voxa::dsp::Biquad hp[2];
+        hp[0].c = hp[1].c = voxa::dsp::BiquadCoeffs::highPass (rate, 4500.0);
+
+        for (int i = 0; i < frames * 160; ++i)
+        {
+            const int k = i / 160;
+            double hz = 0.0;
+            if (k < lead || (k >= lead + glide && k < lead + glide + hiss))
+                hz = 0.0;
+            else if (k < lead + glide)
+                hz = 200.0 * std::pow (2.0, (i - lead * 160) / (double) (glide * 160));
+            else
+                hz = 300.0;
+
+            float x = 0.0f;
+            if (hz > 0.0)
+            {
+                phase += 2.0 * pi * hz / rate;
+                for (int h = 1; h <= 6; ++h)
+                    x += 0.25f / (float) h * (float) std::sin (h * phase);
+            }
+            else if (k >= lead)
+            {
+                x = 0.3f * hp[1].process (hp[0].process (random.nextFloat() * 2.0f - 1.0f));
+            }
+            audio[(size_t) i] = x;
+            if (i % 160 == 80)
+                truth[(size_t) k] = (float) hz;
+        }
+
+        std::vector<float> f0 ((size_t) frames);
+        NeuralPitchTracker::Workspace ws;
+        expect (tracker->track (audio.data(), frames, f0.data(), ws, error), error);
+
+        int glideOk = 0, glideFrames = 0, hissVoiced = 0, heldOk = 0;
+        for (int k = 0; k < frames; ++k)
+        {
+            const bool edge = k < lead + 3 || std::abs (k - (lead + glide)) < 3 || std::abs (k - (lead + glide + hiss)) < 3;
+            if (edge)
+                continue;
+            const float t = truth[(size_t) k], y = f0[(size_t) k];
+            if (k < lead + glide)
+            {
+                ++glideFrames;
+                glideOk += y > 0.0f && std::abs (1200.0 * std::log2 (y / t)) < 30.0 ? 1 : 0;
+            }
+            else if (k < lead + glide + hiss)
+                hissVoiced += y > 0.0f ? 1 : 0;
+            else
+                heldOk += y > 0.0f && std::abs (1200.0 * std::log2 (y / t)) < 10.0 ? 1 : 0;
+        }
+        expect (glideOk * 100 >= glideFrames * 95, "run frames on pitch: " + juce::String (glideOk) + "/" + juce::String (glideFrames));
+        expectEquals (hissVoiced, 0, "hiss frames called voiced");
+        expect (heldOk >= held - 6, "held note frames on pitch: " + juce::String (heldOk));
     }
 };
 

@@ -276,12 +276,22 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
     else
         sampleRate = readSampleRateFromMetadata (*generator);
 
+    if (usesF0)
+    {
+        juce::String pitchError;
+        pitchTracker = NeuralPitchTracker::load (pitchError);
+        if (pitchError.isNotEmpty())
+            DBG ("VoxaVersa: " << pitchError << " - the AI voice follows the live pitch detector");
+    }
+
     if (! warmUp (error))
         return false;
 
     juce::StringArray parts;
     parts.add (juce::String (sampleRate / 1000.0, sampleRate % 1000 == 0 ? 0 : 1) + " kHz");
     parts.add (usesF0 ? "pitch-guided" : "no pitch input");
+    if (pitchTracker != nullptr)
+        parts.add ("neural pitch tracker");
     const auto device = generator->getExecutionProvider();
     parts.add (device == "CPU" ? device : device + " GPU");
     if (liveContexts.front() < getStreamContextFrames())
@@ -529,6 +539,17 @@ bool NeuralVoiceModel::Impl::warmUp (juce::String& error)
         makeInput (chunkFrames, audio, f0);
         const auto start = juce::Time::getMillisecondCounterHiRes();
 
+        if (! failed && pitchTracker != nullptr)
+        {
+            std::vector<float> shift ((size_t) chunkFrames, 0.0f);
+            if (! applyNeuralPitch (audio.data(), chunkFrames, generatorSkipFor (contextFrames), shift.data(), f0.data(), ws, error))
+            {
+                DBG ("VoxaVersa: pitch tracker test failed: " << error << " - not used");
+                pitchTracker.reset();
+                error.clear();
+            }
+        }
+
         if (! failed && ! runFrames (audio.data(), chunkFrames, f0.data(), 0, ws, false, error, generatorSkipFor (contextFrames)))
         {
             error = "test run failed: " + error;
@@ -567,6 +588,23 @@ bool NeuralVoiceModel::Impl::usesAccelerator() const noexcept
 double NeuralVoiceModel::Impl::getRealTimeLoad() const noexcept
 {
     return chunkInferenceSeconds / streaming::headroomSeconds;
+}
+
+bool NeuralVoiceModel::Impl::applyNeuralPitch (const float* audio16k, int numFrames, int firstFrame, const float* shiftSemis,
+                                               float* f0Frames, Workspace& ws, juce::String& error) const
+{
+    if (pitchTracker == nullptr || firstFrame >= numFrames)
+        return pitchTracker != nullptr;
+
+    firstFrame = juce::jmax (0, firstFrame);
+    const int from = juce::jmax (0, firstFrame - NeuralPitchTracker::contextFrames);
+    ws.tracked.resize ((size_t) (numFrames - from));
+
+    if (! pitchTracker->track (audio16k + (size_t) from * dsp::samplesPerFrame16k, numFrames - from, ws.tracked.data(), ws.tracker, error))
+        return false;
+
+    applyTrackedPitch (ws.tracked.data() + (firstFrame - from), shiftSemis + firstFrame, f0Frames + firstFrame, numFrames - firstFrame);
+    return true;
 }
 
 //==============================================================================
@@ -746,7 +784,7 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
 bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                                       const std::vector<float>& f0Hz, double f0FrameRate,
                                       juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel,
-                                      juce::String& error) const
+                                      juce::String& error, const std::vector<float>* pitchShiftSemis) const
 {
     const int inputRate = juce::roundToInt (inputSampleRate);
     const int numInputSamples = input.getNumSamples();
@@ -797,6 +835,18 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
     if (usesF0)
         dsp::resampleF0 (f0Hz, f0FrameRate, f0Frames.data() + edgePadFrames, clipFrames);
 
+    Workspace ws;
+
+    // The input's own pitch from the neural tracker (whole clip), shifted as the caller says.
+    if (usesF0 && pitchTracker != nullptr && pitchShiftSemis != nullptr && ! pitchShiftSemis->empty())
+    {
+        std::vector<float> shift ((size_t) totalFrames, std::numeric_limits<float>::quiet_NaN());
+        dsp::resampleShift (*pitchShiftSemis, f0FrameRate, shift.data() + edgePadFrames, clipFrames);
+        juce::String pitchError;
+        if (! applyNeuralPitch (padded.data(), totalFrames, 0, shift.data(), f0Frames.data(), ws, pitchError))
+            DBG ("VoxaVersa: pitch tracker: " << pitchError << " - using the target pitch");
+    }
+
     // Segment boundaries at the quietest 20 ms-aligned points near every ~10 s
     auto energyAround = [&padded] (int frame)
     {
@@ -843,7 +893,6 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
     const int fadeLength = 2 * halfFade;
     const int search = juce::jmax (2, juce::roundToInt (streaming::searchSeconds * sampleRate)) & ~1;
     std::vector<float> previousTail ((size_t) fadeLength, 0.0f), head ((size_t) fadeLength);
-    Workspace ws;
 
     // Copies segment samples to assembled indices [from, to) (padded model-rate coordinates) with a shift.
     auto writeRange = [&] (const float* segmentAudio, int64_t segmentStart, int64_t shift, int64_t from, int64_t to)

@@ -135,6 +135,14 @@ public:
             expect (r3.installed.size() == 1 && r3.installed[0] == "Singer A" && ! r3.encoderInstalled, r3.summary());
             expect (library.importVoices (encoderFile, user3).encoderInstalled);
 
+            // The AI pitch tracker, also under a browser's "(1)" name: installed as Encoders/fcpe.onnx.
+            auto tracker = work.getChildFile ("fcpe (1).onnx");
+            expect (tracker.replaceWithText ("onnx"));
+            const auto rt = library.importVoices (tracker, user3);
+            expect (rt.pitchTrackerInstalled && ! rt.encoderInstalled && rt.succeeded(), rt.summary());
+            expect (user3.getChildFile ("Encoders/fcpe.onnx").existsAsFile());
+            expect (rt.summary().contains ("pitch tracker"), rt.summary());
+
             // Nothing usable: a clear message, nothing installed.
             const auto r4 = library.importVoices (noise, work.getChildFile ("user4"));
             expect (! r4.succeeded(), r4.summary());

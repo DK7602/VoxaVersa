@@ -400,8 +400,9 @@ void HeaderBar::importPreset()
 void HeaderBar::importVoicePack()
 {
     // Packs (.vxpack), a folder or .zip of many packs (e.g. Google Drive's download of the trained voices),
-    // the voice assignment and the AI content encoder (contentvec-768.onnx) - one or several at once.
-    ctx.chooseFiles ("Import Voices (.vxpack, a .zip or folder of voices, contentvec-768.onnx)",
+    // the voice assignment, the AI content encoder (contentvec-768.onnx) and the AI pitch tracker (fcpe.onnx)
+    // - one or several at once.
+    ctx.chooseFiles ("Import Voices (.vxpack, a .zip or folder of voices, contentvec-768.onnx, fcpe.onnx)",
                      "*.zip;*.vxpack;*.onnx;*.json", true, [this] (const juce::Array<juce::File>& chosen)
     {
         VoiceLibrary::ImportResult total;
@@ -412,10 +413,13 @@ void HeaderBar::importVoicePack()
             const auto r = ctx.processor.getVoiceLibrary().importVoices (f);
             total.installed.addArray (r.installed);
             total.encoderInstalled = total.encoderInstalled || r.encoderInstalled;
+            total.pitchTrackerInstalled = total.pitchTrackerInstalled || r.pitchTrackerInstalled;
             total.assignedPacks += r.assignedPacks;
             total.placed.addArray (r.placed);
             total.errors.addArray (r.errors);
         }
+        if (total.pitchTrackerInstalled)
+            ctx.processor.reloadNeuralModel();   // models pick the tracker up when they load
         ctx.toast (total.summary(), total.errors.isEmpty() ? ToastKind::Success
                                                            : (total.succeeded() ? ToastKind::Info : ToastKind::Error));
     });

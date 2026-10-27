@@ -2,6 +2,7 @@
 
 #include "NeuralRuntime.h"
 #include "NeuralDsp.h"
+#include "NeuralPitch.h"
 
 #include <functional>
 
@@ -71,6 +72,8 @@ struct NeuralVoiceModel::Impl
         std::vector<uint16_t> encoderHalf, phoneHalf, pitchfHalf, noiseHalf;
         std::vector<uint8_t> mask;
         OutputTensor encoderOut, generatorOut;
+        NeuralPitchTracker::Workspace tracker;
+        std::vector<float> tracked;
     };
 
     bool initialise (const ModelConfig&, juce::String& error);
@@ -86,7 +89,14 @@ struct NeuralVoiceModel::Impl
 
     bool convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
-                  juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel, juce::String& error) const;
+                  juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel, juce::String& error,
+                  const std::vector<float>* pitchShiftSemis = nullptr) const;
+
+    /** With the neural pitch tracker: the target pitch of frames [firstFrame, numFrames) becomes the pitch the
+        tracker hears in `audio16k` (numFrames * 160 samples), shifted by `shiftSemis` (one per frame; NaN keeps
+        the frame's target). Frames before firstFrame only serve as context. */
+    bool applyNeuralPitch (const float* audio16k, int numFrames, int firstFrame, const float* shiftSemis,
+                           float* f0Frames, Workspace& ws, juce::String& error) const;
 
     /** Left context (in 10 ms frames) of each real-time chunk, as configured (the best quality; used while
         the host renders offline). */
@@ -112,6 +122,7 @@ struct NeuralVoiceModel::Impl
     ModelConfig config;
     std::shared_ptr<OrtModelSession> encoder;     // shared between voices using the same encoder file
     std::unique_ptr<OrtModelSession> generator;
+    std::shared_ptr<NeuralPitchTracker> pitchTracker;   // optional (<Encoders>/fcpe.onnx)
 
     int sampleRate = 0, hopSize = 0, featureChannels = 0, noiseChannels = 192;
     bool usesF0 = false;

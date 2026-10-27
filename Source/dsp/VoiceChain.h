@@ -82,8 +82,14 @@ public:
     void process (const float* monoInput, float* outLeft, float* outRight, int numSamples,
                   const ChainSettings& settings, const float* leadOverride = nullptr) noexcept;
 
-    /** Records the lead target pitch contour (Hz, 0 = unvoiced) at `frameRate`, aligned to input time. */
-    void setF0Capture (std::vector<float>* destination, double frameRate);
+    /** Records the lead target pitch contour (Hz, 0 = unvoiced) at `frameRate`, aligned to input time, and
+        optionally the pitch shift an AI voice applies to the input's own pitch (see neuralPitchShift()). */
+    void setF0Capture (std::vector<float>* destination, double frameRate, std::vector<float>* shiftDestination = nullptr);
+
+    /** The shift (semitones) an AI voice applies to the pitch its neural tracker hears in the input: the
+        register and Pitch knob, plus pitch correction's small moves (an octave-wrong reading of the live
+        detector can't leak in). NaN where the target pitch is not the input's (MIDI pitch control, synth guide). */
+    static float neuralPitchShift (const PitchFrame&, const PitchMapper::Settings&) noexcept;
 
     // Telemetry (audio thread writes, UI reads through the processor)
     float getDetectedHz() const noexcept   { return detectedHz; }
@@ -118,7 +124,7 @@ private:
     StereoDelay delay;
     FdnReverb reverb;
 
-    std::vector<float> leadBuf, voiceBuf, dryBuf, f0Buf, neuralIn, neuralOut, neuralCoverage, busL, busR;
+    std::vector<float> leadBuf, voiceBuf, dryBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
 
     // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
     // is active, the DSP lead that fills its gaps, the neural coverage that crossfades the two and the dry input
@@ -169,6 +175,7 @@ private:
     neural::NeuralVoiceStream* neural = nullptr;
 
     std::vector<float>* f0Capture = nullptr;
+    std::vector<float>* shiftCapture = nullptr;
     double f0CaptureRate = 100.0;
 
     float formantSmoothed = 0.0f;

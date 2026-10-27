@@ -279,6 +279,47 @@ float frameF0 (const float* perSampleF0, int numSamples) noexcept
     return (voiced > 0 && voiced * 2 >= numSamples) ? (float) (sum / voiced) : 0.0f;
 }
 
+float frameShift (const float* perSampleShift, int numSamples) noexcept
+{
+    int numbers = 0;
+    double sum = 0.0;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        if (! std::isnan (perSampleShift[i]))
+        {
+            ++numbers;
+            sum += perSampleShift[i];
+        }
+    }
+
+    return numbers > 0 && numbers * 2 > numSamples ? (float) (sum / numbers) : std::numeric_limits<float>::quiet_NaN();
+}
+
+void resampleShift (const std::vector<float>& shiftSemis, double frameRate, float* out, int numFrames)
+{
+    const int n = (int) shiftSemis.size();
+    constexpr float none = std::numeric_limits<float>::quiet_NaN();
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        const double s = (i + 0.5) * frameRate / framesPerSecond - 0.5;
+
+        if (n == 0 || ! (frameRate > 0.0) || s > n - 0.5)
+        {
+            out[i] = none;
+            continue;
+        }
+
+        const double fl = std::floor (s);
+        const int k = (int) fl;
+        const auto t = (float) (s - fl);
+        const float a = shiftSemis[(size_t) juce::jlimit (0, n - 1, k)];
+        const float b = shiftSemis[(size_t) juce::jlimit (0, n - 1, k + 1)];
+        out[i] = ! std::isnan (a) && ! std::isnan (b) ? a + t * (b - a) : (t < 0.5f ? a : b);
+    }
+}
+
 float gaussianNoise (int64_t frame, int channel, uint64_t seed) noexcept
 {
     const auto key = ((uint64_t) frame << 12) ^ (uint64_t) (channel & 0xfff);

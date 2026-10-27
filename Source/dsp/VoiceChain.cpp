@@ -1,6 +1,8 @@
 #include "VoiceChain.h"
 #include "../neural/NeuralVoice.h"
 
+#include <limits>
+
 namespace voxa::dsp
 {
 
@@ -62,7 +64,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &f0Buf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -131,10 +133,22 @@ void VoiceChain::reset()
     detectedHz = targetHz = 0.0f;
 }
 
-void VoiceChain::setF0Capture (std::vector<float>* destination, double frameRate)
+void VoiceChain::setF0Capture (std::vector<float>* destination, double frameRate, std::vector<float>* shiftDestination)
 {
     f0Capture = destination;
     f0CaptureRate = frameRate;
+    shiftCapture = destination != nullptr ? shiftDestination : nullptr;
+}
+
+float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Settings& s) noexcept
+{
+    if (s.midiNote >= 0 || s.sourceIsSynth)
+        return std::numeric_limits<float>::quiet_NaN();
+
+    // Correction moves a note by less than a semitone (and the profile's vibrato and scoops by less still);
+    // anything bigger is the live detector reading a different note than the one the input sings.
+    const float moves = pf.voiced ? juce::jlimit (-1.5f, 1.5f, pf.mainShift - pf.globalOffset) : 0.0f;
+    return pf.globalOffset + moves;
 }
 
 float VoiceChain::computeFormantSemis (const ChainSettings& s) const noexcept
@@ -208,6 +222,8 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             PitchFrame pf;
             timeline.lookup ((double) f0Capture->size() * step, pf);
             f0Capture->push_back (pf.voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f);
+            if (shiftCapture != nullptr)
+                shiftCapture->push_back (neuralPitchShift (pf, pitchSettings));
         }
     }
 
@@ -370,8 +386,9 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             PitchFrame pf;
             timeline.lookup ((double) t, pf);
             f0Buf[(size_t) i] = pf.voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f;
+            shiftBuf[(size_t) i] = neuralPitchShift (pf, pitchSettings);
         }
-        neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n, neuralCoverage.data());
+        neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n, neuralCoverage.data(), shiftBuf.data());
 
         // Where the neural lead has nothing (warming up, after a reset, a chunk this computer could not
         // convert in time) the DSP lead fills in, crossfaded by the stream's coverage: never a gap.

@@ -50,11 +50,18 @@ public:
 
     /** Offline conversion of a complete mono clip.
         `f0Hz` holds the *target* pitch contour at `f0FrameRate` frames/second (0 = unvoiced).
+        With `pitchShiftSemis` (same frame rate; NaN where `f0Hz` must be used as it is) and the neural pitch
+        tracker installed, the voice sings the input's own pitch as that tracker hears it, shifted by these
+        semitones (see NeuralPitchTracker); `f0Hz` is then only the fallback.
         The result is written to `output` at `inputSampleRate`. */
     bool convert (const juce::AudioBuffer<float>& monoInput, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
                   juce::AudioBuffer<float>& output,
-                  const std::atomic<bool>* cancel, juce::String& error) const;
+                  const std::atomic<bool>* cancel, juce::String& error,
+                  const std::vector<float>* pitchShiftSemis = nullptr) const;
+
+    /** True when the neural pitch tracker (<Encoders>/fcpe.onnx) was installed when this model loaded. */
+    bool hasNeuralPitch() const noexcept;
 
     struct Impl;
     Impl& getImpl() const noexcept { return *impl; }
@@ -94,9 +101,11 @@ public:
         Writes numSamples of converted audio (silence until the first chunk is ready). `coverage` (optional)
         receives how much of each output sample is converted voice (0..1): 0 where the stream has nothing
         (warming up, after a reset, a chunk that was not converted in time), in between during its crossfades.
-        Mixing another rendering of the same voice in with gain 1 - coverage fills those gaps seamlessly. */
+        Mixing another rendering of the same voice in with gain 1 - coverage fills those gaps seamlessly.
+        `pitchShiftSemis` (optional, per input sample, NaN = use `targetF0Hz`): with the neural pitch tracker
+        installed, the voice sings the input's pitch as that tracker hears it, shifted by these semitones. */
     void process (const float* input, const float* targetF0Hz, float* output, int numSamples,
-                  float* coverage = nullptr) noexcept;
+                  float* coverage = nullptr, const float* pitchShiftSemis = nullptr) noexcept;
 
     /** Audio thread. Clears all buffered audio (e.g. on transport jumps). */
     void reset() noexcept;

@@ -498,6 +498,25 @@ public:
             expect (mapper.getEffectiveScale (s) == ScaleType::Chromatic, "chosen chromatic scale is kept");
         }
 
+        beginTest ("AI voices sing the tracked pitch with the register and correction's small moves");
+        {
+            dsp::PitchMapper::Settings s;
+            dsp::PitchFrame pf;
+            pf.voiced = true;
+            pf.globalOffset = 12.0f;
+            pf.mainShift = 12.3f;
+            expectWithinAbsoluteError (dsp::VoiceChain::neuralPitchShift (pf, s), 12.3f, 0.001f);
+            pf.mainShift = 24.0f;   // the live detector read another note: only the register applies
+            expectWithinAbsoluteError (dsp::VoiceChain::neuralPitchShift (pf, s), 13.5f, 0.001f);
+            pf.voiced = false;
+            expectWithinAbsoluteError (dsp::VoiceChain::neuralPitchShift (pf, s), 12.0f, 0.001f);
+            s.midiNote = 60;        // MIDI decides the pitch
+            expect (std::isnan (dsp::VoiceChain::neuralPitchShift (pf, s)));
+            s.midiNote = -1;
+            s.sourceIsSynth = true; // the Text to Sing guide's pitch is exact
+            expect (std::isnan (dsp::VoiceChain::neuralPitchShift (pf, s)));
+        }
+
         beginTest ("AI register stays near the singer's own notes");
         {
             auto run = [this] (float aiCentre, bool ai)

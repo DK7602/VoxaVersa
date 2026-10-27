@@ -71,6 +71,14 @@ void resampleF0 (const std::vector<float>& f0Hz, double frameRate, float* out, i
 /** f0 of one frame from per-sample values: mean of the voiced samples when at least half are voiced. */
 float frameF0 (const float* perSampleF0, int numSamples) noexcept;
 
+/** Pitch shift (semitones) of one frame from per-sample values: their mean, or NaN when at least half are NaN
+    (the caller sets those frames' pitch itself, see NeuralPitchTracker). */
+float frameShift (const float* perSampleShift, int numSamples) noexcept;
+
+/** A shift contour (`frameRate` values/s, NaN allowed) on `numFrames` 10 ms frames: linear between two numbers,
+    otherwise the nearest value; NaN beyond the contour. */
+void resampleShift (const std::vector<float>& shiftSemis, double frameRate, float* out, int numFrames);
+
 /** Deterministic standard-normal noise indexed by (frame, channel): overlapping chunks of a stream get
     identical noise for the same absolute frame, which keeps their overlaps consistent. */
 float gaussianNoise (int64_t frame, int channel, uint64_t seed = 0x5eed) noexcept;

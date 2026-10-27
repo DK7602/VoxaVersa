@@ -54,11 +54,12 @@ public:
     {
         juce::StringArray installed;     // names of the voices installed
         bool encoderInstalled = false;   // a content encoder (e.g. contentvec-768.onnx) was copied to Encoders/
+        bool pitchTrackerInstalled = false;   // the AI voices' neural pitch tracker (fcpe.onnx) was copied there
         int assignedPacks = 0;           // packs described by an imported voice assignment
         juce::StringArray placed;        // installed singers the assignment now places in built-in voices
         juce::StringArray errors;
 
-        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled || assignedPacks > 0; }
+        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled || pitchTrackerInstalled || assignedPacks > 0; }
         juce::String summary() const;
     };
 

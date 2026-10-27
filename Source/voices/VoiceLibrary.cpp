@@ -573,10 +573,17 @@ static int mergeAssignment (const juce::File& imported, const juce::File& voices
     return in->getProperties().size();
 }
 
+static bool isPitchTrackerFile (const juce::String& fileName)
+{
+    const auto n = fileName.toLowerCase();
+    return n.startsWith ("fcpe") && n.endsWith (".onnx");   // "fcpe (1).onnx" after a repeated download
+}
+
 static bool isEncoderFile (const juce::String& fileName)
 {
     const auto n = fileName.toLowerCase();
-    return n == "contentvec-768.onnx" || n == "vec-768-layer-12.onnx" || n == "contentvec-256.onnx" || n == "vec-256-layer-9.onnx";
+    return n == "contentvec-768.onnx" || n == "vec-768-layer-12.onnx" || n == "contentvec-256.onnx" || n == "vec-256-layer-9.onnx"
+        || isPitchTrackerFile (fileName);
 }
 
 juce::String VoiceLibrary::ImportResult::summary() const
@@ -588,6 +595,8 @@ juce::String VoiceLibrary::ImportResult::summary() const
         s << installed.size() << " voices installed";
     if (encoderInstalled)
         s << (s.isEmpty() ? "AI content encoder installed" : " + AI content encoder");
+    if (pitchTrackerInstalled)
+        s << (s.isEmpty() ? "AI pitch tracker installed (AI singers now follow runs)" : " + AI pitch tracker");
     if (assignedPacks > 0)
     {
         s << (s.isEmpty() ? "Voice assignment updated" : " + voice assignment") << " (" << assignedPacks
@@ -623,9 +632,10 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
 
     auto encoder = [&] (const juce::File& f)
     {
-        const auto dest = encodersDir.getChildFile (f.getFileName());
+        const bool pitch = isPitchTrackerFile (f.getFileName());
+        const auto dest = encodersDir.getChildFile (pitch ? juce::String ("fcpe.onnx") : f.getFileName());
         if (encodersDir.createDirectory() && (dest == f || f.copyFileTo (dest)))
-            r.encoderInstalled = true;
+            (pitch ? r.pitchTrackerInstalled : r.encoderInstalled) = true;
         else
             r.errors.add ("Could not copy " + f.getFileName() + " to " + encodersDir.getFullPathName());
     };

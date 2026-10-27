@@ -111,6 +111,31 @@ Contents
   and at full quality even on a computer that is too slow for live playback. In real time this never
   happens.
 
+### Pitch: the neural tracker (`NeuralPitchTracker`)
+
+The generator sings the f0 it is given. By default that is VoxaVersa's live target pitch (YIN detector +
+`PitchMapper`), but YIN's periodicity measure fails in runs and fast slides: measured against RMVPE on R&B
+vocals, it went silent on 12–35% of the frames of runs (0–3% on held notes), so the AI singer was told "no
+note" mid-run and breathed or broke there. With `<Encoders>/fcpe.onnx` installed (FCPE, CNChTu/FCPE, MIT, the
+tracker RVC's real-time mode uses; exported with its spectrogram by `tools/training/export_pitch.py`, input
+16 kHz audio, output f0 + confidence per 10 ms frame), the model tracks the input's pitch itself:
+
+* `VoiceChain` sends a second per-sample lane next to the target f0: the shift to apply to the input's own
+  pitch (`VoiceChain::neuralPitchShift`: register + Pitch knob, plus pitch correction's moves up to ±1.5
+  semitones, so an octave-wrong YIN reading can't leak in). NaN where the caller decides the pitch itself
+  (MIDI pitch control, the Text to Sing guide); those frames keep the target f0.
+* The stream worker tracks each chunk's generator frames with 0.5 s of left context (FCPE is
+  convolution-only; the newest frames have no right context, which costs 2.6–4% of run frames > 50 cents
+  against a whole-clip run, no added latency) and sets f0 = tracked × 2^(shift/12). Offline conversion
+  tracks the whole clip. Frames whose 3.5–8 kHz energy is 6 dB above the < 1.5 kHz body ("s", "sh") stay
+  unvoiced: FCPE calls ~20% of them voiced, which would buzz under the kept consonants.
+* Cost: ~20–25 ms per 0.4 s chunk on 2 threads (counted in the live-context choice).
+* Measured through a Studio singer (offline render, ±10 ms timing tolerance), runs: silent 14.8% → 4.3%,
+  37.5% → 16.7% and 7.3% → 2.7%; within 50 cents 76.5% → 85.8%, 63.9% → 77.8% and 77.9% → 84.5% (two
+  R&B vocals and a male pop vocal). Held notes are unchanged (99%+ within 50 cents).
+
+Without the file everything works as before; the status line says *"neural pitch tracker"* when it is used.
+
 ### Consonants (`ConsonantKeeper`)
 
 RVC re-synthesises unvoiced consonants from noise through the singer's learned spectral envelope, and
@@ -480,7 +505,8 @@ models and resets while streaming, and offline bounces.
 * **Feature retrieval** (RVC's `.index` / faiss step) and RVC's `protect` and `rms_mix_rate` options are
   not implemented; the generator receives the raw content features (the input's unvoiced consonants are
   kept after conversion instead, see *Consonants*).
-* **Pitch** must be supplied by the caller (target f0); the engine does not estimate pitch.
+* **Pitch** must be supplied by the caller (target f0); the engine only tracks the input's pitch itself when
+  the neural pitch tracker is installed and the caller sends a shift lane.
 * **GPU providers** (CUDA, DirectML, CoreML) are wired up through ONNX Runtime's generic APIs; the automated
   tests run on CPU builds only. A provider that fails to load or run a model falls back to the CPU.
 * **Offline joins**: segments of long clips may be shifted by up to ±6 ms around their nominal position

@@ -1,6 +1,7 @@
 #include "NeuralVoice.h"
 #include "RvcModel.h"
 
+#include <limits>
 #include <mutex>
 
 namespace voxa::neural
@@ -68,21 +69,23 @@ std::shared_ptr<NeuralVoiceModel> NeuralVoiceModel::load (const VoiceProfile& pr
 
 int NeuralVoiceModel::getModelSampleRate() const noexcept   { return impl->sampleRate; }
 juce::String NeuralVoiceModel::getDescription() const       { return impl->description; }
+bool NeuralVoiceModel::hasNeuralPitch() const noexcept      { return impl->pitchTracker != nullptr; }
 
 bool NeuralVoiceModel::convert (const juce::AudioBuffer<float>& monoInput, double inputSampleRate,
                                 const std::vector<float>& f0Hz, double f0FrameRate,
                                 juce::AudioBuffer<float>& output,
-                                const std::atomic<bool>* cancel, juce::String& error) const
+                                const std::atomic<bool>* cancel, juce::String& error,
+                                const std::vector<float>* pitchShiftSemis) const
 {
     error.clear();
-    return impl->convert (monoInput, inputSampleRate, f0Hz, f0FrameRate, output, cancel, error);
+    return impl->convert (monoInput, inputSampleRate, f0Hz, f0FrameRate, output, cancel, error, pitchShiftSemis);
 }
 
 //==============================================================================
 /*  Real-time streaming
     -------------------
     Every stream lives on one absolute timeline of host samples (0 = prepare()). The audio thread writes
-    input sample n (audio + target f0) into ring slot n and publishes `inputWritten`; it reads output
+    input sample n (audio, target f0, pitch shift) into ring slot n and publishes `inputWritten`; it reads output
     position n from the output ring if the worker has already published it (`outputWritten`), otherwise
     it outputs silence with coverage 0 (the caller fills it with its DSP voice). Nothing on the audio thread
     allocates, locks or waits (except when the host renders offline, see updatePace()).
@@ -160,6 +163,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
         const auto outputSize = nextPowerOfTwo ((int64_t) newLatency * 2 + 4 * (int64_t) maxBlock + hostRate);
         inputRing.assign (inputSize, 0.0f);
         f0Ring.assign (inputSize, 0.0f);
+        shiftRing.assign (inputSize, std::numeric_limits<float>::quiet_NaN());
         outputRing.assign (outputSize, 0.0f);
         coverageRing.assign (outputSize, 0.0f);
         coverageScratch.assign ((size_t) maxBlock, 0.0f);
@@ -224,7 +228,8 @@ struct NeuralVoiceStream::Impl : private juce::Thread
     //==============================================================================
     // Audio thread
 
-    void process (const float* input, const float* targetF0, float* output, int numSamples, float* coverage) noexcept
+    void process (const float* input, const float* targetF0, float* output, int numSamples, float* coverage,
+                  const float* shiftSemis) noexcept
     {
         if (! prepared.load (std::memory_order_acquire))
         {
@@ -239,6 +244,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
             const int n = juce::jmin (maxBlock, numSamples - done);
             processBlock (input != nullptr ? input + done : nullptr,
                           targetF0 != nullptr ? targetF0 + done : nullptr,
+                          shiftSemis != nullptr ? shiftSemis + done : nullptr,
                           output + done, coverage != nullptr ? coverage + done : coverageScratch.data(), n);
             done += n;
         }
@@ -256,13 +262,15 @@ struct NeuralVoiceStream::Impl : private juce::Thread
 
 private:
     //==============================================================================
-    void processBlock (const float* input, const float* targetF0, float* output, float* coverage, int n) noexcept
+    void processBlock (const float* input, const float* targetF0, const float* shiftSemis, float* output, float* coverage,
+                       int n) noexcept
     {
         const auto position = audioPosition;
 
         // input first: `output` may alias `input`
         writeRing (inputRing, inputMask, position, input, n);
         writeRing (f0Ring, inputMask, position, targetF0, n);
+        writeRing (shiftRing, inputMask, position, shiftSemis, n, std::numeric_limits<float>::quiet_NaN());
         inputWritten.store (position + n, std::memory_order_release);
 
         const bool active = modelSet.load (std::memory_order_relaxed);
@@ -354,7 +362,8 @@ private:
         }
     }
 
-    static void writeRing (std::vector<float>& ring, int64_t mask, int64_t position, const float* source, int n) noexcept
+    static void writeRing (std::vector<float>& ring, int64_t mask, int64_t position, const float* source, int n,
+                           float fill = 0.0f) noexcept
     {
         const auto start = (size_t) (position & mask);
         const auto first = juce::jmin ((size_t) n, ring.size() - start);
@@ -366,8 +375,8 @@ private:
         }
         else
         {
-            std::fill_n (ring.data() + start, first, 0.0f);
-            std::fill_n (ring.data(), (size_t) n - first, 0.0f);
+            std::fill_n (ring.data() + start, first, fill);
+            std::fill_n (ring.data(), (size_t) n - first, fill);
         }
     }
 
@@ -453,14 +462,15 @@ private:
         return available > toEncoder.lastInputFor (endFrame * dsp::samplesPerFrame16k - 1);
     }
 
-    void readInput (const std::vector<float>& ring, int64_t from, int count, std::vector<float>& dest) const
+    void readInput (const std::vector<float>& ring, int64_t from, int count, std::vector<float>& dest,
+                    float outside = 0.0f) const
     {
         dest.resize ((size_t) count);
 
         for (int i = 0; i < count; ++i)
         {
             const auto p = from + i;
-            dest[(size_t) i] = p >= historyValidFrom && p >= 0 ? ring[(size_t) (p & inputMask)] : 0.0f;
+            dest[(size_t) i] = p >= historyValidFrom && p >= 0 ? ring[(size_t) (p & inputMask)] : outside;
         }
     }
 
@@ -593,6 +603,30 @@ private:
 
         const int generatorSkip = NeuralVoiceModel::Impl::generatorSkipFor (contextFrames);
 
+        // The input's own pitch from the neural tracker (with the caller's shift), for the frames the generator sings.
+        if (m.pitchTracker != nullptr)
+        {
+            readInput (shiftRing, f0From, (int) (hostIndexForFrame (endFrame) - f0From), f0Scratch,
+                       std::numeric_limits<float>::quiet_NaN());
+            shiftFrames.resize ((size_t) chunkFrames);
+            bool any = false;
+
+            for (int i = 0; i < chunkFrames; ++i)
+            {
+                const auto a = hostIndexForFrame (segmentStart + i) - f0From;
+                const auto b = hostIndexForFrame (segmentStart + i + 1) - f0From;
+                shiftFrames[(size_t) i] = dsp::frameShift (f0Scratch.data() + a, (int) (b - a));
+                any = any || (i >= generatorSkip && ! std::isnan (shiftFrames[(size_t) i]));
+            }
+
+            if (any && ! m.applyNeuralPitch (audio16k.data(), chunkFrames, generatorSkip, shiftFrames.data(), f0Frames.data(),
+                                             workspace, error))
+            {
+                DBG ("VoxaVersa AI voice: pitch tracker: " << error);   // the target pitch stays
+                error.clear();
+            }
+        }
+
         if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip))
         {
             if (! reportedError)
@@ -621,7 +655,7 @@ private:
     dsp::Resampler toEncoder;
 
     // Lock-free timeline rings (audio thread -> worker: input & f0, worker -> audio thread: output)
-    std::vector<float> inputRing, f0Ring, outputRing, coverageRing;
+    std::vector<float> inputRing, f0Ring, shiftRing, outputRing, coverageRing;
     int64_t inputMask = 0, outputMask = 0;
     std::atomic<int64_t> inputWritten { 0 }, audioReadPosition { 0 }, outputWritten { 0 }, resetPosition { 0 };
     std::atomic<uint32_t> resetGeneration { 0 }, underruns { 0 }, missedChunks { 0 };
@@ -656,7 +690,7 @@ private:
     bool hasSola = false, reportedError = false;
     dsp::Resampler toHost;
     NeuralVoiceModel::Impl::Workspace workspace;
-    std::vector<float> solaBuffer, chunkOutput, chunkCoverage, hostScratch, f0Scratch, audio16k, f0Frames;
+    std::vector<float> solaBuffer, chunkOutput, chunkCoverage, hostScratch, f0Scratch, audio16k, f0Frames, shiftFrames;
 
     JUCE_DECLARE_NON_COPYABLE (Impl)
 };
@@ -675,9 +709,9 @@ void NeuralVoiceStream::setNonRealtime (bool isNonRealtime) noexcept            
 void NeuralVoiceStream::reset() noexcept                                          { impl->reset(); }
 
 void NeuralVoiceStream::process (const float* input, const float* targetF0Hz, float* output, int numSamples,
-                                 float* coverage) noexcept
+                                 float* coverage, const float* pitchShiftSemis) noexcept
 {
-    impl->process (input, targetF0Hz, output, numSamples, coverage);
+    impl->process (input, targetF0Hz, output, numSamples, coverage, pitchShiftSemis);
 }
 
 } // namespace voxa::neural

@@ -264,6 +264,10 @@ Once per computer:
 
    All RVC v2 voices share it. (Alternatively tick *INCLUDE_ENCODER_IN_PACK*: each pack then carries its
    own 378 MB copy.)
+3. **Pitch tracker** (recommended): `fcpe.onnx` (made by the Colab setup or
+   `tools/training/export_pitch.py --out fcpe.onnx`) goes into the same *Encoders* folder (**Import Voices...**
+   puts it there). With it the AI voices sing the pitch a neural tracker hears in the input instead of the
+   live detector's, which drops out in runs; the status line then also says *"neural pitch tracker"*.
 
 Per voice: VoxaVersa's settings menu > **Import voice pack** > choose the `.vxpack` (or unzip it into
 `<user data>/Voices/<name>/`). Select the voice in the library and switch the **AI engine** on. The status
@@ -358,6 +362,7 @@ you can, or use it as the timbre and let VoxaVersa's input performance supply th
 | [RVC WebUI](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) at commit `81eed5e` (release 2.3.260718 + fixes) | slicing, f0, features, training code, model definitions | MIT |
 | Pretrained v2 base (`f0G40k/f0D40k`, `f0G48k/f0D48k`), RMVPE (`rmvpe.pt`), ContentVec/HuBERT (`hubert_base/`, = RVC's `hubert_base.pt`) from [lj1995/VoiceConversionWebUI](https://huggingface.co/lj1995/VoiceConversionWebUI) at revision `e6d0c1a` | training base, pitch, content features | MIT (repository licence); ContentVec itself is MIT |
 | `contentvec-768.onnx` made by `export_encoder.py` | VoxaVersa's content encoder | MIT (derived from the above) |
+| [FCPE](https://github.com/CNChTu/FCPE) (`torchfcpe` 0.0.4, bundled `fcpe_c_v001` weights) -> `fcpe.onnx` made by `export_pitch.py` | the AI voices' pitch tracker | MIT |
 | [SpeechBrain](https://github.com/speechbrain/speechbrain) + [`speechbrain/spkrec-ecapa-voxceleb`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) | singer clustering only (not shipped) | Apache-2.0 (model trained on VoxCeleb) |
 | PyTorch, transformers, ONNX, ONNX Runtime, librosa, NumPy, SciPy | tooling | BSD / Apache-2.0 / MIT / ISC |
 

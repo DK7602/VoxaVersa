@@ -61,6 +61,11 @@ def cmd_setup(args):
         subprocess.run([args.python, os.path.join(HERE, "export_encoder.py"), "--model",
                         os.path.join(args.rvc, "assets", "hubert_base"), "--out", enc + ".part.onnx"], check=True)
         os.replace(enc + ".part.onnx", enc)
+    pitch = os.path.join(args.work, "fcpe.onnx")
+    if not os.path.exists(pitch):
+        log("exporting the AI pitch tracker (once, ~1 minute)")
+        subprocess.run([args.python, os.path.join(HERE, "export_pitch.py"), "--out", pitch + ".part.onnx"], check=True)
+        os.replace(pitch + ".part.onnx", pitch)
     log("setup complete")
 
 
