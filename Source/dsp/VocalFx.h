@@ -235,41 +235,50 @@ private:
     Biquad bank[numBands];
 };
 
-/** Street / blues grit for an AI singer, whose own breath and rasp a synthetic rasp would only turn to static.
-    Grit in a voice is irregularity, not distortion (clipping a sung note only adds clean harmonics): a growl (the
-    voice's level wobbling at random 35 - 120 Hz, the rate the ear hears as roughness) and noise that pulses with
-    the voice's own glottal beats (1.2 - 6 kHz noise following that band's envelope within milliseconds). */
+/** Rasp for an AI singer: real rasp is the vocal folds vibrating irregularly, every other cycle stronger than
+    the next (period doubling, the growl of a blues or street voice) with cycle-to-cycle wobble, not noise (noise
+    on an AI singer sounded like static). The voice is modulated at half its pitch (subharmonics between its
+    harmonics) with a depth that changes from cycle to cycle, plus a little cycle-to-cycle level jitter. */
 class Grit
 {
 public:
     void prepare (double sampleRate);
     void reset();
-    void process (float* left, float* right, int numSamples, float amount) noexcept;
+    /** `hz`: the voice's pitch per sample (0 where unvoiced: nothing changes there). */
+    void process (float* voice, const float* hz, int numSamples, float amount) noexcept;
 
 private:
     double sr = 48000.0;
-    Biquad growlBand[2], noiseBand[2], voiceHigh[2], voiceLow[2];
-    float growlPower = 1.0f, noisePower = 1.0f, env[2] {}, attack = 0.0f, release = 0.0f, powerCoeff = 0.0f;
+    double phase = 0.0;               // of the half-pitch modulation, in cycles
+    float depth = 0.0f, nextDepth = 0.0f, jitter = 0.0f, nextJitter = 0.0f, fade = 0.0f, fadeStep = 0.0f;
     juce::Random random { 4321 };
 };
 
-/** A whisper made from the voice itself: short-time spectra with their harmonics smoothed away (~+-180 Hz) and
-    random phases, so the vocal tract's resonances stay and the pitch goes. The output is `getLatency()` samples
-    late: feed it the input that much early. */
+/** A whisper made from the voice itself, the way whispering works: one continuous breath noise through the
+    voice's own vocal tract. Every 2.5 ms a 25 ms window of the (pre-emphasised) input gives an LPC filter (order
+    32); a lattice filter with those reflection coefficients, glided sample by sample, shapes white noise to the
+    input's envelope at its level, without its pitch. Below ~350 Hz a whisper has nothing (no voicing): a high-pass
+    takes that away. Frame-wise random-phase spectra sounded like static. The output is `getLatency()` samples
+    late (half the window): feed it the input that much early. */
 class Whisperizer
 {
 public:
     void prepare (double sampleRate);
     void reset();
-    int getLatency() const noexcept { return size; }
+    int getLatency() const noexcept { return window / 2; }
     void process (const float* input, float* output, int numSamples) noexcept;
 
 private:
-    void frame() noexcept;
+    void analyse() noexcept;
 
-    int size = 1024, hop = 256, write = 0, read = 0, sinceHop = 0, smoothBins = 4;
-    std::unique_ptr<juce::dsp::FFT> fft;
-    std::vector<float> ring, accum, window, data, magnitude, smoothed;
+    static constexpr int order = 32;
+    double sampleRate = 48000.0;
+    int window = 1200, hop = 120, write = 0, sinceHop = 0;
+    std::vector<float> ring, shape;
+    double autoc[order + 1] {}, lpc[order + 1] {}, scratch[order + 1] {};
+    float k[order] {}, kFrom[order] {}, kTo[order] {}, back[order + 1] {};
+    float gain = 0.0f, gainFrom = 0.0f, gainTo = 0.0f, preState = 0.0f, deState = 0.0f;
+    Biquad highPass[2];
     juce::Random random { 12345 };
 };
 

@@ -191,12 +191,15 @@ at most 2.5 (its bank reads the envelope k/2 bands higher for a k-semitone shift
 
 ### Grit (`Grit`)
 
-A synthetic rasp on an AI singer sounded like static, and soft-clipping a sung note only adds clean
-harmonics (measured on a male vocal through Male Rap: the spectral flatness of 1.5 - 5 kHz moved by 0.1 dB).
-Grit is irregularity: the voice's level wobbles at random 35 - 120 Hz (the rate heard as roughness, up to
-+-45 % x amount) and 1.2 - 6 kHz noise follows that band's own envelope within milliseconds, so it pulses with
-the glottal beats. Male Rap (0.5) and Male Blues (0.35), scaled by Style: flatness -11.0 to -6.4 dB (Rap),
--14.8 to -9.3 dB (Blues).
+Rasp is the vocal folds vibrating irregularly, every other cycle stronger than the next (period doubling: the
+growl of a blues or street voice) with cycle-to-cycle wobble. Noise is not rasp: a synthetic rasp, and later
+breath noise pulsing with the voice, sounded "just like static" on an AI singer to a user. `Grit` modulates the
+AI singer at half its pitch (the target pitch per sample; subharmonics between its harmonics, at most ~-20 dB)
+with a depth drawn anew for every pair of cycles and a little cycle-to-cycle level jitter, gliding in and out
+of voiced sound. On a male vocal through Male Rap (0.5, scaled by Style) the harmonics-to-noise ratio went from
+14.0 to 11.7 dB while the noise between the harmonics barely rose (1.5 - 5 kHz flatness -11.0 to -10.1 dB; the
+noise version: -6.4 dB). Male Blues: 0.35. It runs on the AI lead after the vowel keeper, live and in Text to
+Sing takes.
 
 ### Choir Ensemble
 

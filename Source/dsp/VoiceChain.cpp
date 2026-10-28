@@ -209,6 +209,28 @@ float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Set
     return pf.globalOffset + moves;
 }
 
+void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, const ChainSettings& s) noexcept
+{
+    // both voices' pitches on the lead's timeline (`from`: the input time of its first sample)
+    for (int i = 0; i < n; ++i)
+    {
+        PitchFrame pf;
+        const bool voiced = timeline.lookup ((double) (from + i), pf) && pf.voiced;
+        dryHzBuf[(size_t) i] = voiced ? music::midiToHz (pf.srcMidi) : 0.0f;
+        leadHzBuf[(size_t) i] = voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f;
+    }
+    // the AI singer's formants over the input's: a man's voice into a woman's ~1.17 (a Text to Sing guide is
+    // already the target voice's)
+    const auto& traits = s.pitch.traits;
+    const int source = s.pitch.sourceIsSynth ? 0 : (s.pitch.sourceGender != 0 ? s.pitch.sourceGender : (int) genderEstimator.getGender());
+    const float tract = source == 1 && traits.gender == VoiceGender::Female ? 1.17f
+                      : (source == 2 && traits.gender == VoiceGender::Male ? 1.0f / 1.17f : 1.0f);
+    vowels.setTopNote (traits.aiHighMidi > 0 ? (float) traits.aiHighMidi - 1.0f : 0.0f);
+    vowels.process (lead, dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract);
+    if (traits.aiGrit > 0.0f)   // an AI singer's rasp (Male Rap, Male Blues)
+        grit.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * (1.0f + s.style)));
+}
+
 void VoiceChain::fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept
 {
     PitchFrame pf;
@@ -354,6 +376,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             consonants.process (leadBuf.data(), dryBuf.data(), n);
             fillInputVoicing (aheadStart, n, voicedBuf);
             rKeeper.process (leadBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
+            keepVowelsAndAddGrit (leadBuf.data(), tStart, n, s);
         }
     }
 
@@ -518,23 +541,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             consonants.process (voiceBuf.data(), dryBuf.data(), n);
             fillInputVoicing (aheadStart - alignAhead.delay, n, voicedBuf);
             rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
-            if (! s.pitch.sourceIsSynth)   // a Text to Sing guide's vowels are synthetic
-            {
-                const juce::int64 from = tStart - alignDry.delay;   // dryBuf's input time
-                for (int i = 0; i < n; ++i)
-                {
-                    PitchFrame pf;
-                    const bool voiced = timeline.lookup ((double) (from + i), pf) && pf.voiced;
-                    dryHzBuf[(size_t) i] = voiced ? music::midiToHz (pf.srcMidi) : 0.0f;
-                    leadHzBuf[(size_t) i] = voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f;
-                }
-                const int source = s.pitch.sourceGender != 0 ? s.pitch.sourceGender : (int) genderEstimator.getGender();
-                const auto target = s.pitch.traits.gender;
-                const float tract = source == 1 && target == VoiceGender::Female ? 1.17f
-                                  : (source == 2 && target == VoiceGender::Male ? 1.0f / 1.17f : 1.0f);
-                vowels.setTopNote (traits.aiHighMidi > 0 ? (float) traits.aiHighMidi - 1.0f : 0.0f);
-                vowels.process (voiceBuf.data(), dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract);
-            }
+            keepVowelsAndAddGrit (voiceBuf.data(), tStart - alignDry.delay, n, s);   // dryBuf's input time
             for (int i = 0; i < n; ++i)
             {
                 busL[(size_t) i] += voiceBuf[(size_t) i];
@@ -641,8 +648,6 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     const bool profileTexture = ! synth && ! aiLead;
     cs.breath = juce::jlimit (0.0f, 1.0f, s.breath + (profileTexture ? traits.breathiness * I : 0.0f) + juce::jmax (0.0f, -s.age) * 0.08f);
     cs.rasp = juce::jlimit (0.0f, 1.0f, s.rasp + (profileTexture ? traits.rasp * I * styleScale : 0.0f) + juce::jmax (0.0f, s.age) * 0.12f);
-    if (aiLead && traits.aiGrit > 0.0f)
-        grit.process (busL.data(), busR.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * styleScale));
     character.process (busL.data(), busR.data(), n, cs);
 
     //==========================================================================

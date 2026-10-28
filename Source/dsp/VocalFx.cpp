@@ -1191,142 +1191,156 @@ void VowelKeeper::process (float* lead, const float* input, const float* inputHz
 void Grit::prepare (double sampleRate)
 {
     sr = sampleRate;
-    for (int k = 0; k < 2; ++k)
-    {
-        growlBand[k].c = BiquadCoeffs::bandPass (sr, 65.0, 0.7);
-        noiseBand[k].c = BiquadCoeffs::bandPass (sr, 2700.0, 0.6);
-        voiceHigh[k].c = BiquadCoeffs::highPass (sr, 1200.0);
-        voiceLow[k].c = BiquadCoeffs::lowPass (sr, 6000.0);
-    }
-    attack = (float) (1.0 - std::exp (-1.0 / (0.0005 * sr)));
-    release = (float) (1.0 - std::exp (-1.0 / (0.004 * sr)));
-    powerCoeff = (float) (1.0 - std::exp (-1.0 / (0.5 * sr)));
+    fadeStep = (float) (1.0 / (0.02 * sr));   // 20 ms in and out of voiced sound
     reset();
 }
 
 void Grit::reset()
 {
-    for (int k = 0; k < 2; ++k)
-    {
-        growlBand[k].reset();
-        noiseBand[k].reset();
-        voiceHigh[k].reset();
-        voiceLow[k].reset();
-        env[k] = 0.0f;
-    }
-    growlPower = noisePower = 0.02f;
+    phase = 0.0;
+    depth = nextDepth = jitter = nextJitter = fade = 0.0f;
 }
 
-void Grit::process (float* left, float* right, int n, float amount) noexcept
+void Grit::process (float* x, const float* hz, int n, float amount) noexcept
 {
     if (amount <= 0.001f)
         return;
     for (int i = 0; i < n; ++i)
     {
-        // one growl and one noise for both channels (the voice sits in the middle)
-        const float g = growlBand[1].process (growlBand[0].process (2.0f * random.nextFloat() - 1.0f));
-        growlPower += (g * g - growlPower) * powerCoeff;
-        const float growl = 1.0f + 0.45f * amount * juce::jlimit (-2.5f, 2.5f, g / std::sqrt (growlPower + 1.0e-12f));
-        const float w = noiseBand[1].process (noiseBand[0].process (2.0f * random.nextFloat() - 1.0f));
-        noisePower += (w * w - noisePower) * powerCoeff;
-        const float noise = w / std::sqrt (noisePower + 1.0e-12f);
-
-        for (int c = 0; c < 2; ++c)
+        const bool voiced = hz[i] > 40.0f;
+        fade = juce::jlimit (0.0f, 1.0f, fade + (voiced ? fadeStep : -fadeStep));
+        if (fade <= 0.0f)
+            continue;
+        const double f = voiced ? (double) hz[i] : 150.0;
+        const double before = phase;
+        phase += 0.5 * f / sr;
+        if ((int) phase != (int) before)   // a new pair of cycles: its own depth and level
         {
-            float* x = c == 0 ? left : right;
-            if (x == nullptr)
-                continue;
-            const float band = std::abs (voiceLow[c].process (voiceHigh[c].process (x[i])));
-            env[c] += (band - env[c]) * (band > env[c] ? attack : release);
-            x[i] = x[i] * growl + 0.5f * amount * env[c] * noise;
+            depth = nextDepth;
+            jitter = nextJitter;
+            nextDepth = amount * (0.6f + 0.4f * random.nextFloat());
+            nextJitter = amount * 0.12f * (2.0f * random.nextFloat() - 1.0f);
+            phase -= std::floor (phase);
         }
+        // glide the pair's depth and level across it so no step clicks
+        const float t = (float) (phase - std::floor (phase));
+        const float d = depth + (nextDepth - depth) * t, j = jitter + (nextJitter - jitter) * t;
+        const float m = (float) std::sin (juce::MathConstants<double>::twoPi * phase);
+        x[i] *= 1.0f + fade * (d * m + j);
     }
 }
 
 //==============================================================================
-void Whisperizer::prepare (double sampleRate)
+void Whisperizer::prepare (double sr)
 {
-    size = juce::nextPowerOfTwo (juce::roundToInt (sampleRate * 0.021));   // ~21 ms
-    hop = size / 4;
-    fft = std::make_unique<juce::dsp::FFT> ((int) std::round (std::log2 ((double) size)));
-    ring.assign ((size_t) size, 0.0f);
-    accum.assign ((size_t) size * 2, 0.0f);
-    data.assign ((size_t) size * 2, 0.0f);
-    magnitude.assign ((size_t) size / 2 + 1, 0.0f);
-    smoothed.assign ((size_t) size / 2 + 1, 0.0f);
-    window.resize ((size_t) size);
-    for (int i = 0; i < size; ++i)   // square-root Hann at both ends
-        window[(size_t) i] = std::sqrt (0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) size));
-    smoothBins = juce::jmax (1, juce::roundToInt (180.0 / (sampleRate / size)));
+    sampleRate = sr;
+    window = juce::roundToInt (sr * 0.025);
+    hop = juce::jmax (1, juce::roundToInt (sr * 0.0025));
+    ring.assign ((size_t) window, 0.0f);
+    shape.resize ((size_t) window);
+    for (int i = 0; i < window; ++i)
+        shape[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) (window - 1));
+    highPass[0].c = highPass[1].c = BiquadCoeffs::highPass (sr, 350.0);
     reset();
 }
 
 void Whisperizer::reset()
 {
     std::fill (ring.begin(), ring.end(), 0.0f);
-    std::fill (accum.begin(), accum.end(), 0.0f);
-    write = read = sinceHop = 0;
+    write = sinceHop = 0;
+    for (int m = 0; m < order; ++m)
+        k[m] = kFrom[m] = kTo[m] = 0.0f;
+    for (auto& b : back)
+        b = 0.0f;
+    gain = gainFrom = gainTo = preState = deState = 0.0f;
+    highPass[0].reset();
+    highPass[1].reset();
 }
 
-void Whisperizer::frame() noexcept
+void Whisperizer::analyse() noexcept
 {
-    for (int i = 0; i < size; ++i)
-        data[(size_t) i] = ring[(size_t) ((write + i) % size)] * window[(size_t) i];
-    std::fill (data.begin() + size, data.end(), 0.0f);
-    fft->performRealOnlyForwardTransform (data.data(), true);
+    // autocorrelation of the windowed, pre-emphasised last 25 ms (the ring holds pre-emphasised input)
+    for (int lag = 0; lag <= order; ++lag)
+    {
+        double sum = 0.0;
+        for (int i = lag; i < window; ++i)
+            sum += (double) ring[(size_t) ((write + i) % window)] * shape[(size_t) i]
+                 * (double) ring[(size_t) ((write + i - lag) % window)] * shape[(size_t) (i - lag)];
+        autoc[lag] = sum;
+    }
+    for (int m = 0; m < order; ++m)
+        kFrom[m] = kTo[m];
+    gainFrom = gainTo;
 
-    const int bins = size / 2 + 1;
-    double energy = 0.0, smoothEnergy = 0.0;
-    for (int k = 0; k < bins; ++k)
+    if (autoc[0] < 1.0e-9)
     {
-        magnitude[(size_t) k] = std::hypot (data[(size_t) (2 * k)], data[(size_t) (2 * k + 1)]);
-        energy += (double) magnitude[(size_t) k] * magnitude[(size_t) k];
+        for (int m = 0; m < order; ++m)
+            kTo[m] = 0.0f;
+        gainTo = 0.0f;
+        return;
     }
-    for (int k = 0; k < bins; ++k)
-    {
-        float sum = 0.0f;
-        int count = 0;
-        for (int j = juce::jmax (0, k - smoothBins); j <= juce::jmin (bins - 1, k + smoothBins); ++j, ++count)
-            sum += magnitude[(size_t) j];
-        smoothed[(size_t) k] = sum / (float) count;
-        smoothEnergy += (double) smoothed[(size_t) k] * smoothed[(size_t) k];
-    }
-    const float gain = smoothEnergy > 0.0 ? (float) std::sqrt (energy / smoothEnergy) : 0.0f;
-    for (int k = 0; k < bins; ++k)
-    {
-        const float phase = juce::MathConstants<float>::twoPi * random.nextFloat();
-        data[(size_t) (2 * k)] = smoothed[(size_t) k] * gain * std::cos (phase);
-        data[(size_t) (2 * k + 1)] = k == 0 || k == size / 2 ? 0.0f : smoothed[(size_t) k] * gain * std::sin (phase);
-    }
-    for (int k = 1; k < size / 2; ++k)   // the mirrored half, so the inverse transform is the whole real signal
-    {
-        data[(size_t) (2 * (size - k))] = data[(size_t) (2 * k)];
-        data[(size_t) (2 * (size - k) + 1)] = -data[(size_t) (2 * k + 1)];
-    }
-    fft->performRealOnlyInverseTransform (data.data());
 
-    // frame sample i belongs to output time read + i (the output runs `size` samples behind the input). With
-    // random phases the overlapping frames add up in power, not in amplitude: no 1/2 for the Hann overlap.
-    const int total = (int) accum.size();
-    for (int i = 0; i < size; ++i)
-        accum[(size_t) ((read + i) % total)] += data[(size_t) i] * window[(size_t) i];
+    // a Gaussian lag window smooths the envelope over ~+-200 Hz (a sharper one traces the voice's harmonics, a
+    // pitched whisper), a little lag-0 lift for stability; Levinson-Durbin gives the lattice's coefficients
+    for (int lag = 1; lag <= order; ++lag)
+        autoc[lag] *= std::exp (-0.5 * juce::square (juce::MathConstants<double>::twoPi * 200.0 * lag / sampleRate));
+    autoc[0] *= 1.0001;
+    double error = autoc[0];
+    for (int i = 0; i <= order; ++i)
+        lpc[i] = 0.0;
+    lpc[0] = 1.0;
+    for (int m = 1; m <= order; ++m)
+    {
+        double acc = autoc[m];
+        for (int j = 1; j < m; ++j)
+            acc += lpc[j] * autoc[m - j];
+        const double km = -acc / error;
+        for (int j = 1; j < m; ++j)
+            scratch[j] = lpc[j] + km * lpc[m - j];
+        for (int j = 1; j < m; ++j)
+            lpc[j] = scratch[j];
+        lpc[m] = km;
+        error *= (1.0 - km * km);
+        kTo[m - 1] = (float) juce::jlimit (-0.999, 0.999, km);
+        if (error <= 0.0)
+            break;
+    }
+    // the residual's power per sample (Hann-window power 3/8) sets the noise level
+    gainTo = (float) std::sqrt (juce::jmax (0.0, error) / (0.375 * window));
 }
 
 void Whisperizer::process (const float* input, float* output, int n) noexcept
 {
-    const int total = (int) accum.size();
     for (int i = 0; i < n; ++i)
     {
-        ring[(size_t) write] = input[i];
-        write = (write + 1) % size;
-        output[i] = accum[(size_t) read];
-        accum[(size_t) read] = 0.0f;
-        read = (read + 1) % total;
+        const float pre = input[i] - 0.97f * preState;
+        preState = input[i];
+        ring[(size_t) write] = pre;
+        write = (write + 1) % window;
         if (++sinceHop >= hop)
         {
             sinceHop = 0;
-            frame();
+            analyse();
         }
+
+        // glide the filter and level from the previous analysis to this one over the hop
+        const float t = (float) sinceHop / (float) hop;
+        for (int m = 0; m < order; ++m)
+            k[m] = kFrom[m] + (kTo[m] - kFrom[m]) * t;
+        gain = gainFrom + (gainTo - gainFrom) * t;
+
+        // all-pole lattice: white noise through 1/A(z)
+        float f = gain * (2.0f * random.nextFloat() - 1.0f) * 1.7320508f;   // unit-variance noise
+        for (int m = order; m >= 1; --m)
+        {
+            f -= k[m - 1] * back[m - 1];
+            back[m] = back[m - 1] + k[m - 1] * f;
+        }
+        back[0] = f;
+
+        const float de = f + 0.97f * deState;   // undo the pre-emphasis
+        deState = de;
+        output[i] = highPass[1].process (highPass[0].process (de));
     }
 }
 

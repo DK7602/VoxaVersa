@@ -986,24 +986,23 @@ public:
         constexpr double sr = 48000.0;
         const int n = (int) sr;
 
-        beginTest ("Grit roughens a voice at about the same level");
+        beginTest ("Grit is a growl: subharmonics between the harmonics, no noise, about the same level");
         {
-            // a sung "ah" at 200 Hz: grit fills the gaps between its harmonics
-            std::vector<float> l ((size_t) n), r;
+            std::vector<float> x ((size_t) n), hz ((size_t) n, 200.0f);
             for (int i = 0; i < n; ++i)
                 for (int h = 1; h <= 20; ++h)
-                    l[(size_t) i] += 0.05f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
-            r = l;
-            const auto before = l;
+                    x[(size_t) i] += 0.05f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
+            const auto before = x;
             dsp::Grit grit;
             grit.prepare (sr);
             for (int pos = 0; pos < n; pos += 512)
-                grit.process (l.data() + pos, r.data() + pos, juce::jmin (512, n - pos), 0.5f);
-            const double gapBefore = tone (before, n / 2, n, 2100.0, sr) - tone (before, n / 2, n, 2000.0, sr);
-            const double gapAfter = tone (l, n / 2, n, 2100.0, sr) - tone (l, n / 2, n, 2000.0, sr);
-            logMessage ("between-harmonics level: " + juce::String (gapBefore, 1) + " -> " + juce::String (gapAfter, 1) + " dB");
-            expectGreaterThan (gapAfter - gapBefore, 60.0);
-            expectWithinAbsoluteError (20.0 * std::log10 (rms (l, n / 2, n) / rms (before, n / 2, n)), 0.0, 2.0);
+                grit.process (x.data() + pos, hz.data() + pos, juce::jmin (512, n - pos), 0.5f);
+            const double sub = tone (x, n / 2, n, 300.0, sr) - tone (x, n / 2, n, 200.0, sr);
+            const double noise = tone (x, n / 2, n, 230.0, sr) - tone (x, n / 2, n, 200.0, sr);
+            logMessage ("half-pitch subharmonic " + juce::String (sub, 1) + " dB, between them " + juce::String (noise, 1) + " dB");
+            expectGreaterThan (sub, -20.0);
+            expectLessThan (noise, sub - 10.0);
+            expectWithinAbsoluteError (20.0 * std::log10 (rms (x, n / 2, n) / rms (before, n / 2, n)), 0.0, 1.5);
         }
 
         beginTest ("The whisper keeps the level and loses the pitch");
@@ -1017,7 +1016,16 @@ public:
             for (int pos = 0; pos < n; pos += 480)
                 w.process (in.data() + pos, out.data() + pos, juce::jmin (480, n - pos));
             const int from = n / 2;
-            expectWithinAbsoluteError (20.0 * std::log10 (rms (out, from, n) / rms (in, from - w.getLatency(), n - w.getLatency())), 0.0, 4.0);
+            // a whisper has nothing below ~350 Hz: compare the level above it
+            auto above = [sr] (std::vector<float> x)
+            {
+                dsp::Biquad hp[2];
+                hp[0].c = hp[1].c = dsp::BiquadCoeffs::highPass (sr, 350.0);
+                for (auto& v : x)
+                    v = hp[1].process (hp[0].process (v));
+                return x;
+            };
+            expectWithinAbsoluteError (20.0 * std::log10 (rms (out, from, n) / rms (above (in), from - w.getLatency(), n - w.getLatency())), 0.0, 3.0);
             // the harmonics no longer stand out from the gaps between them
             const double peak = tone (out, from, n, 1000.0, sr), gap = tone (out, from, n, 1100.0, sr);
             const double dryPeak = tone (in, from, n, 1000.0, sr), dryGap = tone (in, from, n, 1100.0, sr);

@@ -107,6 +107,8 @@ public:
 private:
     float computeFormantSemis (const ChainSettings&) const noexcept;
     /** dest[i] = 1 where the pitch detector heard the input voiced at input time `from + i`. */
+    /** The vowel keeper and grit on an AI lead (`from`: the input time of its first sample, as in dryBuf). */
+    void keepVowelsAndAddGrit (float* lead, juce::int64 from, int numSamples, const ChainSettings&) noexcept;
     void fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept;
 
     double sr = 48000.0;
