@@ -499,7 +499,8 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         }
 
         // Singers chosen by ear (right-click a voice > AI Singer) come last, over the assignment.
-        if (auto* chosen = juce::JSON::parse (dir.getChildFile (choicesFileName)).getDynamicObject())
+        const auto choices = juce::JSON::parse (dir.getChildFile (choicesFileName));   // kept alive while read
+        if (auto* chosen = choices.getDynamicObject())
         {
             for (const auto& entry : chosen->getProperties())
             {
