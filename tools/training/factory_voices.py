@@ -26,10 +26,10 @@ first, with two rules:
   * brightness and power are compared within a recording corpus (a singer's "corpus" label: microphones and
     processing differ more between vendors than voices do), and a singer's "style" ("classical" for trained
     classical singers, else contemporary) costs STYLE_PENALTY when it differs from the genre's (opera,
-    theatre and angelic are classical); all other voices but deep bass and whisper get contemporary singers only
+    theatre and angelic are classical); all other voices but deep bass get contemporary singers only
     once a gender has at least MIN_CONTEMPORARY of them; a singer's "genres" (optional) favour those genres' voices.
-Specialty voices: male-deep-bass, female-angelic, female-smoky-alto and neutral-whisper (any gender) are
-matched the same way. Writes <out>.json (for the training queue) and <out>.md (the table).
+Specialty voices: male-deep-bass, female-angelic and female-smoky-alto are matched the same way
+(neutral-whisper gets none: an AI singer cannot whisper). Writes <out>.json (for the training queue) and <out>.md (the table).
 Requirements: numpy, scipy, soundfile.
 """
 
@@ -62,11 +62,11 @@ CLASSICAL = {"opera", "theatre", "angelic"}
 STYLE_PENALTY = 1.5
 # Contemporary voices sung by a classically trained singer sound young and "legit" (a user heard Female Pop as a
 # child, then Male Rock as country): every voice that is not classical (opera, theatre, angelic) or a specialty
-# that suits a trained voice (deep bass, whisper) gets contemporary singers only, once a gender has enough of them
+# that suits a trained voice (deep bass) gets contemporary singers only, once a gender has enough of them
 # to share these voices (fewer would put one voice on most of the gender's avatars; the style penalty decides
 # until then). The classical singers also train less true to themselves (similarity 0.16 - 0.49 against 0.60 -
 # 0.77 for the studio and band singers).
-CLASSICAL_FRIENDLY = CLASSICAL | {"deep-bass", "whisper"}
+CLASSICAL_FRIENDLY = CLASSICAL | {"deep-bass"}
 MIN_CONTEMPORARY = 3
 # A singer's "genres" (heard by the owner, e.g. a military-band singer who sings country) make the built-in
 # voices of those genres prefer them.
@@ -158,7 +158,7 @@ def factory_voices(cpp=FACTORY_CPP):
     # specialty voices: range and colour from their set-up lambdas
     for m in re.finditer(r'makeSpecialty \("([a-z-]+)",\s*"([^"]+)",\s*"[^"]*",\s*VoiceGender::(\w+)(.*?)\}\)\);', src, re.S):
         vid, name, gender, body = m.group(1), m.group(2), m.group(3).lower(), m.group(4)
-        if vid in ("neutral-robot", "neutral-choir"):
+        if vid in ("neutral-robot", "neutral-choir", "neutral-whisper"):   # singers of their own, or none
             continue
         def val(key, default=0.0):
             mm = re.search(r"t\.%s\s*=\s*(-?\d+(?:\.\d+)?)f?" % key, body)
@@ -257,13 +257,7 @@ def assign(singers, voices, fixed=None):
             load[name] += 1
             groups_used[(vs[i]["group"], name)] = groups_used.get((vs[i]["group"], name), 0) + 1
             todo.remove(i)
-    # neutral-whisper: the breathiest singer of all
-    whisper = [v for v in voices if v["id"] == "neutral-whisper"]
-    if whisper and singers:
-        z = zscores(singers, ["breath"])
-        k = int(np.argmax([zz["breath"] for zz in z]))
-        result["neutral-whisper"] = singers[k]["name"]
-        costs["neutral-whisper"] = 0.0
+    # neutral-whisper gets no singer: an AI singer cannot whisper, the voice is VoxaVersa's DSP whisper
     return result, costs
 
 

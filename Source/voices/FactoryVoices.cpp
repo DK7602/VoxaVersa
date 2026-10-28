@@ -323,7 +323,7 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("neutral-whisper", "Whisper", "Close, breathy ASMR whisper", VoiceGender::Neutral,
                                      { "Breathy", "Intimate", "Airy" }, 0xff8fa3bf, 0xffe1e8f2, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 48; t.rangeHighMidi = 72; t.formantSemis = 0.2f;
+        t.rangeLowMidi = 48; t.rangeHighMidi = 72; t.formantSemis = 0.2f; t.noAiSinger = true;
         t.breathiness = 0.9f; t.airDb = 4.0f; t.presenceDb = 1.0f; t.vibratoDepthCents = 0.0f;
         t.ringHz = 6000.0f; t.ringDb = 3.0f; t.bodyHz = 250.0f; t.bodyDb = -3.0f;
         t.vibeCompressor = 0.6f; t.vibeReverbMix = 0.08f; t.vibeDeEsser = 0.5f;

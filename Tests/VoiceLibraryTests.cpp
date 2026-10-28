@@ -275,6 +275,22 @@ public:
             expect (card != nullptr && card->name == "Lyric Tenor" && card->genre == "Classical", card != nullptr ? card->name : "missing");
         }
 
+        beginTest ("Whisper keeps the DSP whisper; a singer assigned only to it is a voice of its own");
+        {
+            auto dir = root.getChildFile ("whisper");
+            auto d = dir.getChildFile ("w");
+            d.createDirectory();
+            d.getChildFile ("model.onnx").replaceWithText ("not a real model");
+            d.getChildFile ("voice.json").replaceWithText (R"({ "id": "vocalset-male11", "name": "VocalSet Male 11", "gender": "male",
+                "listed": false, "factoryVoices": ["neutral-whisper"],
+                "model": { "file": "model.onnx", "encoder": "contentvec-768", "sampleRate": 40000 } })");
+            VoiceLibrary library;
+            library.rescanUserVoices (dir);
+            expect (! library.findById ("neutral-whisper")->hasNeuralModel(), "an AI singer cannot whisper");
+            const auto* own = library.findById ("user-vocalset-male11");
+            expect (own != nullptr && own->name == "Clarion Tenor", own != nullptr ? own->name : "missing");
+        }
+
         beginTest ("Built-in voices have unique ids and sensible ranges");
         {
             VoiceLibrary library;

@@ -239,9 +239,10 @@ choice from the data:
    best matches first. Similar genres (bright pop: pop / K-pop / Latin / EDM / Afrobeats; soulful: R&B /
    soul / jazz / blues / lo-fi; powerful: gospel / rock / metal / opera / theatre; rhythmic: rap / trap /
    reggae; acoustic: country / indie) get different singers while there are enough singers, and the load
-   is spread. Specialty voices (Deep Bass, Angelic Soprano, Smoky Alto, Whisper) are matched the same way.
-   Once a gender has at least 3 contemporary singers, every voice except opera, theatre, angelic, deep bass
-   and whisper gets a contemporary singer: classically trained singers made Female Pop sound like a child and
+   is spread. Specialty voices (Deep Bass, Angelic Soprano, Smoky Alto) are matched the same way; Whisper
+   gets no singer (an AI singer cannot whisper: the voice is VoxaVersa's whisper effect, and VoxaVersa ignores
+   older assignments that gave it one). Once a gender has at least 3 contemporary singers, every voice except
+   opera, theatre, angelic and deep bass gets a contemporary singer: classically trained singers made Female Pop sound like a child and
    Male Rock like country, and they train less true to themselves (similarity 0.16 - 0.49 against 0.60 -
    0.77). `assign(..., fixed=...)` keeps chosen voices with their singers (e.g. ones the owner likes) and
    places the rest around them.

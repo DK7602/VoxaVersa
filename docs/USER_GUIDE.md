@@ -58,7 +58,8 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   late, slowly detuned and coloured differently, spread across the stereo field. The Doubler's amount and width
   scale the section.
 - **Singer cards**: a trained singer that sings no built-in voice is a voice of its own, with a style title and
-  portrait (e.g. *Lyric Tenor*, *Velvet Mezzo*: the classically trained VocalSet singers).
+  portrait (e.g. *Lyric Tenor*, *Velvet Mezzo*: the classically trained VocalSet singers). *Whisper* is always
+  the whisper effect (an AI singer cannot whisper).
 - **Presets**: factory and user presets, A/B comparison, undo/redo. A factory preset keeps your session's
   mode, input/output level, key and scale, MIDI Pitch Control and Text to Sing tempo. Presets built on a male
   or female voice turn **Pitch Preserve** off so any singer lands in that voice's register; *Chipmunk*,

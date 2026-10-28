@@ -381,6 +381,8 @@ static void applyAssignment (VoiceProfile& p, const juce::var& entry)
 /** A built-in voice sung by `singer` (a pack with a voice model). */
 static void giveModel (VoiceProfile& v, const VoiceProfile& singer)
 {
+    if (v.traits.noAiSinger)
+        return;
     v.packDirectory = singer.packDirectory;
     v.neuralModelFile = singer.neuralModelFile;
     v.neuralEncoder = singer.neuralEncoder;
@@ -434,6 +436,18 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 
             if (const auto* entry = findAssignment (assignment, p))
                 applyAssignment (p, *entry);
+
+            // An AI singer cannot whisper: a singer assigned only to such voices (older assignments gave the
+            // Whisper voice the breathiest singer) is a voice of its own instead.
+            if (! p.factoryVoices.isEmpty())
+            {
+                for (int k = p.factoryVoices.size(); --k >= 0;)
+                    if (const int index = indexOf (p.factoryVoices[k]); index >= 0 && index < (int) numFactoryVoices
+                                                                         && voices[(size_t) index].traits.noAiSinger)
+                        p.factoryVoices.remove (k);
+                if (p.factoryVoices.isEmpty())
+                    p.listed = true;
+            }
             if (const auto* card = findSingerCard (p.id))
             {
                 // a credit line (e.g. VocalSet's CC BY) stays in the description after the style's own

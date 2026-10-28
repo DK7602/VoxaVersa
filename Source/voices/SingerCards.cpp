@@ -27,7 +27,7 @@ namespace
         { "vocalset-male8",   "Basso Profundo",    "Classical", "Deep, dark classical bass",                   "Deep,Classical" },
         { "vocalset-male9",   "Countertenor",      "Classical", "Pure, high countertenor",                     "Clean,Classical,Airy" },
         { "vocalset-male10",  "Hushed Tenor",      "Classical", "Breathy, intimate tenor",                     "Breathy,Classical,Soft" },
-        { "vocalset-male11",  "Smoky Baritone",    "Classical", "Breathy baritone with a strong ring",         "Breathy,Classical,Powerful" },
+        { "vocalset-male11",  "Clarion Tenor",     "Classical", "Bright, ringing tenor with a breathy edge",   "Bright,Classical,Breathy" },
         { "cymatics-female-blend", "Studio Diva",  "Pop",       "Warm, polished studio pop & soul voice",      "Clean,Warm" },
     };
 }

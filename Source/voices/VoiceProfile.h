@@ -32,6 +32,8 @@ struct VoiceTraits
     // A choir section: with an AI singer, a second singer of the other gender an octave away and copies of both,
     // each a little late, detuned and coloured differently (Choir Ensemble).
     bool choir = false;
+    // An effect no AI singer can sing (Whisper): the voice is always the DSP voice and never given a singer.
+    bool noAiSinger = false;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift
