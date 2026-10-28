@@ -233,6 +233,12 @@ namespace
             t.registerBiasSemis = -2.0f;
             t.selfTuneMs = 25.0f;
         }
+        // The English these styles are sung in (Text to Sing): country Southern, reggae Jamaican, Latin
+        // Spanish-accented, Afrobeats Nigerian.
+        {
+            const juce::String id (g.idPart);
+            t.singAccent = id == "country" ? 1 : id == "reggae" ? 2 : id == "latin" ? 3 : id == "afrobeats" ? 4 : 0;
+        }
         // An AI singer's street grit (Male Rap) and blues rasp (Male Blues).
         if (male && juce::String (g.idPart) == "rap")
             t.aiGrit = 0.5f;

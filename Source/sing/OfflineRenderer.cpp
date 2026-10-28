@@ -117,6 +117,7 @@ OfflineRenderer::OfflineRenderer (const LyricScript& s, const Score& sc, const V
     : script (s), score (sc), traits (t), bpm (juce::jlimit (20.0, 400.0, tempo)),
       sampleRate (rate > 0.0 ? rate : 48000.0), seed (seedToUse)
 {
+    applyAccent (script, (Accent) traits.singAccent);
     setup.prepare (traits);
     plan();
 }

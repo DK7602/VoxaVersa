@@ -255,6 +255,81 @@ private:
     }
 };
 
+/** The accents of the styles that sing in one (country, reggae, Latin, Afrobeats). */
+class SingStyleAccentTests : public juce::UnitTest
+{
+public:
+    SingStyleAccentTests() : juce::UnitTest ("Text to Sing: style accents", "Sing") {}
+
+    static const SungSyllable& word (const LyricScript& s, const juce::String& w, int syllable = 0)
+    {
+        for (const auto& syl : s.syllables)
+            if (s.words[syl.wordIndex].equalsIgnoreCase (w) && syllable-- == 0)
+                return syl;
+        return s.syllables.front();
+    }
+
+    void runTest() override
+    {
+        const juce::String line ("the time I spend with my friend singing like a runner who never quits this love is real");
+
+        beginTest ("Southern (country)");
+        {
+            auto s = parseLyrics (line);
+            applyAccent (s, Accent::Southern);
+            expect (word (s, "time").nucleus == Ph::AA, "time: tahm");
+            expect (word (s, "my").nucleus == Ph::AA);
+            expect (word (s, "like").nucleus == Ph::AY, "the glide stays before a voiceless consonant");
+            expect (word (s, "friend").nucleus == Ph::IH, "pin-pen merger");
+            expect (word (s, "singing", 1).coda == std::vector<Ph> { Ph::N }, "singin'");
+        }
+
+        beginTest ("Jamaican (reggae)");
+        {
+            auto s = parseLyrics (line);
+            applyAccent (s, Accent::Jamaican);
+            expect (word (s, "the").onset == std::vector<Ph> { Ph::D } && word (s, "the").nucleus == Ph::IH, "di");
+            expect (word (s, "with").coda == std::vector<Ph> { Ph::D } || word (s, "with").coda == std::vector<Ph> { Ph::T }, "wid");
+            expect (word (s, "never", 1).nucleus == Ph::AX && word (s, "never", 1).coda.empty(), "neva");
+            expect (word (s, "friend").coda == std::vector<Ph> { Ph::N }, "frien'");
+        }
+
+        beginTest ("Spanish-accented (Latin)");
+        {
+            auto s = parseLyrics (line);
+            applyAccent (s, Accent::Latin);
+            expect (word (s, "this").onset == std::vector<Ph> { Ph::D } && word (s, "this").nucleus == Ph::IY);
+            expect (word (s, "is").coda == std::vector<Ph> { Ph::S });
+            expect (word (s, "love").coda == std::vector<Ph> { Ph::B } && word (s, "love").nucleus == Ph::AA);
+        }
+
+        beginTest ("Nigerian (Afrobeats)");
+        {
+            auto s = parseLyrics (line);
+            applyAccent (s, Accent::Nigerian);
+            expect (word (s, "love").nucleus == Ph::AO);
+            expect (word (s, "quits").nucleus == Ph::IY);
+            expect (word (s, "never", 1).coda.empty());
+        }
+
+        beginTest ("Country, reggae, Latin and Afrobeats voices sing in their accent; the others in American");
+        {
+            const auto voices = createFactoryVoices();
+            auto accentOf = [&voices] (const juce::String& id)
+            {
+                for (const auto& v : voices)
+                    if (v.id == id)
+                        return (Accent) v.traits.singAccent;
+                return Accent::American;
+            };
+            expect (accentOf ("female-country") == Accent::Southern && accentOf ("male-country") == Accent::Southern);
+            expect (accentOf ("male-reggae") == Accent::Jamaican && accentOf ("female-latin") == Accent::Latin);
+            expect (accentOf ("female-afrobeats") == Accent::Nigerian && accentOf ("female-pop") == Accent::American);
+        }
+    }
+};
+
 static SingAccentTests singAccentTests;
+static SingStyleAccentTests singStyleAccentTests;
 
 } // namespace voxa::sing

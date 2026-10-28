@@ -63,6 +63,20 @@ struct LyricScript
         contractions ("don't", "I'm", "gonna", "lovin'") and unicode apostrophes are handled. */
 LyricScript parseLyrics (const juce::String& lyrics);
 
+/** The English a voice's style sings in (Text to Sing). The pronunciation decides what the AI singer sings, so
+    an accent is made here, from the words, as the singers of these styles sing them. */
+enum class Accent
+{
+    American = 0,
+    Southern,    // country: "I" as "ah" (not before voiceless consonants), pin-pen merger, singin'
+    Jamaican,    // reggae: th as t/d, no r after vowels, "day" as "deh", the as "di", singin', final t/d dropped
+    Latin,       // Spanish-accented: i/ee and u/oo merge, a open, z as s, v as b, th as t/d
+    Nigerian     // Afrobeats: th as t/d, no r after vowels, a open, "love" with an open o, i/ee and u/oo merge
+};
+
+/** Rewrites the sung syllables (and their weak forms) in `accent`. American leaves them as they are. */
+void applyAccent (LyricScript& script, Accent accent);
+
 /** "21" -> "twenty one", "1999" (as a year) -> "nineteen ninety nine". */
 juce::String spellNumber (juce::int64 number, bool asYear = false);
 

@@ -63,6 +63,22 @@ live singer will sing (melisma marks and breaths do not count), so the UI can sh
 
 If a made-up word comes out wrong, spell it phonetically (`ny-ooo`) or hyphenate it.
 
+### Style accents (`applyAccent`, `VoiceTraits::singAccent`)
+
+Some styles are sung in their own English, and the pronunciation is what the AI singer sings (it converts the
+guide's sounds, so the accent has to be in the guide). The voices of these styles rewrite the sung syllables
+(and their weak forms) after the American rules above:
+
+| Voices | Accent | What changes |
+|---|---|---|
+| Country | Southern US | *I, time, my* with "ah" (the glide stays before a voiceless consonant: *right, nice*); *ten, friend* with the vowel of *tin* (pin-pen merger); *singin'* |
+| Reggae | Jamaican | *th* as *t / d*; no *r* after a vowel (*neva*); *day* with a pure vowel; *the* as *di*; *singin'*; a final *t / d* after a consonant drops (*an', jus'*) |
+| Latin | Spanish-accented | *ship / sheep* and *full / fool* merge; *cat, love* with an open *a*; *z* as *s*, *v* as *b*; *th* as *t / d* |
+| Afrobeats | Nigerian | *th* as *t / d*; no *r* after a vowel; *cat* with an open *a*, *love* with an open *o*; *ship / sheep* and *full / fool* merge; *day* with a pure vowel |
+
+Voice Transform keeps the singer's own pronunciation: the AI model changes who sings, not how the words are
+said, so an accent there comes from the performance.
+
 ## Melody sources (`SingRequest::melodyMode`)
 
 ### Automatic (`MelodyMode::AutoGenerate`)

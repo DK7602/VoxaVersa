@@ -77,7 +77,7 @@ private:
     void applyConnectedSpeech (std::vector<Occurrence>&) const;
     void buildPitchTrack (int numFrames, double frameSeconds, std::vector<float>& midiTrack) const;
 
-    const LyricScript& script;
+    LyricScript script;   // the lyrics in the voice's accent
     const Score& score;
     VoiceTraits traits;
     VoiceSetup setup;

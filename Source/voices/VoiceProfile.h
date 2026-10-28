@@ -77,6 +77,7 @@ struct VoiceTraits
     // Text-to-Sing performance hints
     float singLegato      = 0.6f;      // 0 = detached, 1 = fully legato
     float singRhythmBusy  = 0.5f;      // 0 = long notes, 1 = dense rhythmic phrasing (rap)
+    int singAccent = 0;                // the style's English accent (sing::Accent): 0 American
     float singPortamentoMs = 60.0f;
 
     /** Linear interpolation between two trait sets (used for voice blending). */
