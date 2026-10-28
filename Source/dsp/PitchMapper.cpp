@@ -105,13 +105,15 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
         // An AI model sounds right only near the notes its singer sang (far above them it turns to noise):
         // the octave closest to the middle of that range, the gender's usual direction on a near tie. The song's
         // high notes count too: above the singer's top a voice turns thin and "chipmunk", which is worse than
-        // dipping below the bottom.
+        // dipping below the bottom. A live input reveals its range only as the song goes on, so a typical singer
+        // of its gender (median G#3 for a man, D#4 for a woman, +-5 semitones) weighs in until ~10 s were heard.
         const int preferred = k;
-        // Until the input has been heard for a moment: a typical singer of its gender.
         const float aim = s.traits.aiCentreMidi + s.traits.registerBiasSemis;
-        const float median = heard ? sourceMedian : (source == 2 ? 64.0f : 55.0f);
-        const float low = heard ? sourcePercentile (0.05f) : median - 4.0f;
-        const float high = heard ? sourcePercentile (0.95f) : median + 4.0f;
+        const float prior = source == 2 ? 63.0f : 56.0f;
+        const float w = sourceNotesTotal > 0.0f ? juce::jlimit (0.0f, 1.0f, sourceWeight / 10.0f) : 0.0f;
+        const float median = prior + (sourceMedian - prior) * w;
+        const float low = prior - 5.0f + (sourcePercentile (0.05f) - (prior - 5.0f)) * w;
+        const float high = prior + 5.0f + (sourcePercentile (0.95f) - (prior + 5.0f)) * w;
         auto cost = [&] (int o)
         {
             const float shift = 12.0f * (float) o;
@@ -125,9 +127,9 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
             if (cost (o) < cost (k))
                 k = o;
 
-        // The first phrases can be unrepresentative of the whole song, so the choice stays open (checked at
-        // every phrase start) but only changes when another octave is clearly closer: no back and forth.
-        if (sameTarget && cost (registerOctaves) <= cost (k) + 3.0f)
+        // Singers don't change octave in the middle of a song: once phrases were sung in one, another octave
+        // takes over only when it is far better (the input turned out far from a typical singer).
+        if (sameTarget && cost (registerOctaves) <= cost (k) + 6.0f)
             k = registerOctaves;
     }
     else if (heard)
@@ -137,7 +139,7 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
     }
     registerOctaves = k;
 
-    if (sourceWeight > 1.5f && (source != 0 || s.traits.gender == VoiceGender::Neutral))
+    if ((sourceWeight > 1.5f || ai) && (source != 0 || s.traits.gender == VoiceGender::Neutral))
     {
         registerLocked = true;
         lockedCentre = centre;

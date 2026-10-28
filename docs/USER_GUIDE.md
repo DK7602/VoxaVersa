@@ -25,7 +25,9 @@ Settings): plug in a mic, pick a voice, sing.
    - **Pitch Preserve** *on* keeps your melody exactly. *Off* moves your performance into the
      selected voice's natural register (e.g. a male vocal is lifted an octave into a female voice's range).
      With an AI voice the octave is the one that keeps the song inside its singer's range, including the
-     song's high notes (above the singer's top a voice turns thin and "chipmunk"), from the first phrase on.
+     song's high notes (above the singer's top a voice turns thin and "chipmunk"), from the first phrase on and
+     for the whole song (it starts from a typical singer of your gender and changes only if you turn out to sing
+     far from that).
      *Deep Bass* sings an octave down when the song allows it; *Smoky Alto* and *Female Trap* sit low.
    - **Formant Shift** applies the voice's vocal-tract character relative to your own voice (VoxaVersa
      detects whether your input is a male or female voice. Override with *Source Voice* in settings).
