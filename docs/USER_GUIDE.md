@@ -45,6 +45,12 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
 - **FX**: low cut, de-esser, compressor, presence, air, saturation.
 - **Space**: tempo-synced ping-pong delay (ducked under the vocal) and reverb.
 - **Voice Blend**: right-click a second voice → *Set as Blend Voice* to morph between two voices.
+- **AI Singer**: right-click a built-in voice → *AI Singer* to choose which trained singer sings it (*Automatic*
+  is the one the voice assignment picked). Your choice is kept in `Voices/singer_choices.json`, so importing a new
+  assignment never undoes it. *Hard Tune Robot* and *Choir Ensemble* are sung by a singer of your own voice's
+  gender (the pop singers and the gospel singers), following *Source Voice* or the detected gender.
+- **Singer cards**: a trained singer that sings no built-in voice is a voice of its own, with a style title and
+  portrait (e.g. *Lyric Tenor*, *Velvet Mezzo*: the classically trained VocalSet singers).
 - **Presets**: factory and user presets, A/B comparison, undo/redo. A factory preset keeps your session's
   mode, input/output level, key and scale, MIDI Pitch Control and Text to Sing tempo. Presets built on a male
   or female voice turn **Pitch Preserve** off so any singer lands in that voice's register; *Chipmunk*,

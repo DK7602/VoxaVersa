@@ -681,6 +681,27 @@ void VoiceLibraryPanel::showCardMenu (int index)
         m.addItem (5, "Show Voice Pack Folder");
     }
 
+    // Who sings a built-in voice: the assignment's singer, or one chosen by ear (kept across imports).
+    constexpr int singerBase = 100;
+    const auto& singers = lib.getAiSingers();
+    const auto chosen = lib.getSingerChoice (v.id);
+    if (v.isFactory && ! singers.empty())
+    {
+        juce::PopupMenu sm;
+        sm.addItem (singerBase - 1, chosen.isEmpty() && v.aiPackName.isNotEmpty() ? "Automatic (" + v.aiPackName + ")" : "Automatic",
+                    chosen.isNotEmpty(), chosen.isEmpty());
+        sm.addSeparator();
+        for (int i = 0; i < (int) singers.size(); ++i)
+        {
+            const auto& s = singers[(size_t) i];
+            const bool genderFits = v.getGender() == VoiceGender::Neutral || s.getGender() == v.getGender();
+            if (genderFits)
+                sm.addItem (singerBase + i, s.name, true, s.id == chosen);
+        }
+        m.addSeparator();
+        m.addSubMenu ("AI Singer", sm);
+    }
+
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, v, index, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
         if (safeThis == nullptr)
@@ -706,7 +727,21 @@ void VoiceLibraryPanel::showCardMenu (int index)
                 ctx.processor.setBlendVoice ({});
                 break;
             case 5: v.packDirectory.startAsProcess(); break;
-            default: break;
+            default:
+            {
+                auto& library = ctx.processor.getVoiceLibrary();
+                const auto& list = library.getAiSingers();
+                if (r == singerBase - 1 || juce::isPositiveAndBelow (r - singerBase, (int) list.size()))
+                {
+                    const auto singer = r == singerBase - 1 ? VoiceProfile() : list[(size_t) (r - singerBase)];
+                    library.setSingerChoice (v.id, singer.id);
+                    ctx.processor.voiceSingersChanged();
+                    const auto* now = library.findById (v.id);
+                    ctx.toast (v.name + " is now sung by " + (now != nullptr && now->aiPackName.isNotEmpty() ? now->aiPackName
+                                                                                                             : juce::String ("its own voice")));
+                }
+                break;
+            }
         }
     });
 }

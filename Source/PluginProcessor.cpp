@@ -210,7 +210,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
 
     // Neural model
     std::shared_ptr<neural::NeuralVoiceModel> currentModel;
-    juce::String currentModelVoiceId, neuralMessage;
+    juce::String currentModelKey, neuralMessage;   // the loaded model's file
     std::atomic<bool> neuralAttached { false };
     int modelGeneration = 0;
 
@@ -254,6 +254,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
 
     // Host state
     bool wasPlaying = false;
+    int lastSourceGender = 0;   // the input's gender as last reported to the message thread (1 male, 2 female)
 
     // Offline jobs
     juce::ThreadPool pool { 1 };
@@ -790,6 +791,13 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     sourceGenderEstimate.store (d.chain.getMapper().getSourceGenderEstimate());
     autoLevelGainDb.store (d.autoLevel.getGainDb());
 
+    // Neutral voices (Hard Tune Robot, Choir Ensemble) are sung by a singer of the input's gender.
+    if (const int g = getEffectiveSourceGender(); g != 0 && g != d.lastSourceGender)
+    {
+        d.lastSourceGender = g;
+        triggerAsyncUpdate();
+    }
+
     // The plugin does not output MIDI.
     midi.clear();
 }
@@ -943,7 +951,7 @@ void VoxaVersaProcessor::setNeuralCpuOnly (bool cpuOnly)
 
 void VoxaVersaProcessor::reloadNeuralModel()
 {
-    impl->currentModelVoiceId.clear();
+    impl->currentModelKey.clear();
     updateNeuralModel();
 }
 
@@ -959,7 +967,7 @@ void VoxaVersaProcessor::updateNeuralModel()
         if (impl->currentModel != nullptr || impl->neuralAttached.load())
         {
             impl->currentModel.reset();
-            impl->currentModelVoiceId.clear();
+            impl->currentModelKey.clear();
             impl->neuralStream.setModel (nullptr);
             impl->neuralAttached.store (false);
         }
@@ -969,7 +977,8 @@ void VoxaVersaProcessor::updateNeuralModel()
         return;
     }
 
-    if (impl->currentModelVoiceId == voice.id && impl->currentModel != nullptr)
+    // the model, not the voice: a voice's singer can change (chosen by ear, or a neutral voice following the input)
+    if (impl->currentModelKey == voice.neuralModelFile.getFullPathName() && impl->currentModel != nullptr)
         return;
 
     if (! neural::OnnxRuntime::getInstance().ensureLoaded())
@@ -991,7 +1000,7 @@ void VoxaVersaProcessor::updateNeuralModel()
         juce::String error;
         auto model = neural::NeuralVoiceModel::load (profile, error, &self->impl->cancelJobs);
 
-        juce::MessageManager::callAsync ([self, alive, model, error, generation, id = profile.id]
+        juce::MessageManager::callAsync ([self, alive, model, error, generation, key = profile.neuralModelFile.getFullPathName()]
         {
             if (! *alive || generation != self->impl->modelGeneration)
                 return;
@@ -1004,7 +1013,7 @@ void VoxaVersaProcessor::updateNeuralModel()
             }
 
             self->impl->currentModel = model;
-            self->impl->currentModelVoiceId = id;
+            self->impl->currentModelKey = key;
             self->impl->neuralMessage = model->getDescription();
             self->impl->neuralStream.setModel (model);
             self->impl->neuralAttached.store (true);
@@ -1051,8 +1060,15 @@ void VoxaVersaProcessor::valueTreeRedirected (juce::ValueTree&)
     triggerAsyncUpdate();
 }
 
+int VoxaVersaProcessor::getEffectiveSourceGender() const noexcept
+{
+    const int setting = ParamCache::idx (impl->params.sourceVoice);   // 0 auto, 1 male, 2 female
+    return setting != 0 ? setting : sourceGenderEstimate.load();
+}
+
 void VoxaVersaProcessor::handleAsyncUpdate()
 {
+    voiceLibrary.setSourceGender (getEffectiveSourceGender() == 2 ? VoiceGender::Female : VoiceGender::Male);
     updateVoiceTraits();
     updateNeuralModel();
 
@@ -1566,7 +1582,7 @@ void VoxaVersaProcessor::generateSinging()
     bool loadModel = false;
     if (ParamCache::on (p.aiEngine) && request.voice.hasNeuralModel())
     {
-        if (impl->currentModel != nullptr && impl->currentModelVoiceId == request.voice.id)
+        if (impl->currentModel != nullptr && impl->currentModelKey == request.voice.neuralModelFile.getFullPathName())
             model = impl->currentModel;
         else
             loadModel = neural::OnnxRuntime::getInstance().ensureLoaded();

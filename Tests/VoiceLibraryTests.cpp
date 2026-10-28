@@ -54,7 +54,8 @@ public:
             // A built-in voice nobody claims borrows an installed singer of its gender; there is no male one.
             expect (rock->hasNeuralModel() && (rock->aiPackName == "Singer A" || rock->aiPackName == "Singer B"), rock->aiPackName);
             expect (! library.findById ("male-rock")->hasNeuralModel());
-            expect (! library.findById ("neutral-robot")->hasNeuralModel());
+            // Hard Tune Robot borrows the pop singers (here only a female one, so any input gets her).
+            expect (library.findById ("neutral-robot")->hasNeuralModel() && library.findById ("neutral-robot")->aiPackName == "Singer A");
 
             // "listed": false hides the pack itself; a listed pack is also its own voice.
             expectEquals ((int) library.getVoices().size(), (int) factoryCount + 1);
@@ -223,6 +224,46 @@ public:
             bogus.replaceWithText ("[1, 2]");
             expect (! library.importVoices (bogus, user).succeeded());
             library.rescanUserVoices (root.getChildFile ("none"));
+        }
+
+        beginTest ("Robot and choir follow the input's gender; a singer chosen by ear sticks; spare singers get a card");
+        {
+            auto dir = root.getChildFile ("gendered");
+            auto pack = [&dir] (const juce::String& folder, const juce::String& json)
+            {
+                auto d = dir.getChildFile (folder);
+                d.createDirectory();
+                d.getChildFile ("model.onnx").replaceWithText ("not a real model");
+                d.getChildFile ("voice.json").replaceWithText (json);
+            };
+            pack ("f", R"({ "id": "pop-f", "name": "Pop F", "gender": "female", "listed": false, "factoryVoices": ["female-pop"],
+                            "model": { "file": "model.onnx", "encoder": "contentvec-768", "sampleRate": 40000 } })");
+            pack ("m", R"({ "id": "pop-m", "name": "Pop M", "gender": "male", "listed": false, "factoryVoices": ["male-pop", "male-theatre"],
+                            "model": { "file": "model.onnx", "encoder": "contentvec-768", "sampleRate": 40000 } })");
+            pack ("m2", R"({ "id": "rock-m", "name": "Rock M", "gender": "male", "listed": false, "factoryVoices": ["male-rock"],
+                             "model": { "file": "model.onnx", "encoder": "contentvec-768", "sampleRate": 40000 } })");
+            pack ("v", R"({ "id": "vocalset-male3", "name": "VocalSet Male 3", "gender": "male",
+                            "model": { "file": "model.onnx", "encoder": "contentvec-768", "sampleRate": 40000 } })");
+
+            VoiceLibrary library;
+            library.rescanUserVoices (dir);
+            expectEquals (library.findById ("neutral-robot")->aiPackName, juce::String ("Pop M"));   // a male input by default
+            expect (library.setSourceGender (VoiceGender::Female));
+            expectEquals (library.findById ("neutral-robot")->aiPackName, juce::String ("Pop F"));
+            expect (! library.setSourceGender (VoiceGender::Female), "no change, nothing to reload");
+            expect (library.findById ("neutral-choir")->hasNeuralModel(), "the choir borrows the gospel singers");
+
+            expectEquals ((int) library.getAiSingers().size(), 4);
+            library.setSingerChoice ("male-rock", "user-pop-m");
+            expectEquals (library.findById ("male-rock")->aiPackName, juce::String ("Pop M"));
+            expectEquals (library.getSingerChoice ("male-rock"), juce::String ("user-pop-m"));
+            library.rescanUserVoices (dir);   // e.g. after an import: the choice stays
+            expectEquals (library.findById ("male-rock")->aiPackName, juce::String ("Pop M"));
+            library.setSingerChoice ("male-rock", {});
+            expectEquals (library.findById ("male-rock")->aiPackName, juce::String ("Rock M"));
+
+            const auto* card = library.findById ("user-vocalset-male3");
+            expect (card != nullptr && card->name == "Lyric Tenor" && card->genre == "Classical", card != nullptr ? card->name : "missing");
         }
 
         beginTest ("Built-in voices have unique ids and sensible ranges");

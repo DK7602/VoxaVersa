@@ -1,4 +1,5 @@
 #include "VoiceLibrary.h"
+#include "SingerCards.h"
 
 namespace voxa
 {
@@ -376,8 +377,24 @@ static void applyAssignment (VoiceProfile& p, const juce::var& entry)
     }
 }
 
+/** A built-in voice sung by `singer` (a pack with a voice model). */
+static void giveModel (VoiceProfile& v, const VoiceProfile& singer)
+{
+    v.packDirectory = singer.packDirectory;
+    v.neuralModelFile = singer.neuralModelFile;
+    v.neuralEncoder = singer.neuralEncoder;
+    v.neuralSampleRate = singer.neuralSampleRate;
+    v.aiPackName = singer.name;
+    v.aiSingerId = singer.id;
+    v.traits.aiCentreMidi = singer.traits.aiCentreMidi;
+    v.traits.aiLowMidi = singer.traits.aiLowMidi;
+    v.traits.aiHighMidi = singer.traits.aiHighMidi;
+}
+
 void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 {
+    scannedDirectory = dir;
+    aiSingers.clear();
     voices.resize (numFactoryVoices);
     for (auto& v : voices)
     {
@@ -386,6 +403,9 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         v.neuralEncoder.clear();
         v.neuralSampleRate = 0;
         v.aiPackName.clear();
+        v.aiSingerId.clear();
+        v.aiSingerMale.clear();
+        v.aiSingerFemale.clear();
         v.traits.aiCentreMidi = 0.0f;
         v.traits.aiLowMidi = v.traits.aiHighMidi = 0;
     }
@@ -396,17 +416,6 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         packs.sort();   // deterministic: when two packs claim a built-in voice, the first by name wins
         const auto assignment = readAssignment (dir.getChildFile (assignmentFileName));
 
-        auto giveModel = [] (VoiceProfile& v, const VoiceProfile& singer)
-        {
-            v.packDirectory = singer.packDirectory;
-            v.neuralModelFile = singer.neuralModelFile;
-            v.neuralEncoder = singer.neuralEncoder;
-            v.neuralSampleRate = singer.neuralSampleRate;
-            v.aiPackName = singer.name;
-            v.traits.aiCentreMidi = singer.traits.aiCentreMidi;
-            v.traits.aiLowMidi = singer.traits.aiLowMidi;
-            v.traits.aiHighMidi = singer.traits.aiHighMidi;
-        };
         std::vector<VoiceProfile> singers;   // packs made to power built-in voices
 
         for (const auto& packDir : packs)
@@ -421,6 +430,16 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 
             if (const auto* entry = findAssignment (assignment, p))
                 applyAssignment (p, *entry);
+            if (const auto* card = findSingerCard (p.id))
+            {
+                // a credit line (e.g. VocalSet's CC BY) stays in the description after the style's own
+                p.tagline = juce::String (card->tagline) + (p.tagline.isNotEmpty() ? " - " + p.tagline : juce::String());
+                p.name = card->title;
+                p.genre = card->genre;
+                p.styles = juce::StringArray::fromTokens (card->styles, ",", {});
+            }
+            if (p.hasNeuralModel())
+                aiSingers.push_back (p);
 
             if (p.hasNeuralModel() && ! p.factoryVoices.isEmpty())
             {
@@ -462,6 +481,39 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
             if (best != nullptr)
                 giveModel (v, *best);
         }
+
+        // Neutral voices without a singer of their own get one per input gender: Hard Tune Robot the pop
+        // singers', Choir Ensemble the gospel singers'.
+        for (size_t i = 0; i < numFactoryVoices; ++i)
+        {
+            auto& v = voices[i];
+            if (v.traits.gender != VoiceGender::Neutral || v.hasNeuralModel())
+                continue;
+            const juce::String partner = v.id == "neutral-choir" ? "gospel" : (v.id == "neutral-robot" ? "pop" : "");
+            if (partner.isEmpty())
+                continue;
+            if (const auto* m = findById ("male-" + partner))
+                v.aiSingerMale = m->aiSingerId;
+            if (const auto* f = findById ("female-" + partner))
+                v.aiSingerFemale = f->aiSingerId;
+        }
+
+        // Singers chosen by ear (right-click a voice > AI Singer) come last, over the assignment.
+        if (auto* chosen = juce::JSON::parse (dir.getChildFile (choicesFileName)).getDynamicObject())
+        {
+            for (const auto& entry : chosen->getProperties())
+            {
+                const int index = indexOf (entry.name.toString());
+                const auto* singer = findSinger (entry.value.toString());
+                if (index < 0 || index >= (int) numFactoryVoices || singer == nullptr)
+                    continue;
+                auto& v = voices[(size_t) index];
+                giveModel (v, *singer);
+                if (v.traits.gender == VoiceGender::Neutral && (v.aiSingerMale.isNotEmpty() || v.aiSingerFemale.isNotEmpty()))
+                    v.aiSingerMale = v.aiSingerFemale = singer->id;
+            }
+        }
+        applyNeutralSingers();
     }
 
     sendChangeMessage();
@@ -530,6 +582,64 @@ static bool installPack (const juce::File& source, const juce::File& voicesDir, 
 
     name = p.name;
     return true;
+}
+
+const VoiceProfile* VoiceLibrary::findSinger (const juce::String& packId) const
+{
+    for (const auto& s : aiSingers)
+        if (s.id == packId)
+            return &s;
+    return nullptr;
+}
+
+juce::String VoiceLibrary::getSingerChoice (const juce::String& voiceId) const
+{
+    const auto json = juce::JSON::parse (scannedDirectory.getChildFile (choicesFileName));
+    return json.getProperty (voiceId, {}).toString();
+}
+
+void VoiceLibrary::setSingerChoice (const juce::String& voiceId, const juce::String& singerPackId)
+{
+    const auto dir = scannedDirectory;
+    const auto file = dir.getChildFile (choicesFileName);
+    auto json = juce::JSON::parse (file);
+    if (json.getDynamicObject() == nullptr)
+        json = juce::var (new juce::DynamicObject());
+    if (singerPackId.isEmpty())
+        json.getDynamicObject()->removeProperty (voiceId);
+    else
+        json.getDynamicObject()->setProperty (voiceId, singerPackId);
+    if (dir.createDirectory())
+        file.replaceWithText (juce::JSON::toString (json));
+    rescanUserVoices (dir);
+}
+
+bool VoiceLibrary::setSourceGender (VoiceGender g)
+{
+    if (g == VoiceGender::Neutral || g == sourceGender)
+        return false;
+    sourceGender = g;
+    return applyNeutralSingers();
+}
+
+bool VoiceLibrary::applyNeutralSingers()
+{
+    bool changed = false;
+    for (size_t i = 0; i < numFactoryVoices; ++i)
+    {
+        auto& v = voices[i];
+        if (v.aiSingerMale.isEmpty() && v.aiSingerFemale.isEmpty())
+            continue;
+        const bool female = sourceGender == VoiceGender::Female;
+        const auto& id = (female ? v.aiSingerFemale : v.aiSingerMale).isNotEmpty() ? (female ? v.aiSingerFemale : v.aiSingerMale)
+                                                                                 : (female ? v.aiSingerMale : v.aiSingerFemale);
+        if (const auto* singer = findSinger (id); singer != nullptr && singer->neuralModelFile != v.neuralModelFile)
+        {
+            giveModel (v, *singer);
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& error)

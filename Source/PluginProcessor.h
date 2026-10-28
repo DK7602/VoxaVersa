@@ -101,6 +101,10 @@ public:
     void setNeuralCpuOnly (bool cpuOnly);
     /** Reloads the current voice's AI model (e.g. after the AI pitch tracker was installed). Message thread. */
     void reloadNeuralModel();
+    /** The library changed who sings a voice (a singer chosen by ear): the traits and the model follow. */
+    void voiceSingersChanged()   { updateVoiceTraits(); reloadNeuralModel(); }
+    /** 1 male, 2 female (the Source Voice setting, else the estimate), 0 not known yet. */
+    int getEffectiveSourceGender() const noexcept;
 
     //==============================================================================
     // Input source: live input or a loaded voice sample (drag & drop onto the input panel)

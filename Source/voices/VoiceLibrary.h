@@ -74,6 +74,21 @@ public:
         applies, so a pack never has to be rewritten when more singers finish and the assignment changes. */
     static constexpr const char* assignmentFileName = "voice_assignment.json";
 
+    /** The installed AI singers (packs with a voice model), as presented by the assignment. */
+    const std::vector<VoiceProfile>& getAiSingers() const noexcept { return aiSingers; }
+    const VoiceProfile* findSinger (const juce::String& packId) const;
+
+    /** The singer chosen by ear for a built-in voice (a pack id), or empty when the assignment's singer sings it. */
+    juce::String getSingerChoice (const juce::String& voiceId) const;
+    /** Chooses who sings a built-in voice (empty: the assignment's singer again). Kept in
+        <Voices>/singer_choices.json, so imported assignments never undo it; rescans the library. */
+    void setSingerChoice (const juce::String& voiceId, const juce::String& singerPackId);
+    static constexpr const char* choicesFileName = "singer_choices.json";
+
+    /** Neutral voices with a singer per gender (Hard Tune Robot, Choir Ensemble) take the one matching the input.
+        Returns true when a voice's singer changed. */
+    bool setSourceGender (VoiceGender);
+
     /** Imports one voice pack, or a folder / .zip holding any number of .vxpack files and optionally the
         content encoder and a voice assignment: e.g. Google Drive's download of the training "voices" folder
         (+ contentvec-768.onnx). Only those are taken from a big archive; everything else in it is ignored. */
@@ -89,6 +104,10 @@ private:
 
     std::vector<VoiceProfile> voices;
     size_t numFactoryVoices = 0;
+    std::vector<VoiceProfile> aiSingers;
+    juce::File scannedDirectory { getUserVoicesDirectory() };
+    VoiceGender sourceGender = VoiceGender::Male;
+    bool applyNeutralSingers();
     juce::StringArray favourites;
 };
 

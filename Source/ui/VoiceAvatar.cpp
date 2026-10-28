@@ -1,5 +1,6 @@
 #include "VoiceAvatar.h"
 #include "VoxaAssets.h"
+#include "voices/SingerCards.h"
 
 #include <map>
 
@@ -794,11 +795,12 @@ namespace
 //==============================================================================
 juce::Image getFactoryPortrait (const VoiceProfile& voice)
 {
-    if (! voice.isFactory || voice.id.isEmpty())
+    if (voice.id.isEmpty())
         return {};
 
-    // BinaryData mangles resource names ("female-pop.jpg" -> "femalepop_jpg"), so look the photo up by its original filename
-    const auto wanted = voice.id + ".jpg";
+    // BinaryData mangles resource names ("female-pop.jpg" -> "femalepop_jpg"), so look the photo up by its original
+    // filename; a trained singer with a card of its own has "singer-<pack id>.jpg"
+    const auto wanted = voice.isFactory ? voice.id + ".jpg" : singerPortraitFileName (voice.id);
 
     for (int i = 0; i < VoxaAssets::namedResourceListSize; ++i)
     {

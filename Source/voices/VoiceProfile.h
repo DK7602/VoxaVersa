@@ -109,6 +109,10 @@ struct VoiceProfile
     // each listed built-in voice then uses that pack's model (packDirectory/neural* are copied over).
     juce::StringArray factoryVoices;    // on a pack: the built-in voices it gives an AI model
     juce::String aiPackName;            // on a built-in voice: the pack its AI model comes from
+    juce::String aiSingerId;            // ... and that pack's id
+    // Neutral built-in voices (Hard Tune Robot, Choir Ensemble): a singer per input gender (pack ids);
+    // VoiceLibrary::setSourceGender gives the voice the matching one.
+    juce::String aiSingerMale, aiSingerFemale;
     bool listed = true;                 // false: the pack only powers built-in voices and is not shown itself
 
     VoiceGender getGender() const noexcept { return traits.gender; }

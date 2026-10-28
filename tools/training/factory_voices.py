@@ -26,8 +26,8 @@ first, with two rules:
   * brightness and power are compared within a recording corpus (a singer's "corpus" label: microphones and
     processing differ more between vendors than voices do), and a singer's "style" ("classical" for trained
     classical singers, else contemporary) costs STYLE_PENALTY when it differs from the genre's (opera,
-    theatre and angelic are classical); pop, soulful and rhythmic voices get contemporary singers only once a
-    gender has at least MIN_CONTEMPORARY of them; a singer's "genres" (optional) favour those genres' voices.
+    theatre and angelic are classical); all other voices but deep bass and whisper get contemporary singers only
+    once a gender has at least MIN_CONTEMPORARY of them; a singer's "genres" (optional) favour those genres' voices.
 Specialty voices: male-deep-bass, female-angelic, female-smoky-alto and neutral-whisper (any gender) are
 matched the same way. Writes <out>.json (for the training queue) and <out>.md (the table).
 Requirements: numpy, scipy, soundfile.
@@ -60,10 +60,13 @@ FEATURES = list(WEIGHTS)
 # Genres whose built-in voice is a trained, "legit" classical/theatre sound; all others are contemporary.
 CLASSICAL = {"opera", "theatre", "angelic"}
 STYLE_PENALTY = 1.5
-# Pop, R&B/soul and rap-style voices sung by a classically trained singer sound young and "legit" (a user heard
-# Female Pop as a child): they get contemporary singers only, once a gender has enough of them to share these
-# voices (fewer would put one voice on most of the gender's avatars; the style penalty decides until then).
-CONTEMPORARY_FIRST = {"bright pop", "soulful", "rhythmic"}
+# Contemporary voices sung by a classically trained singer sound young and "legit" (a user heard Female Pop as a
+# child, then Male Rock as country): every voice that is not classical (opera, theatre, angelic) or a specialty
+# that suits a trained voice (deep bass, whisper) gets contemporary singers only, once a gender has enough of them
+# to share these voices (fewer would put one voice on most of the gender's avatars; the style penalty decides
+# until then). The classical singers also train less true to themselves (similarity 0.16 - 0.49 against 0.60 -
+# 0.77 for the studio and band singers).
+CLASSICAL_FRIENDLY = CLASSICAL | {"deep-bass", "whisper"}
 MIN_CONTEMPORARY = 3
 # A singer's "genres" (heard by the owner, e.g. a military-band singer who sings country) make the built-in
 # voices of those genres prefer them.
@@ -206,10 +209,12 @@ def corpus_normalise(singers):
     return out
 
 
-def assign(singers, voices):
-    """{voice id: singer name} plus the cost table."""
+def assign(singers, voices, fixed=None):
+    """{voice id: singer name} plus the cost table. `fixed` ({voice id: singer name}) keeps those voices with
+    their singers (e.g. ones the owner already likes); they count toward each singer's load."""
     singers = corpus_normalise(singers)
-    result, costs = {}, {}
+    fixed = {v: n for v, n in (fixed or {}).items() if any(s["name"] == n for s in singers)}
+    result, costs = dict(fixed), {v: 0.0 for v in fixed}
     for gender in ("male", "female"):
         sg = [s for s in singers if s["gender"] == gender]
         vs = [v for v in voices if v["gender"] == gender]
@@ -218,8 +223,12 @@ def assign(singers, voices):
         zs, zv = zscores(sg, FEATURES), zscores(vs, FEATURES)
         load = {s["name"]: 0 for s in sg}
         groups_used = {}
+        for v in vs:
+            if v["id"] in fixed:
+                load[fixed[v["id"]]] += 1
+                groups_used[(v["group"], fixed[v["id"]])] = groups_used.get((v["group"], fixed[v["id"]]), 0) + 1
         contemporary_first = sum(1 for s in sg if s.get("style", "contemporary") != "classical") >= MIN_CONTEMPORARY
-        todo = list(range(len(vs)))
+        todo = [i for i in range(len(vs)) if vs[i]["id"] not in fixed]
         while todo:
             best = None
             for i in todo:
@@ -235,7 +244,7 @@ def assign(singers, voices):
                     style = s.get("style")
                     if style and (style == "classical") != (idp in CLASSICAL):
                         d += STYLE_PENALTY
-                    if contemporary_first and style == "classical" and group in CONTEMPORARY_FIRST:
+                    if contemporary_first and style == "classical" and idp not in CLASSICAL_FRIENDLY:
                         d += 100.0
                     if idp in (s.get("genres") or ()):
                         d -= GENRE_BONUS
