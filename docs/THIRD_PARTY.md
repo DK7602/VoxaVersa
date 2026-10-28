@@ -39,7 +39,7 @@ per word, and gzip the result.
 
 ## Voice Library portraits (`Resources/voices/*.jpg`)
 
-The 46 factory-voice headshots and the 14 singer-card portraits (`singer-*.jpg`, for trained singers shown as
+The 46 factory-voice headshots and the 15 singer-card portraits (`singer-*.jpg`, for trained singers shown as
 voices of their own) are **AI-generated images of people who do not exist**. No photos
 of real people were used as input, and no prompt names a real person, artist or celebrity; every
 image was reviewed and anything resembling a recognisable person was rejected.
