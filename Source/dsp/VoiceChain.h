@@ -125,6 +125,7 @@ private:
 
     ConsonantKeeper consonants;
     RKeeper rKeeper;
+    VowelKeeper vowels;
     BreathKeeper breaths;
     CharacterProcessor character;
     DeEsser deEsser;
@@ -134,6 +135,7 @@ private:
     FdnReverb reverb;
 
     std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, voicedNowBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
+    std::vector<float> dryHzBuf, leadHzBuf;   // both voices' pitches on the bus timeline (vowel keeper)
 
     // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
     // is active, the DSP lead that fills its gaps, the neural coverage that crossfades the two and the dry input

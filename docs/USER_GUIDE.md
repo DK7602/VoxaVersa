@@ -24,6 +24,9 @@ Settings): plug in a mic, pick a voice, sing.
 4. **Advanced** toggles:
    - **Pitch Preserve** *on* keeps your melody exactly. *Off* moves your performance into the
      selected voice's natural register (e.g. a male vocal is lifted an octave into a female voice's range).
+     With an AI voice the octave is the one that keeps the song inside its singer's range, including the
+     song's high notes (above the singer's top a voice turns thin and "chipmunk"), from the first phrase on.
+     *Deep Bass* sings an octave down when the song allows it; *Smoky Alto* and *Female Trap* sit low.
    - **Formant Shift** applies the voice's vocal-tract character relative to your own voice (VoxaVersa
      detects whether your input is a male or female voice. Override with *Source Voice* in settings).
    - **Expression** adds the genre's scoops, vibrato and micro-pitch life.
@@ -49,6 +52,8 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   is the one the voice assignment picked). Your choice is kept in `Voices/singer_choices.json`, so importing a new
   assignment never undoes it. *Hard Tune Robot* and *Choir Ensemble* are sung by a singer of your own voice's
   gender (the pop singers and the gospel singers), following *Source Voice* or the detected gender.
+  *Hard Tune Robot* snaps every note at once by itself (the hard-tune sound, with Tune off too; the AI singer
+  gets the exact note).
 - **Singer cards**: a trained singer that sings no built-in voice is a voice of its own, with a style title and
   portrait (e.g. *Lyric Tenor*, *Velvet Mezzo*: the classically trained VocalSet singers).
 - **Presets**: factory and user presets, A/B comparison, undo/redo. A factory preset keeps your session's

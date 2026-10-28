@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "PitchDetector.h"
 #include "Psola.h"
 #include "../core/MusicTheory.h"
@@ -62,6 +64,7 @@ public:
 
 private:
     void updateRegister (const Settings&) noexcept;
+    float sourcePercentile (float fraction) const noexcept;
 
     double sr = 48000.0;
     float hopSec = 0.004f;
@@ -81,6 +84,8 @@ private:
     // source analysis
     float sourceMedian = 0.0f;
     float sourceWeight = 0.0f;
+    std::array<float, 128> sourceNotes {};   // seconds sung on each note (recent minutes)
+    float sourceNotesTotal = 0.0f;
     int genderEstimate = 0;
     int registerOctaves = 0;
     bool registerLocked = false;

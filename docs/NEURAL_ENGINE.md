@@ -169,6 +169,22 @@ coefficients updated every 0.33 ms) and the resonance goes at most 35 % below th
 every 5 ms they jumped by hundreds of Hz at up to 15 dB, which spiked and rang on deep r's (a user heard a
 strange tone on "friend"; the deepest cuts went from -34 to -19 dB, the r measures the same).
 
+### Vowels (`VowelKeeper`)
+
+The AI singers render some vowels "cleaner" than they were sung. A user heard "quits" as "quates" on every
+voice: measured with Praat on that word (a male vocal, the voices at the same pitch), the sung vowel sat at
+F1 388 / F2 1732 Hz; the AI singers at F1 293-461 / F2 1813-2118 Hz (Male Pop: 344 / 1970), a tense "ee"
+where the singer sang a lax "ih". The keepers, the EQ and the content encoder were ruled out (the encoder is
+the trainer's own network); the models themselves do it. `VowelKeeper` (after the consonant and R keepers)
+compares the spectral envelopes of the dry voice and the AI voice every 5 ms over the last 21 ms: in 25 bands
+from 250 Hz to 4 kHz (1/6 octave), the strongest harmonic within half a fundamental of the band (so it reads
+the envelope at any pitch; the input's bands scaled by the vocal-tract ratio, 1.17 for a man's voice into a
+woman's). Each envelope is measured from its own ~3 s average, so the singer keeps their timbre and only the
+input's frame-to-frame vowel changes carry over; the difference (without its mean: the level stays the
+singer's) is limited to ±10 dB, glides over ~20 ms and drives a bank of 1/6-octave peaking filters whose
+overlap is solved once (least squares) so the summed response hits the wanted dB at the band centres. No added
+latency. On "quits" (Male Pop): F1 / F2 from 344 / 1970 to 423 / 1826 Hz. Not used for Text to Sing's guide.
+
 ### Breaths (`BreathKeeper`)
 
 RVC renders a breath the way its training singer breathed. Measured on a male vocal (effects off), breaths

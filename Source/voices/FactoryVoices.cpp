@@ -226,6 +226,17 @@ namespace
             t.breathiness = juce::jlimit (0.0f, 1.0f, t.breathiness * c->breathScale);
             t.rasp = juce::jlimit (0.0f, 1.0f, t.rasp + c->raspAdd);
         }
+        // Moody female trap sits low in its singer's range (its high notes turned "chipmunk").
+        if (! male && juce::String (g.idPart) == "trap")
+            t.registerBiasSemis = -2.0f;
+        // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
+        if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
+        {
+            t.bodyHz = 280.0f;
+            t.bodyDb = 2.0f;
+            t.warmthDb += 0.5f;
+            t.airDb -= 1.0f;
+        }
         t.tiltDb *= eqWidening;
         t.warmthDb *= eqWidening;
         t.presenceDb *= eqWidening;
@@ -282,7 +293,7 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("male-deep-bass", "Deep Bass", "Cavernous low bass voice", VoiceGender::Male,
                                      { "Deep", "Resonant", "Warm" }, 0xff1f3a93, 0xff6f8fd9, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 33; t.rangeHighMidi = 57; t.formantSemis = -2.6f;
+        t.rangeLowMidi = 33; t.rangeHighMidi = 57; t.formantSemis = -2.6f; t.registerBiasSemis = -7.0f;
         t.ringHz = 2400.0f; t.ringDb = 2.0f; t.bodyHz = 120.0f; t.bodyDb = 4.0f;
         t.tiltDb = -2.0f; t.warmthDb = 3.0f; t.presenceDb = 0.5f; t.airDb = -1.0f;
         t.vibratoDepthCents = 15.0f; t.vibratoRateHz = 5.0f; t.jitterCents = 4.0f;
@@ -302,7 +313,7 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("female-smoky-alto", "Smoky Alto", "Low, husky contralto", VoiceGender::Female,
                                      { "Smoky", "Warm", "Intimate" }, 0xff7a4e8f, 0xffd2b4e0, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 50; t.rangeHighMidi = 70; t.formantSemis = 0.1f;
+        t.rangeLowMidi = 50; t.rangeHighMidi = 70; t.formantSemis = 0.1f; t.registerBiasSemis = -4.0f;
         t.ringHz = 2200.0f; t.ringDb = 2.0f; t.bodyHz = 250.0f; t.bodyDb = 3.5f;
         t.tiltDb = -1.0f; t.warmthDb = 2.0f; t.breathiness = 0.4f; t.rasp = 0.15f;
         t.vibratoDepthCents = 25.0f; t.vibratoRateHz = 5.2f; t.scoopCents = 40.0f;
@@ -321,7 +332,7 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("neutral-robot", "Hard Tune Robot", "Zero-latency robotic pitch snap", VoiceGender::Neutral,
                                      { "Auto-Tuned", "Robotic", "Creative" }, 0xff00e5c7, 0xffb2fff3, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 45; t.rangeHighMidi = 72; t.formantSemis = 0.0f;
+        t.rangeLowMidi = 45; t.rangeHighMidi = 72; t.formantSemis = 0.0f; t.hardTune = true;
         t.tiltDb = 3.0f; t.presenceDb = 3.0f; t.vibratoDepthCents = 0.0f; t.jitterCents = 0.0f;
         t.ringHz = 2000.0f; t.ringDb = 5.0f; t.bodyHz = 400.0f; t.bodyDb = -2.0f;
         t.vibeCompressor = 0.6f; t.vibeSaturation = 0.2f; t.vibeDelayMix = 0.15f; t.vibeReverbMix = 0.15f;

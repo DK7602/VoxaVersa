@@ -538,6 +538,47 @@ public:
             expectEquals (run (63.0f, true), 12, "AI singer centred on D#4: an octave up");
             expectEquals (run (52.0f, true), 0, "AI singer centred on E3: stays put");
         }
+
+        beginTest ("AI register: the first phrase is in the song's octave; the song's high notes count");
+        {
+            // A man singing around G#3 with phrases up to C#4.
+            auto run = [this] (int low, int high, float median, float bias, VoiceGender gender, int phrases)
+            {
+                dsp::PitchMapper mapper;
+                mapper.prepare (48000.0, 256);
+                dsp::PitchMapper::Settings s;
+                s.pitchPreserve = false;
+                s.sourceGender = 1;
+                s.traits.gender = gender;
+                s.traits.aiCentreMidi = median;
+                s.traits.aiLowMidi = low;
+                s.traits.aiHighMidi = high;
+                s.traits.registerBiasSemis = bias;
+                s.aiRegister = true;
+                return juce::roundToInt (sing (mapper, s, { 56.0f, 61.0f, 52.0f, 57.0f }, phrases).globalOffset);
+            };
+            expectEquals (run (50, 75, 62.8f, 0.0f, VoiceGender::Female, 1), 12, "first phrase already up an octave");
+            expectEquals (run (50, 75, 62.8f, 0.0f, VoiceGender::Female, 8), 12, "a singer reaching D#5 takes the octave up");
+            expectEquals (run (55, 69, 61.8f, 0.0f, VoiceGender::Female, 8), 0, "a singer topping out at A4 stays put");
+            expectEquals (run (41, 66, 52.6f, -7.0f, VoiceGender::Male, 1), -12, "a bass voice sings an octave down from the start");
+            expectEquals (run (41, 66, 52.6f, -7.0f, VoiceGender::Male, 8), -12, "and stays there");
+        }
+
+        beginTest ("A hard-tune voice snaps every note at once, also with tuning switched off");
+        {
+            dsp::PitchMapper mapper;
+            mapper.prepare (48000.0, 256);
+            dsp::PitchMapper::Settings s;
+            s.traits.hardTune = true;
+            s.expression = false;
+            s.humanize = 1.0f;
+            s.retuneMs = 300.0f;
+            s.keyRoot = 0;
+            s.scale = ScaleType::Chromatic;
+            const auto f = sing (mapper, s, { 60.4f }, 1);
+            expectWithinAbsoluteError (f.srcMidi + f.mainShift, 60.0f, 0.01f);
+            expect (std::isnan (dsp::VoiceChain::neuralPitchShift (f, s)), "the AI singer gets the exact note");
+        }
     }
 };
 
@@ -813,7 +854,77 @@ public:
 };
 
 static PitchDetectorTests pitchDetectorTests;
+class VowelKeeperTests : public juce::UnitTest
+{
+public:
+    VowelKeeperTests() : juce::UnitTest ("Vowel keeper", "DSP") {}
+
+    // 200 Hz harmonics shaped by two formants (F1, F2) with 100 Hz wide resonances.
+    static float vowel (double t, float f1, float f2)
+    {
+        float x = 0.0f;
+        for (int h = 1; h * 200.0 < 5000.0; ++h)
+        {
+            const float f = 200.0f * (float) h;
+            const float a = 1.0f / (1.0f + juce::square ((f - f1) / 100.0f)) + 0.6f / (1.0f + juce::square ((f - f2) / 100.0f)) + 0.02f;
+            x += 0.05f * a * (float) std::sin (juce::MathConstants<double>::twoPi * f * t);
+        }
+        return x;
+    }
+
+    void runTest() override
+    {
+        beginTest ("The AI voice's vowel follows the input's: a too-high F2 comes down");
+        {
+            constexpr double sr = 48000.0;
+            const int settle = (int) (sr * 3.0), change = (int) (sr * 0.6), total = settle + change;
+            std::vector<float> input ((size_t) total), lead ((size_t) total), hz ((size_t) total, 200.0f);
+            for (int i = 0; i < total; ++i)
+            {
+                const double t = i / sr;
+                const bool later = i >= settle;   // both sing "ah", then the input "ih" and the AI an "ee"-ish ih
+                input[(size_t) i] = later ? vowel (t, 400.0f, 1800.0f) : vowel (t, 600.0f, 1400.0f);
+                lead[(size_t) i] = later ? vowel (t, 400.0f, 2200.0f) : vowel (t, 600.0f, 1400.0f);
+            }
+            auto out = lead;
+            dsp::VowelKeeper keeper;
+            keeper.prepare (sr);
+            for (int pos = 0; pos < total; pos += 480)
+            {
+                const int n = juce::jmin (480, total - pos);
+                keeper.process (out.data() + pos, input.data() + pos, hz.data() + pos, hz.data() + pos, n, 1.0f);
+            }
+
+            // the harmonics at 1800 and 2200 Hz over the last 0.3 s
+            auto level = [&] (const std::vector<float>& x, double f)
+            {
+                double re = 0.0, im = 0.0;
+                for (int i = total - (int) (0.3 * sr); i < total; ++i)
+                {
+                    re += x[(size_t) i] * std::cos (juce::MathConstants<double>::twoPi * f * i / sr);
+                    im += x[(size_t) i] * std::sin (juce::MathConstants<double>::twoPi * f * i / sr);
+                }
+                return 10.0 * std::log10 (re * re + im * im + 1e-20);
+            };
+            const double before = level (lead, 1800.0) - level (lead, 2200.0);
+            const double after = level (out, 1800.0) - level (out, 2200.0);
+            logMessage ("1800 Hz over 2200 Hz: " + juce::String (before, 1) + " dB -> " + juce::String (after, 1) + " dB");
+            expectGreaterThan (after - before, 8.0, "F2 moves toward the input's");
+
+            // where both voices sang the same vowel nothing changes
+            double diff = 0.0, ref = 0.0;
+            for (int i = (int) (2.0 * sr); i < settle; ++i)
+            {
+                diff += juce::square ((double) out[(size_t) i] - lead[(size_t) i]);
+                ref += juce::square ((double) lead[(size_t) i]);
+            }
+            expectLessThan (10.0 * std::log10 (diff / ref), -30.0, "the same vowel passes untouched");
+        }
+    }
+};
+
 static BreathKeeperTests breathKeeperTests;
+static VowelKeeperTests vowelKeeperTests;
 static RKeeperTests rKeeperTests;
 static ConsonantKeeperTests consonantKeeperTests;
 static GenderEstimatorTests genderEstimatorTests;

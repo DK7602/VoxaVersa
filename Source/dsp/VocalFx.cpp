@@ -956,4 +956,222 @@ void AutoLevel::process (float* data, int n) noexcept
     }
 }
 
+//==============================================================================
+void VowelKeeper::prepare (double sampleRate)
+{
+    sr = sampleRate;
+    fft = std::make_unique<juce::dsp::FFT> (fftOrder);
+    dryRing.assign ((size_t) fftSize, 0.0f);
+    leadRing.assign ((size_t) fftSize, 0.0f);
+    dryHzRing.assign ((size_t) fftSize, 0.0f);
+    leadHzRing.assign ((size_t) fftSize, 0.0f);
+    fftData.assign ((size_t) fftSize * 2, 0.0f);
+    window.resize ((size_t) fftSize);
+    for (int i = 0; i < fftSize; ++i)
+        window[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) fftSize);
+
+    constexpr double q = 4.3;   // a 1/3-octave bell every 1/6 octave
+    for (int j = 0; j < numBands; ++j)
+    {
+        centreHz[j] = 250.0f * std::pow (2.0f, (float) j / 6.0f);
+        bandWeight[j] = juce::jlimit (0.0f, 1.0f, juce::jmin ((centreHz[j] - 150.0f) / 150.0f, (5000.0f - centreHz[j]) / 1000.0f));
+        const double w = juce::MathConstants<double>::twoPi * centreHz[j] / sr;
+        cosW[j] = (float) std::cos (w);
+        alpha[j] = (float) (std::sin (w) / (2.0 * q));
+    }
+
+    // Neighbouring bells overlap: solve once for the band gains whose summed response hits the wanted dB at the
+    // centres (regularised least squares, B = response in dB per dB of each band at each centre).
+    constexpr int nb = numBands;
+    std::vector<double> b ((size_t) nb * nb), m ((size_t) nb * nb * 2, 0.0);
+    for (int j = 0; j < nb; ++j)
+    {
+        const auto c = BiquadCoeffs::peak (sr, centreHz[j], q, 6.0);
+        for (int i = 0; i < nb; ++i)
+        {
+            const auto z = std::polar (1.0, -juce::MathConstants<double>::twoPi * centreHz[i] / sr);
+            const auto h = ((double) c.b0 + (double) c.b1 * z + (double) c.b2 * z * z) / (1.0 + (double) c.a1 * z + (double) c.a2 * z * z);
+            b[(size_t) (i * nb + j)] = 20.0 * std::log10 (std::abs (h)) / 6.0;
+        }
+    }
+    // m = [B'B + 0.05 I | I], Gauss-Jordan, then inverse = (B'B + 0.05 I)^-1 B'
+    for (int r = 0; r < nb; ++r)
+    {
+        for (int c = 0; c < nb; ++c)
+        {
+            double sum = r == c ? 0.05 : 0.0;
+            for (int i = 0; i < nb; ++i)
+                sum += b[(size_t) (i * nb + r)] * b[(size_t) (i * nb + c)];
+            m[(size_t) (r * 2 * nb + c)] = sum;
+        }
+        m[(size_t) (r * 2 * nb + nb + r)] = 1.0;
+    }
+    for (int col = 0; col < nb; ++col)
+    {
+        int pivot = col;
+        for (int r = col + 1; r < nb; ++r)
+            if (std::abs (m[(size_t) (r * 2 * nb + col)]) > std::abs (m[(size_t) (pivot * 2 * nb + col)]))
+                pivot = r;
+        for (int c = 0; c < 2 * nb; ++c)
+            std::swap (m[(size_t) (col * 2 * nb + c)], m[(size_t) (pivot * 2 * nb + c)]);
+        const double d = m[(size_t) (col * 2 * nb + col)];
+        for (int c = 0; c < 2 * nb; ++c)
+            m[(size_t) (col * 2 * nb + c)] /= d;
+        for (int r = 0; r < nb; ++r)
+        {
+            if (r == col)
+                continue;
+            const double f = m[(size_t) (r * 2 * nb + col)];
+            for (int c = 0; c < 2 * nb; ++c)
+                m[(size_t) (r * 2 * nb + c)] -= f * m[(size_t) (col * 2 * nb + c)];
+        }
+    }
+    inverse.assign ((size_t) nb * nb, 0.0f);
+    for (int r = 0; r < nb; ++r)
+        for (int c = 0; c < nb; ++c)
+        {
+            double sum = 0.0;
+            for (int k = 0; k < nb; ++k)
+                sum += m[(size_t) (r * 2 * nb + nb + k)] * b[(size_t) (c * nb + k)];
+            inverse[(size_t) (r * nb + c)] = (float) sum;
+        }
+
+    baseCoeff = (float) (1.0 - std::exp (-hop / sr / 3.0));      // the voices' own timbre: ~3 s averages
+    smoothCoeff = (float) (1.0 - std::exp (-hop / sr / 0.02));   // the correction glides over ~20 ms
+    reset();
+}
+
+void VowelKeeper::reset()
+{
+    std::fill (dryRing.begin(), dryRing.end(), 0.0f);
+    std::fill (leadRing.begin(), leadRing.end(), 0.0f);
+    std::fill (dryHzRing.begin(), dryHzRing.end(), 0.0f);
+    std::fill (leadHzRing.begin(), leadHzRing.end(), 0.0f);
+    write = sinceHop = filled = 0;
+    haveBase = false;
+    for (int j = 0; j < numBands; ++j)
+    {
+        dryBase[j] = leadBase[j] = wanted[j] = smoothed[j] = gainDb[j] = previousDb[j] = 0.0f;
+        bank[j].reset();
+    }
+    updateFilters (1.0f);
+}
+
+void VowelKeeper::envelope (const std::vector<float>& ring, float f0, float scale, float* out) noexcept
+{
+    for (int i = 0; i < fftSize; ++i)
+        fftData[(size_t) i] = ring[(size_t) ((write + i) % fftSize)] * window[(size_t) i];
+    std::fill (fftData.begin() + fftSize, fftData.end(), 0.0f);
+    fft->performFrequencyOnlyForwardTransform (fftData.data());
+
+    // The strongest harmonic within half a fundamental of each band: the envelope wherever the harmonics fall.
+    const float binHz = (float) (sr / fftSize);
+    for (int j = 0; j < numBands; ++j)
+    {
+        const float c = centreHz[j] * scale;
+        const int lo = juce::jlimit (1, fftSize / 2, (int) ((c - 0.5f * f0) / binHz));
+        const int hi = juce::jlimit (lo, fftSize / 2, (int) std::ceil ((c + 0.5f * f0) / binHz));
+        float peak = 0.0f;
+        for (int k = lo; k <= hi; ++k)
+            peak = juce::jmax (peak, fftData[(size_t) k]);
+        out[j] = 20.0f * std::log10 (peak + 1.0e-9f);
+    }
+}
+
+void VowelKeeper::analyse (float inputHz, float leadHz, float tractRatio) noexcept
+{
+    bool sung = filled >= fftSize && inputHz > 0.0f && leadHz > 0.0f;
+    if (sung)
+    {
+        float energy = 0.0f;
+        for (auto x : dryRing)
+            energy += x * x;
+        sung = energy > (float) fftSize * 1.0e-6f;   // above -60 dBFS
+    }
+
+    if (sung)
+    {
+        envelope (dryRing, inputHz, 1.0f / juce::jlimit (0.7f, 1.4f, tractRatio), dryEnv);
+        envelope (leadRing, leadHz, 1.0f, leadEnv);
+        if (! haveBase)
+        {
+            std::copy (dryEnv, dryEnv + numBands, dryBase);
+            std::copy (leadEnv, leadEnv + numBands, leadBase);
+            haveBase = true;
+        }
+        float mean = 0.0f, weights = 0.0f;
+        for (int j = 0; j < numBands; ++j)
+        {
+            dryBase[j] += (dryEnv[j] - dryBase[j]) * baseCoeff;
+            leadBase[j] += (leadEnv[j] - leadBase[j]) * baseCoeff;
+            wanted[j] = (dryEnv[j] - dryBase[j]) - (leadEnv[j] - leadBase[j]);
+            mean += wanted[j] * bandWeight[j];
+            weights += bandWeight[j];
+        }
+        for (int j = 0; j < numBands; ++j)   // the shape only: the level is the AI singer's own
+            wanted[j] = juce::jlimit (-maxDb, maxDb, strength * (wanted[j] - mean / weights)) * bandWeight[j];
+    }
+    else
+    {
+        std::fill (wanted, wanted + numBands, 0.0f);
+    }
+
+    for (int j = 0; j < numBands; ++j)
+    {
+        smoothed[j] += (wanted[j] - smoothed[j]) * smoothCoeff;
+        previousDb[j] = gainDb[j];
+    }
+    for (int r = 0; r < numBands; ++r)
+    {
+        float g = 0.0f;
+        for (int c = 0; c < numBands; ++c)
+            g += inverse[(size_t) (r * numBands + c)] * smoothed[c];
+        gainDb[r] = juce::jlimit (-1.5f * maxDb, 1.5f * maxDb, g);
+    }
+}
+
+void VowelKeeper::updateFilters (float fraction) noexcept
+{
+    for (int j = 0; j < numBands; ++j)
+    {
+        const float db = previousDb[j] + (gainDb[j] - previousDb[j]) * fraction;
+        const float A = std::pow (10.0f, db / 40.0f);
+        const float a0 = 1.0f + alpha[j] / A;
+        auto& c = bank[j].c;
+        c.b0 = (1.0f + alpha[j] * A) / a0;
+        c.b1 = -2.0f * cosW[j] / a0;
+        c.b2 = (1.0f - alpha[j] * A) / a0;
+        c.a1 = c.b1;
+        c.a2 = (1.0f - alpha[j] / A) / a0;
+    }
+}
+
+void VowelKeeper::process (float* lead, const float* input, const float* inputHz, const float* leadHz, int n,
+                           float tractRatio) noexcept
+{
+    for (int i = 0; i < n; ++i)
+    {
+        dryRing[(size_t) write] = input[i];
+        leadRing[(size_t) write] = lead[i];
+        dryHzRing[(size_t) write] = inputHz[i];
+        leadHzRing[(size_t) write] = leadHz[i];
+        write = (write + 1) % fftSize;
+        filled = juce::jmin (filled + 1, fftSize);
+
+        if (++sinceHop >= hop)
+        {
+            sinceHop = 0;
+            const auto centre = (size_t) ((write + fftSize / 2) % fftSize);   // the pitch in the window's middle
+            analyse (dryHzRing[centre], leadHzRing[centre], tractRatio);
+        }
+        if ((sinceHop & 31) == 0)
+            updateFilters ((float) sinceHop / (float) hop);
+
+        float y = lead[i];
+        for (auto& f : bank)
+            y = f.process (y);
+        lead[i] = y;
+    }
+}
+
 } // namespace voxa::dsp

@@ -59,6 +59,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
 
     consonants.prepare (sr);
     rKeeper.prepare (sr);
+    vowels.prepare (sr);
     breaths.prepare (sr);
     character.prepare (sr);
     deEsser.prepare (sr);
@@ -67,7 +68,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR, &dryHzBuf, &leadHzBuf })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -129,6 +130,7 @@ void VoiceChain::reset()
     for (auto& a : doublerActive) a = false;
     consonants.reset();
     rKeeper.reset();
+    vowels.reset();
     breaths.reset();
     character.reset();
     deEsser.reset();
@@ -160,7 +162,8 @@ void VoiceChain::setF0Capture (std::vector<float>* destination, double frameRate
 
 float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Settings& s) noexcept
 {
-    if (s.midiNote >= 0 || s.sourceIsSynth)
+    // MIDI notes, the Text to Sing guide and a hard-tune voice: exactly the target pitch, nothing of the input's.
+    if (s.midiNote >= 0 || s.sourceIsSynth || s.traits.hardTune)
         return std::numeric_limits<float>::quiet_NaN();
 
     // Correction moves a note by less than a semitone (and the profile's vibrato and scoops by less still);
@@ -446,6 +449,22 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             consonants.process (voiceBuf.data(), dryBuf.data(), n);
             fillInputVoicing (aheadStart - alignAhead.delay, n, voicedBuf);
             rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
+            if (! s.pitch.sourceIsSynth)   // a Text to Sing guide's vowels are synthetic
+            {
+                const juce::int64 from = tStart - alignDry.delay;   // dryBuf's input time
+                for (int i = 0; i < n; ++i)
+                {
+                    PitchFrame pf;
+                    const bool voiced = timeline.lookup ((double) (from + i), pf) && pf.voiced;
+                    dryHzBuf[(size_t) i] = voiced ? music::midiToHz (pf.srcMidi) : 0.0f;
+                    leadHzBuf[(size_t) i] = voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f;
+                }
+                const int source = s.pitch.sourceGender != 0 ? s.pitch.sourceGender : (int) genderEstimator.getGender();
+                const auto target = s.pitch.traits.gender;
+                const float tract = source == 1 && target == VoiceGender::Female ? 1.17f
+                                  : (source == 2 && target == VoiceGender::Male ? 1.0f / 1.17f : 1.0f);
+                vowels.process (voiceBuf.data(), dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract);
+            }
             for (int i = 0; i < n; ++i)
             {
                 busL[(size_t) i] += voiceBuf[(size_t) i];

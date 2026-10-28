@@ -2,6 +2,8 @@
 
 #include "Biquad.h"
 #include <vector>
+#include <memory>
+#include <juce_dsp/juce_dsp.h>
 
 namespace voxa::dsp
 {
@@ -183,6 +185,51 @@ private:
     float dryBase = 0.0f, aiBase = 0.0f, peakDb = -100.0f, weight = 0.0f;
     int voicedSamples = 0, frameSamples = 0, hop = 240, sinceFrame = 0;
     Stats stats;
+};
+
+/** Keeps the AI singer's vowels on the input's: an AI model renders some vowels "cleaner" than they were sung
+    (the lax i of "quits" turned toward the ee of "quates", F2 ~240 Hz high and F1 low on every singer). Each 5 ms
+    it compares the spectral envelopes of the dry voice and the AI voice (the strongest harmonic within half a
+    fundamental of each band, the input's bands scaled by the vocal-tract ratio) and moves the AI voice's envelope
+    toward the input's frame-to-frame changes, each measured from its own long-term average: the singer keeps
+    their own timbre and follows the input's vowels. A bank of 1/6-octave peaking filters (250 Hz - 4.5 kHz) does
+    it with no latency; the analysis looks at the last 21 ms of both voices, which is why the input must be on
+    the AI voice's timeline. */
+class VowelKeeper
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice on the same timeline. `inputHz`
+        and `leadHz` are both voices' pitches per sample (0 where unvoiced). `tractRatio`: the AI singer's
+        formants over the input's (1 for the same gender, ~1.17 for a man's input into a woman's voice). */
+    void process (float* lead, const float* input, const float* inputHz, const float* leadHz, int numSamples,
+                  float tractRatio) noexcept;
+
+    static constexpr int numBands = 25;
+    static constexpr float strength = 1.0f, maxDb = 10.0f;
+
+    /** The current correction per band in dB (for tests and tools). */
+    const float* getBandGainsDb() const noexcept { return gainDb; }
+    float getBandHz (int band) const noexcept { return centreHz[band]; }
+
+private:
+    void analyse (float inputHz, float leadHz, float tractRatio) noexcept;
+    void envelope (const std::vector<float>& ring, float f0, float scale, float* out) noexcept;
+    void updateFilters (float fraction) noexcept;
+
+    static constexpr int fftOrder = 10, fftSize = 1 << fftOrder, hop = 256;
+    double sr = 48000.0;
+    std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<float> dryRing, leadRing, dryHzRing, leadHzRing, window, fftData;
+    int write = 0, sinceHop = 0, filled = 0;
+    float centreHz[numBands] {}, bandWeight[numBands] {}, cosW[numBands] {}, alpha[numBands] {};
+    std::vector<float> inverse;   // numBands x numBands: band gains that give the wanted response at the centres
+    float dryBase[numBands] {}, leadBase[numBands] {}, dryEnv[numBands] {}, leadEnv[numBands] {};
+    float wanted[numBands] {}, smoothed[numBands] {}, gainDb[numBands] {}, previousDb[numBands] {};
+    bool haveBase = false;
+    float baseCoeff = 0.0f, smoothCoeff = 0.0f;
+    Biquad bank[numBands];
 };
 
 /** One-knob vocal compressor (feed-forward, soft knee, stereo linked, auto make-up). */

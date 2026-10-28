@@ -24,6 +24,8 @@ void PitchMapper::reset()
     jitterState = 0.0f;
     sourceMedian = 0.0f;
     sourceWeight = 0.0f;
+    sourceNotes.fill (0.0f);
+    sourceNotesTotal = 0.0f;
     genderEstimate = 0;
     registerOctaves = 0;
     registerLocked = false;
@@ -67,6 +69,18 @@ float PitchMapper::harmonyShift (const PitchFrame& f, HarmonyInterval interval, 
     return juce::jlimit (-36.0f, 36.0f, target - f.srcMidi);
 }
 
+float PitchMapper::sourcePercentile (float fraction) const noexcept
+{
+    if (sourceNotesTotal <= 0.0f)
+        return sourceMedian;
+    const float wanted = fraction * sourceNotesTotal;
+    float sum = 0.0f;
+    for (size_t n = 0; n < sourceNotes.size(); ++n)
+        if ((sum += sourceNotes[n]) >= wanted)
+            return (float) n;
+    return sourceMedian;
+}
+
 void PitchMapper::updateRegister (const Settings& s) noexcept
 {
     const bool ai = s.aiRegister && s.traits.aiCentreMidi > 0.0f;
@@ -85,12 +99,28 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
     if (source == 2 && s.traits.gender == VoiceGender::Male)   k = -1;
 
     // Keep the performance inside the target voice's register (with a little headroom).
-    if (sourceWeight > 0.5f && ai)
+    const bool heard = sourceWeight > 0.5f;
+    if (ai && (heard || source != 0))
     {
         // An AI model sounds right only near the notes its singer sang (far above them it turns to noise):
-        // the octave closest to the middle of that range, the gender's usual direction on a near tie.
+        // the octave closest to the middle of that range, the gender's usual direction on a near tie. The song's
+        // high notes count too: above the singer's top a voice turns thin and "chipmunk", which is worse than
+        // dipping below the bottom.
         const int preferred = k;
-        auto cost = [&] (int o) { return std::abs (sourceMedian + 12.0f * (float) o - s.traits.aiCentreMidi) + (o == preferred ? 0.0f : 2.0f); };
+        // Until the input has been heard for a moment: a typical singer of its gender.
+        const float aim = s.traits.aiCentreMidi + s.traits.registerBiasSemis;
+        const float median = heard ? sourceMedian : (source == 2 ? 64.0f : 55.0f);
+        const float low = heard ? sourcePercentile (0.05f) : median - 4.0f;
+        const float high = heard ? sourcePercentile (0.95f) : median + 4.0f;
+        auto cost = [&] (int o)
+        {
+            const float shift = 12.0f * (float) o;
+            float c = std::abs (median + shift - aim) + (o == preferred ? 0.0f : 2.0f);
+            if (s.traits.aiHighMidi > 0)
+                c += 1.25f * juce::jmax (0.0f, high + shift - (float) s.traits.aiHighMidi)
+                   + 0.75f * juce::jmax (0.0f, (float) s.traits.aiLowMidi - (low + shift));
+            return c;
+        };
         for (int o = -2; o <= 2; ++o)
             if (cost (o) < cost (k))
                 k = o;
@@ -100,7 +130,7 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
         if (sameTarget && cost (registerOctaves) <= cost (k) + 3.0f)
             k = registerOctaves;
     }
-    else if (sourceWeight > 0.5f)
+    else if (heard)
     {
         while (k > -2 && sourceMedian + 12.0f * (float) k > (float) s.traits.rangeHighMidi + 3.0f) --k;
         while (k < 2 && sourceMedian + 12.0f * (float) k < (float) s.traits.rangeLowMidi - 3.0f) ++k;
@@ -152,6 +182,13 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         sourceMedian = sourceWeight <= 0.0f ? src : sourceMedian + (src - sourceMedian) * a;
         sourceWeight += hopSec * w;
 
+        sourceNotes[(size_t) juce::jlimit (0, 127, (int) std::lround (src))] += w * hopSec;
+        if ((sourceNotesTotal += w * hopSec) > 240.0f)   // a few minutes: an old song fades out
+        {
+            for (auto& n : sourceNotes) n *= 0.5f;
+            sourceNotesTotal *= 0.5f;
+        }
+
         keyDetector.addPitch (src, w * hopSec);
         if (++keyUpdateCounter >= 64)
         {
@@ -167,7 +204,9 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     const bool onset = ! wasVoiced;
     if (onset)
     {
-        if (! s.pitchPreserve && ! s.sourceIsSynth && sourceWeight > 0.3f)
+        // From the very first phrase: until the input has been heard for a moment the source gender's usual
+        // octave (a male input into a female voice goes up), so the first phrase is never an octave off the rest.
+        if (! s.pitchPreserve && ! s.sourceIsSynth)
             updateRegister (s);
         noteTime = 0.0f;
         vibDepthRamp = 0.0f;
@@ -180,7 +219,8 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     const int keyRoot = getEffectiveKeyRoot (s);
     const ScaleType scale = getEffectiveScale (s);
     const bool midiControlled = s.midiNote >= 0;
-    const bool correcting = (s.tuneOn || midiControlled) && ! s.sourceIsSynth;
+    const bool hardTune = s.traits.hardTune && ! midiControlled;   // a hard-tune voice: instant, exact notes
+    const bool correcting = (s.tuneOn || midiControlled || hardTune) && ! s.sourceIsSynth;
 
     float corrected = src;
 
@@ -208,7 +248,7 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         }
         else
         {
-            const float retune = midiControlled ? juce::jmax (10.0f, s.retuneMs) : s.retuneMs;
+            const float retune = hardTune ? 0.0f : (midiControlled ? juce::jmax (10.0f, s.retuneMs) : s.retuneMs);
             if (retune < 1.0f)
             {
                 corrState = (float) target;
@@ -230,7 +270,7 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         currentNote = target;
 
         const float deviation = src - (float) target;
-        corrected = corrState + deviation * s.humanize * 0.7f;
+        corrected = corrState + deviation * (hardTune ? 0.0f : s.humanize) * 0.7f;
     }
     else
     {

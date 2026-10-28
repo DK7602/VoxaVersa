@@ -24,6 +24,11 @@ struct VoiceTraits
     float aiCentreMidi = 0.0f;
     // The notes that singer sang (0 = unknown): Text to Sing writes the melody here while the AI model sings.
     int aiLowMidi = 0, aiHighMidi = 0;
+    // Where in that range the voice likes to sit, in semitones from its centre (a contralto voice lower, a bass
+    // an octave down when the song allows it).
+    float registerBiasSemis = 0.0f;
+    // The voice itself snaps every note to the scale at once, with no vibrato or drift (Hard Tune Robot).
+    bool hardTune = false;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift
