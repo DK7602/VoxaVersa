@@ -252,6 +252,15 @@ public:
             expectEquals (library.findById ("neutral-robot")->aiPackName, juce::String ("Pop F"));
             expect (! library.setSourceGender (VoiceGender::Female), "no change, nothing to reload");
             expect (library.findById ("neutral-choir")->hasNeuralModel(), "the choir borrows the gospel singers");
+            {
+                const auto* choir = library.findById ("neutral-choir");
+                const auto* partner = library.findSinger (choir->choirPartnerSinger);
+                expect (partner != nullptr && partner->traits.gender == VoiceGender::Male, "a woman's choir lead, a man's section with it");
+                expect (library.setSourceGender (VoiceGender::Male));
+                partner = library.findSinger (library.findById ("neutral-choir")->choirPartnerSinger);
+                expect (partner != nullptr && partner->traits.gender == VoiceGender::Female, "and the other way round");
+                library.setSourceGender (VoiceGender::Female);
+            }
 
             expectEquals ((int) library.getAiSingers().size(), 4);
             library.setSingerChoice ("male-rock", "user-pop-m");

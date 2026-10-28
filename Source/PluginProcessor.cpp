@@ -183,6 +183,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         pool.removeAllJobs (true, -1);
         stopRecordingInternal();
         chain.setNeuralStream (nullptr);
+        chain.setChoirPartnerStream (nullptr);
     }
 
     VoxaVersaProcessor& owner;
@@ -211,6 +212,12 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     // Neural model
     std::shared_ptr<neural::NeuralVoiceModel> currentModel;
     juce::String currentModelKey, neuralMessage;   // the loaded model's file
+    // A choir voice's second singer (the other section): its own stream, model and octave from the lead.
+    neural::NeuralVoiceStream partnerStream;
+    std::shared_ptr<neural::NeuralVoiceModel> partnerModel;
+    juce::String partnerModelKey;
+    int partnerGeneration = 0;
+    std::atomic<int> partnerOctave { 0 };
     std::atomic<bool> neuralAttached { false };
     int modelGeneration = 0;
 
@@ -293,8 +300,10 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     {
         maxBlock = juce::jmax (64, blockSize);
         neuralStream.prepare (sampleRate, maxBlock);
+        partnerStream.prepare (sampleRate, maxBlock);
         chain.prepare (sampleRate, maxBlock, currentQuality());
         chain.setNeuralStream (reservesAiLatency() ? &neuralStream : nullptr);
+        chain.setChoirPartnerStream (&partnerStream);
         liveSinger.prepare (sampleRate, maxBlock);
         autoLevel.prepare (sampleRate);
         watermark.prepare (sampleRate);
@@ -462,6 +471,7 @@ void VoxaVersaProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 void VoxaVersaProcessor::releaseResources()
 {
     impl->neuralStream.reset();
+    impl->partnerStream.reset();
 }
 
 bool VoxaVersaProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -493,6 +503,7 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     // Exports / render in place: the AI voice waits for every chunk instead of skipping late ones.
     d.neuralStream.setNonRealtime (isNonRealtime());
+    d.partnerStream.setNonRealtime (isNonRealtime());
 
     // Quality changes need a re-prepare (different latency): defer to the message thread.
     if (d.currentQuality() != d.chain.getQuality())
@@ -690,6 +701,7 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             settings.useNeural = false;
         if (usingSample && settings.pitch.sourceGender == 0)
             settings.pitch.sourceGender = sampleClip->gender;
+        settings.choirPartnerOctave = d.partnerOctave.load (std::memory_order_relaxed);
         d.chain.process (mono, wetL, wetR, n, settings);
 
         // 4. Dry alignment, mix, output gain, power
@@ -952,11 +964,68 @@ void VoxaVersaProcessor::setNeuralCpuOnly (bool cpuOnly)
 void VoxaVersaProcessor::reloadNeuralModel()
 {
     impl->currentModelKey.clear();
+    impl->partnerModelKey.clear();
     updateNeuralModel();
+}
+
+bool VoxaVersaProcessor::isChoirPartnerLoading() const noexcept
+{
+    return impl->partnerOctave.load() != 0 && impl->partnerModel == nullptr;
+}
+
+void VoxaVersaProcessor::updateChoirPartner()
+{
+    const auto& voice = getSelectedVoice();
+    const auto* partner = ParamCache::on (impl->params.aiEngine) && voice.traits.choir && voice.hasNeuralModel()
+                              ? voiceLibrary.findSinger (voice.choirPartnerSinger) : nullptr;
+    if (partner == nullptr || ! partner->hasNeuralModel())
+    {
+        ++impl->partnerGeneration;   // invalidates any load in flight
+        impl->partnerOctave.store (0);
+        if (impl->partnerModel != nullptr)
+        {
+            impl->partnerModel.reset();
+            impl->partnerModelKey.clear();
+            impl->partnerStream.setModel (nullptr);
+        }
+        return;
+    }
+
+    // the other section an octave away: a woman's voice over a man's lead, a man's under a woman's
+    impl->partnerOctave.store (partner->traits.gender == VoiceGender::Female ? 1 : -1);
+    const auto key = partner->neuralModelFile.getFullPathName();
+    if (impl->partnerModelKey == key && impl->partnerModel != nullptr)
+        return;
+    if (! neural::OnnxRuntime::getInstance().ensureLoaded())
+        return;
+
+    const int generation = ++impl->partnerGeneration;
+    const VoiceProfile profile = *partner;
+    auto alive = impl->alive;
+    auto* self = this;
+    impl->pool.addJob ([self, alive, profile, generation, key]
+    {
+        juce::String error;
+        auto model = neural::NeuralVoiceModel::load (profile, error, &self->impl->cancelJobs);
+        juce::MessageManager::callAsync ([self, alive, model, generation, key]
+        {
+            if (! *alive || generation != self->impl->partnerGeneration)
+                return;
+            if (model == nullptr)
+            {
+                self->impl->partnerOctave.store (0);   // the choir sings without its other section
+                return;
+            }
+            self->impl->partnerModel = model;
+            self->impl->partnerModelKey = key;
+            self->impl->partnerStream.setModel (model);
+        });
+    });
 }
 
 void VoxaVersaProcessor::updateNeuralModel()
 {
+    updateChoirPartner();
     const auto& voice = getSelectedVoice();
     const bool aiOn = ParamCache::on (impl->params.aiEngine);
     const bool voiceHasModel = voice.hasNeuralModel();

@@ -407,6 +407,9 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
         v.aiSingerId.clear();
         v.aiSingerMale.clear();
         v.aiSingerFemale.clear();
+        v.sectionSingerMale.clear();
+        v.sectionSingerFemale.clear();
+        v.choirPartnerSinger.clear();
         v.traits.aiCentreMidi = 0.0f;
         v.traits.aiLowMidi = v.traits.aiHighMidi = 0;
     }
@@ -497,6 +500,11 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
                 v.aiSingerMale = m->aiSingerId;
             if (const auto* f = findById ("female-" + partner))
                 v.aiSingerFemale = f->aiSingerId;
+            if (v.traits.choir)
+            {
+                v.sectionSingerMale = v.aiSingerMale;
+                v.sectionSingerFemale = v.aiSingerFemale;
+            }
         }
 
         // Singers chosen by ear (right-click a voice > AI Singer) come last, over the assignment.
@@ -639,6 +647,18 @@ bool VoiceLibrary::applyNeutralSingers()
         {
             giveModel (v, *singer);
             changed = true;
+        }
+
+        // A choir's other section: the singer of the other gender (also when the lead was chosen by ear).
+        if (v.traits.choir)
+        {
+            const auto* lead = findSinger (v.aiSingerId);
+            const bool leadFemale = lead != nullptr && lead->traits.gender == VoiceGender::Female;
+            const auto partner = leadFemale ? v.sectionSingerMale : v.sectionSingerFemale;
+            const auto* other = findSinger (partner);
+            const auto chosen = other != nullptr && lead != nullptr && other->traits.gender != lead->traits.gender ? partner : juce::String();
+            changed = changed || chosen != v.choirPartnerSinger;
+            v.choirPartnerSinger = chosen;
         }
     }
     return changed;

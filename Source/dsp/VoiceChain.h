@@ -51,6 +51,7 @@ struct ChainSettings
 
     bool useNeural = false;      // lead voice comes from the neural stream when it has a model
     bool aiLead = false;         // the lead is an AI voice rendered elsewhere (offline: process's leadOverride)
+    int choirPartnerOctave = 0;  // a choir voice: octaves of its second AI singer from the lead (0 = none)
 };
 
 /** The complete mono-in / stereo-out voice transformation chain. */
@@ -71,6 +72,8 @@ public:
         (when the model has loaded), so it is reserved up front. Returns true when the chain's latency changed
         (the alignment buffers are then cleared; otherwise playback continues untouched). */
     bool setNeuralStream (neural::NeuralVoiceStream* stream);
+    /** A choir voice's second AI singer (same latency as the lead's stream; owned elsewhere like it). */
+    void setChoirPartnerStream (neural::NeuralVoiceStream* stream) noexcept { partner = stream; }
 
     /** Latency of the DSP path alone, in samples. */
     int getDspLatency() const noexcept { return dspLatency; }
@@ -157,7 +160,7 @@ private:
             return buffer[(size_t) r];
         }
     };
-    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignDry, alignAhead;
+    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignDry, alignAhead, alignPartner;
     int rLookAhead = 0;   // samples: the dry voice for the R keeper, RKeeper::lookAheadSeconds early
 
     // Doubler voices of an AI lead: copies of the AI singer itself, slightly late and slowly drifting in pitch
@@ -183,6 +186,20 @@ private:
     };
     ModulatedDelay aiDoubler[2];
     bool aiDoublerActive = false;
+
+    // A choir voice with an AI singer: a second singer of the other gender an octave away (its own stream), and
+    // a section of copies of both voices, each a little late, slowly detuned (about +-10 cents) and coloured
+    // by its own two resonances, as if sung by different people around the lead.
+    struct SectionSinger
+    {
+        ModulatedDelay delay;
+        Biquad tractA, tractB;
+    };
+    static constexpr int sectionSize = 6;
+    SectionSinger section[sectionSize];
+    bool sectionActive = false, partnerActive = false;
+    neural::NeuralVoiceStream* partner = nullptr;
+    std::vector<float> partnerF0, partnerShift, partnerOut, partnerCoverage, partnerBuf;
 
     neural::NeuralVoiceStream* neural = nullptr;
 

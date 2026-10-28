@@ -25,6 +25,18 @@ namespace
     constexpr float harmonyDelayMs[3]  { 7.0f, 12.0f, 17.0f };
     constexpr float harmonyDetune[3]   { 3.0f, -4.0f, 2.0f };
     constexpr float harmonyFormant[3]  { 0.10f, -0.12f, 0.18f };
+
+    // The choir section: who sings (even: the lead's singer, odd: the other section's), how late (ms), how far
+    // the delay drifts (ms: the detune), pan, and each copy's two resonances (Hz, dB).
+    struct SectionVoice { float delayMs, driftMs, rateA, rateB, pan, hzA, dbA, hzB, dbB; };
+    constexpr SectionVoice sectionVoices[] {
+        { 11.0f, 4.0f, 0.13f, 0.47f, -0.85f,  750.0f,  3.0f, 2600.0f, -3.0f },
+        { 16.0f, 5.0f, 0.17f, 0.53f,  0.85f,  900.0f, -3.0f, 3200.0f,  2.5f },
+        { 23.0f, 4.5f, 0.11f, 0.61f, -0.5f,   550.0f,  2.0f, 2200.0f,  2.0f },
+        { 29.0f, 5.5f, 0.19f, 0.43f,  0.5f,   650.0f, -2.0f, 3000.0f, -3.0f },
+        { 37.0f, 4.0f, 0.23f, 0.71f, -0.2f,  1100.0f,  3.0f, 2400.0f, -2.0f },
+        { 44.0f, 6.0f, 0.07f, 0.37f,  0.2f,   800.0f, -2.5f, 2800.0f,  3.0f },
+    };
 }
 
 VoiceChain::VoiceChain() = default;
@@ -81,6 +93,16 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     alignAhead.prepare (maxAlign);
     for (auto& d : aiDoubler)
         d.prepare ((int) std::ceil (sr * 0.04));
+    alignPartner.prepare (maxAlign);
+    for (int k = 0; k < sectionSize; ++k)
+    {
+        const auto& v = sectionVoices[k];
+        section[k].delay.prepare ((int) std::ceil (sr * (v.delayMs + v.driftMs + 2.0f) * 0.001));
+        section[k].tractA.c = BiquadCoeffs::peak (sr, v.hzA, 1.5, v.dbA);
+        section[k].tractB.c = BiquadCoeffs::peak (sr, v.hzB, 1.5, v.dbB);
+    }
+    for (auto* b : { &partnerF0, &partnerShift, &partnerOut, &partnerCoverage, &partnerBuf })
+        b->assign ((size_t) maxBlock, 0.0f);
 
     setNeuralStream (neural);
     reset();
@@ -99,7 +121,7 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     neuralLatency = newNeural;
     totalLatency = newTotal;
     alignL.delay = alignR.delay = alignLead.delay = alignDry.delay = alignAhead.delay = totalLatency - dspLatency;
-    alignNeural.delay = alignCoverage.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
+    alignNeural.delay = alignCoverage.delay = alignPartner.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
     alignL.clear();
     alignR.clear();
     alignNeural.clear();
@@ -107,6 +129,7 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     alignCoverage.clear();
     alignDry.clear();
     alignAhead.clear();
+    alignPartner.clear();
     return true;
 }
 
@@ -148,6 +171,14 @@ void VoiceChain::reset()
     for (auto& d : aiDoubler)
         d.clear();
     aiDoublerActive = false;
+    alignPartner.clear();
+    for (auto& v : section)
+    {
+        v.delay.clear();
+        v.tractA.reset();
+        v.tractB.reset();
+    }
+    sectionActive = partnerActive = false;
     blockStart = 0;
     formantSmoothed = 0.0f;
     detectedHz = targetHz = 0.0f;
@@ -365,8 +396,8 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     const float doublerAmount = s.doublerOn ? s.doublerAmount : traits.vibeDoubler;
     const float doublerWidth = s.doublerOn ? s.doublerWidth : 0.8f;
 
-    // An AI lead is doubled after the model (section 6), with the AI voice itself.
-    const bool aiDoublerOn = aiLead && doublerOn && doublerAmount > 0.001f;
+    // An AI lead is doubled after the model (section 6), with the AI voice itself; a choir's section replaces it.
+    const bool aiDoublerOn = aiLead && doublerOn && doublerAmount > 0.001f && ! traits.choir;
     for (int k = 0; k < 2; ++k)
     {
         const bool active = doublerOn && doublerAmount > 0.001f && ! aiLead;
@@ -431,6 +462,28 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             shiftBuf[(size_t) i] = neuralPitchShift (pf, pitchSettings);
         }
         neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n, neuralCoverage.data(), shiftBuf.data());
+
+        // A choir's second singer sings the same input an octave away (silent until its stream has audio).
+        const bool partnerOn = neuralActive && traits.choir && s.choirPartnerOctave != 0 && partner != nullptr && partner->hasModel();
+        if (partnerOn && ! partnerActive)
+        {
+            partner->reset();
+            alignPartner.clear();
+        }
+        partnerActive = partnerOn;
+        if (partnerOn)
+        {
+            const float semis = 12.0f * (float) s.choirPartnerOctave;
+            const float ratio = semitonesToRatio (semis);
+            for (int i = 0; i < n; ++i)
+            {
+                partnerF0[(size_t) i] = f0Buf[(size_t) i] * ratio;
+                partnerShift[(size_t) i] = shiftBuf[(size_t) i] + semis;   // NaN stays NaN
+            }
+            partner->process (neuralIn.data(), partnerF0.data(), partnerOut.data(), n, partnerCoverage.data(), partnerShift.data());
+            for (int i = 0; i < n; ++i)
+                partnerBuf[(size_t) i] = alignPartner.process (partnerOut[(size_t) i] * partnerCoverage[(size_t) i]);
+        }
 
         // Where the neural lead has nothing (warming up, after a reset, a chunk this computer could not
         // convert in time) the DSP lead fills in, crossfaded by the stream's coverage: never a gap.
@@ -500,6 +553,53 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
                 const float y = aiDoubler[k].process (aiLeadSignal[(size_t) i], (float) (base + drift));
                 busL[(size_t) i] += y * level * gl[k];
                 busR[(size_t) i] += y * level * gr[k];
+            }
+        }
+    }
+
+    // A choir with an AI singer: the other section's singer and six copies of the two around the lead.
+    const bool sectionOn = aiLead && traits.choir;
+    if (sectionOn && ! sectionActive)
+        for (auto& v : section)
+        {
+            v.delay.clear();
+            v.tractA.reset();
+            v.tractB.reset();
+        }
+    sectionActive = sectionOn;
+
+    if (sectionOn)
+    {
+        const float* leadSignal = neuralActive ? voiceBuf.data() : leadBuf.data();
+        const bool withPartner = partnerActive && neuralActive;
+        const float amount = s.doublerOn ? juce::jmax (0.2f, s.doublerAmount) : 1.0f;
+        const float width = s.doublerOn ? s.doublerWidth : 1.0f;
+        float gl[sectionSize], gr[sectionSize];
+        for (int k = 0; k < sectionSize; ++k)
+            panGains (sectionVoices[k].pan * width, gl[k], gr[k]);
+        float pl, pr;
+        panGains (0.4f * width, pl, pr);
+        const float copyLevel = 0.4f * amount, partnerLevel = 0.62f;
+
+        for (int i = 0; i < n; ++i)
+        {
+            const double pos = (double) (tStart + i);
+            const float leadVoice = leadSignal[(size_t) i];
+            const float otherVoice = withPartner ? partnerBuf[(size_t) i] : leadVoice;
+            if (withPartner)
+            {
+                busL[(size_t) i] += otherVoice * partnerLevel * pl;
+                busR[(size_t) i] += otherVoice * partnerLevel * pr;
+            }
+            for (int k = 0; k < sectionSize; ++k)
+            {
+                const auto& v = sectionVoices[k];
+                const double drift = v.driftMs * (0.65 * lfo (pos, sr, v.rateA, k * 1.7) + 0.35 * lfo (pos, sr, v.rateB, k * 0.9));
+                const float d = (float) ((v.delayMs + drift) * 0.001 * sr);
+                float y = section[k].delay.process (k % 2 == 0 ? leadVoice : otherVoice, d);
+                y = section[k].tractB.process (section[k].tractA.process (y));
+                busL[(size_t) i] += y * copyLevel * gl[k];
+                busR[(size_t) i] += y * copyLevel * gr[k];
             }
         }
     }

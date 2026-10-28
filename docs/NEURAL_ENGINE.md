@@ -185,6 +185,18 @@ singer's) is limited to ±10 dB, glides over ~20 ms and drives a bank of 1/6-oct
 overlap is solved once (least squares) so the summed response hits the wanted dB at the band centres. No added
 latency. On "quits" (Male Pop): F1 / F2 from 344 / 1970 to 423 / 1826 Hz. Not used for Text to Sing's guide.
 
+### Choir Ensemble
+
+A user heard the old choir (the AI singer, two delayed copies and a big reverb) as "one person with an echo".
+The choir voice now runs a second `NeuralVoiceStream` (same latency as the lead's: it depends only on the host
+rate and block size) with the gospel singer of the other gender, singing the same input an octave away (a
+woman's voice over a man's lead, a man's under a woman's; the exact target pitch, or the neural tracker's pitch
+shifted by 12 semitones). Its output is silent wherever the stream has nothing yet (no DSP fill). Six copies of
+the lead and the second singer follow, from modulated delay lines (11-44 ms, drifting 4-6 ms at 0.07-0.71 Hz:
+about +-10 cents) each through its own two resonances (+-2-3 dB around 550-1100 Hz and 2.2-3.2 kHz, Q 1.5), panned
+across the field. The two voices' models load separately; the choir sings without its second section when that
+singer is missing.
+
 ### Breaths (`BreathKeeper`)
 
 RVC renders a breath the way its training singer breathed. Measured on a male vocal (effects off), breaths

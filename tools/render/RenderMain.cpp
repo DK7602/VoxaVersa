@@ -431,7 +431,8 @@ int main (int argc, char* argv[])
 
     // An AI voice model loads on a background thread and is attached on the message thread: wait for it,
     // otherwise the render silently uses the DSP engine.
-    for (int i = 0; i < 1200 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
+    for (int i = 0; i < 1200 && (processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading
+                                 || processor.isChoirPartnerLoading()); ++i)
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
     if (processor.getNeuralStatus() != voxa::VoxaVersaProcessor::NeuralStatus::NoModelForVoice)
         std::printf ("  %s\n", processor.getNeuralStatusMessage().toRawUTF8());

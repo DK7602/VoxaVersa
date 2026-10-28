@@ -103,6 +103,8 @@ public:
     void reloadNeuralModel();
     /** The library changed who sings a voice (a singer chosen by ear): the traits and the model follow. */
     void voiceSingersChanged()   { updateVoiceTraits(); reloadNeuralModel(); }
+    /** A choir voice's second singer is still loading. Message thread. */
+    bool isChoirPartnerLoading() const noexcept;
     /** 1 male, 2 female (the Source Voice setting, else the estimate), 0 not known yet. */
     int getEffectiveSourceGender() const noexcept;
 
@@ -186,6 +188,7 @@ private:
 
     void updateVoiceTraits();
     void updateNeuralModel();
+    void updateChoirPartner();
     void updateLatency();
 
     struct Impl;

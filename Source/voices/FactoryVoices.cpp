@@ -344,7 +344,7 @@ std::vector<VoiceProfile> createFactoryVoices()
         t.rangeLowMidi = 48; t.rangeHighMidi = 76; t.formantSemis = 0.3f;
         t.breathiness = 0.15f; t.vibratoDepthCents = 25.0f; t.vibratoRateHz = 5.6f;
         t.ringHz = 2800.0f; t.ringDb = 3.0f; t.bodyHz = 300.0f; t.bodyDb = 2.0f;
-        t.vibeDoubler = 0.9f; t.vibeReverbMix = 0.38f; t.vibeReverbSize = 0.85f; t.vibeCompressor = 0.4f;
+        t.vibeDoubler = 0.9f; t.vibeReverbMix = 0.38f; t.vibeReverbSize = 0.85f; t.vibeCompressor = 0.4f; t.choir = true;
     }));
 
     return voices;

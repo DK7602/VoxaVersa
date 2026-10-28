@@ -53,7 +53,10 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   assignment never undoes it. *Hard Tune Robot* and *Choir Ensemble* are sung by a singer of your own voice's
   gender (the pop singers and the gospel singers), following *Source Voice* or the detected gender.
   *Hard Tune Robot* snaps every note at once by itself (the hard-tune sound, with Tune off too; the AI singer
-  gets the exact note).
+  gets the exact note). *Choir Ensemble* is a section: the lead singer, a gospel singer of the other gender an
+  octave away (a second AI model, so about twice the AI engine's work), and six copies of the two, each a little
+  late, slowly detuned and coloured differently, spread across the stereo field. The Doubler's amount and width
+  scale the section.
 - **Singer cards**: a trained singer that sings no built-in voice is a voice of its own, with a style title and
   portrait (e.g. *Lyric Tenor*, *Velvet Mezzo*: the classically trained VocalSet singers).
 - **Presets**: factory and user presets, A/B comparison, undo/redo. A factory preset keeps your session's

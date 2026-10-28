@@ -29,6 +29,9 @@ struct VoiceTraits
     float registerBiasSemis = 0.0f;
     // The voice itself snaps every note to the scale at once, with no vibrato or drift (Hard Tune Robot).
     bool hardTune = false;
+    // A choir section: with an AI singer, a second singer of the other gender an octave away and copies of both,
+    // each a little late, detuned and coloured differently (Choir Ensemble).
+    bool choir = false;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift
@@ -118,6 +121,8 @@ struct VoiceProfile
     // Neutral built-in voices (Hard Tune Robot, Choir Ensemble): a singer per input gender (pack ids);
     // VoiceLibrary::setSourceGender gives the voice the matching one.
     juce::String aiSingerMale, aiSingerFemale;
+    // Choir Ensemble: the singers of each section (pack ids) and the one singing with the current lead.
+    juce::String sectionSingerMale, sectionSingerFemale, choirPartnerSinger;
     bool listed = true;                 // false: the pack only powers built-in voices and is not shown itself
 
     VoiceGender getGender() const noexcept { return traits.gender; }
