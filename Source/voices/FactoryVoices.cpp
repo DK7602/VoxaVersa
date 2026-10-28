@@ -226,9 +226,18 @@ namespace
             t.breathiness = juce::jlimit (0.0f, 1.0f, t.breathiness * c->breathScale);
             t.rasp = juce::jlimit (0.0f, 1.0f, t.rasp + c->raspAdd);
         }
-        // Moody female trap sits low in its singer's range (its high notes turned "chipmunk").
+        // Moody female trap sits low in its singer's range (its high notes turned "chipmunk"), with a little
+        // auto-tune of its own (it sounded too much like Smoky Alto and Female Blues).
         if (! male && juce::String (g.idPart) == "trap")
+        {
             t.registerBiasSemis = -2.0f;
+            t.selfTuneMs = 25.0f;
+        }
+        // An AI singer's street grit (Male Rap) and blues rasp (Male Blues).
+        if (male && juce::String (g.idPart) == "rap")
+            t.aiGrit = 0.5f;
+        if (male && juce::String (g.idPart) == "blues")
+            t.aiGrit = 0.35f;
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
         if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
         {
@@ -294,8 +303,9 @@ std::vector<VoiceProfile> createFactoryVoices()
                                      { "Deep", "Resonant", "Warm" }, 0xff1f3a93, 0xff6f8fd9, [] (VoiceTraits& t)
     {
         t.rangeLowMidi = 33; t.rangeHighMidi = 57; t.formantSemis = -2.6f; t.registerBiasSemis = -7.0f;
-        t.ringHz = 2400.0f; t.ringDb = 2.0f; t.bodyHz = 120.0f; t.bodyDb = 4.0f;
-        t.tiltDb = -2.0f; t.warmthDb = 3.0f; t.presenceDb = 0.5f; t.airDb = -1.0f;
+        // deep and warm, with enough presence to keep the words clear an octave down
+        t.ringHz = 2400.0f; t.ringDb = 1.0f; t.bodyHz = 110.0f; t.bodyDb = 5.0f;
+        t.tiltDb = -1.5f; t.warmthDb = 3.5f; t.presenceDb = 1.5f; t.airDb = -1.0f;
         t.vibratoDepthCents = 15.0f; t.vibratoRateHz = 5.0f; t.jitterCents = 4.0f;
         t.vibeCompressor = 0.5f; t.vibeReverbMix = 0.15f; t.vibeLowCutHz = 40.0f;
     }));
@@ -323,8 +333,9 @@ std::vector<VoiceProfile> createFactoryVoices()
     voices.push_back (makeSpecialty ("neutral-whisper", "Whisper", "Close, breathy ASMR whisper", VoiceGender::Neutral,
                                      { "Breathy", "Intimate", "Airy" }, 0xff8fa3bf, 0xffe1e8f2, [] (VoiceTraits& t)
     {
-        t.rangeLowMidi = 48; t.rangeHighMidi = 72; t.formantSemis = 0.2f; t.noAiSinger = true;
-        t.breathiness = 0.9f; t.airDb = 4.0f; t.presenceDb = 1.0f; t.vibratoDepthCents = 0.0f;
+        t.rangeLowMidi = 48; t.rangeHighMidi = 72; t.formantSemis = 0.2f; t.noAiSinger = true; t.whisper = true;
+        // the whisper is the breath: synthetic breath noise on top of it was "static"
+        t.breathiness = 0.1f; t.airDb = 4.0f; t.presenceDb = 1.0f; t.vibratoDepthCents = 0.0f;
         t.ringHz = 6000.0f; t.ringDb = 3.0f; t.bodyHz = 250.0f; t.bodyDb = -3.0f;
         t.vibeCompressor = 0.6f; t.vibeReverbMix = 0.08f; t.vibeDeEsser = 0.5f;
     }));

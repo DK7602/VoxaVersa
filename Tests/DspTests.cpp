@@ -579,6 +579,41 @@ public:
             expectWithinAbsoluteError (f.srcMidi + f.mainShift, 60.0f, 0.01f);
             expect (std::isnan (dsp::VoiceChain::neuralPitchShift (f, s)), "the AI singer gets the exact note");
         }
+
+        beginTest ("A hard-tune voice doesn't warble between two notes; a light auto-tune voice tunes by itself");
+        {
+            dsp::PitchMapper mapper;
+            mapper.prepare (48000.0, 256);
+            dsp::PitchMapper::Settings s;
+            s.traits.hardTune = true;
+            s.expression = false;
+            s.keyRoot = 0;
+            s.scale = ScaleType::Chromatic;
+            int flips = 0, last = -1;
+            for (int i = 0; i < 400; ++i)   // hovering around the middle of 60 and 61
+            {
+                dsp::PitchDetector::Frame f;
+                f.voiced = true;
+                f.frequencyHz = music::midiToHz (i % 2 == 0 ? 60.4f : 60.6f);
+                f.periodSamples = 48000.0f / f.frequencyHz;
+                f.confidence = 0.95f;
+                const auto out = mapper.process (f, (juce::int64) i * 256, s);
+                const int note = juce::roundToInt (out.srcMidi + out.mainShift);
+                flips += last >= 0 && note != last ? 1 : 0;
+                last = note;
+            }
+            expectEquals (flips, 0);
+
+            dsp::PitchMapper light;
+            light.prepare (48000.0, 256);
+            dsp::PitchMapper::Settings t;
+            t.traits.selfTuneMs = 25.0f;
+            t.expression = false;
+            t.keyRoot = 0;
+            t.scale = ScaleType::Chromatic;
+            const auto f = sing (light, t, { 60.35f }, 1);
+            expectWithinAbsoluteError (f.srcMidi + f.mainShift, 60.0f + 0.35f * 0.15f * 0.7f, 0.02f);
+        }
     }
 };
 
@@ -923,8 +958,79 @@ public:
     }
 };
 
+class GritAndWhisperTests : public juce::UnitTest
+{
+public:
+    GritAndWhisperTests() : juce::UnitTest ("Grit and whisper", "DSP") {}
+
+    static double rms (const std::vector<float>& x, int from, int to)
+    {
+        double e = 0.0;
+        for (int i = from; i < to; ++i)
+            e += (double) x[(size_t) i] * x[(size_t) i];
+        return std::sqrt (e / juce::jmax (1, to - from));
+    }
+    static double tone (const std::vector<float>& x, int from, int to, double hz, double sr)
+    {
+        double re = 0.0, im = 0.0;
+        for (int i = from; i < to; ++i)
+        {
+            re += x[(size_t) i] * std::cos (juce::MathConstants<double>::twoPi * hz * i / sr);
+            im += x[(size_t) i] * std::sin (juce::MathConstants<double>::twoPi * hz * i / sr);
+        }
+        return 20.0 * std::log10 (std::hypot (re, im) / (to - from) + 1e-12);
+    }
+
+    void runTest() override
+    {
+        constexpr double sr = 48000.0;
+        const int n = (int) sr;
+
+        beginTest ("Grit roughens a voice at about the same level");
+        {
+            // a sung "ah" at 200 Hz: grit fills the gaps between its harmonics
+            std::vector<float> l ((size_t) n), r;
+            for (int i = 0; i < n; ++i)
+                for (int h = 1; h <= 20; ++h)
+                    l[(size_t) i] += 0.05f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
+            r = l;
+            const auto before = l;
+            dsp::Grit grit;
+            grit.prepare (sr);
+            for (int pos = 0; pos < n; pos += 512)
+                grit.process (l.data() + pos, r.data() + pos, juce::jmin (512, n - pos), 0.5f);
+            const double gapBefore = tone (before, n / 2, n, 2100.0, sr) - tone (before, n / 2, n, 2000.0, sr);
+            const double gapAfter = tone (l, n / 2, n, 2100.0, sr) - tone (l, n / 2, n, 2000.0, sr);
+            logMessage ("between-harmonics level: " + juce::String (gapBefore, 1) + " -> " + juce::String (gapAfter, 1) + " dB");
+            expectGreaterThan (gapAfter - gapBefore, 60.0);
+            expectWithinAbsoluteError (20.0 * std::log10 (rms (l, n / 2, n) / rms (before, n / 2, n)), 0.0, 2.0);
+        }
+
+        beginTest ("The whisper keeps the level and loses the pitch");
+        {
+            std::vector<float> in ((size_t) n), out ((size_t) n);
+            for (int i = 0; i < n; ++i)
+                for (int h = 1; h <= 20; ++h)
+                    in[(size_t) i] += 0.05f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
+            dsp::Whisperizer w;
+            w.prepare (sr);
+            for (int pos = 0; pos < n; pos += 480)
+                w.process (in.data() + pos, out.data() + pos, juce::jmin (480, n - pos));
+            const int from = n / 2;
+            expectWithinAbsoluteError (20.0 * std::log10 (rms (out, from, n) / rms (in, from - w.getLatency(), n - w.getLatency())), 0.0, 4.0);
+            // the harmonics no longer stand out from the gaps between them
+            const double peak = tone (out, from, n, 1000.0, sr), gap = tone (out, from, n, 1100.0, sr);
+            const double dryPeak = tone (in, from, n, 1000.0, sr), dryGap = tone (in, from, n, 1100.0, sr);
+            logMessage ("harmonic over gap: dry " + juce::String (dryPeak - dryGap, 1) + " dB, whisper " + juce::String (peak - gap, 1) + " dB");
+            expectLessThan (peak - gap, 12.0);
+            expectGreaterThan (dryPeak - dryGap, 40.0);
+        }
+    }
+};
+
 static BreathKeeperTests breathKeeperTests;
 static VowelKeeperTests vowelKeeperTests;
+static GritAndWhisperTests gritAndWhisperTests;
 static RKeeperTests rKeeperTests;
 static ConsonantKeeperTests consonantKeeperTests;
 static GenderEstimatorTests genderEstimatorTests;

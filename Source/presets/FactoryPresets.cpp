@@ -66,7 +66,7 @@ std::vector<FactoryPreset> createFactoryPresets()
           { smartRegister, { P::reverbMix, 42.0f }, { P::reverbSize, 90.0f }, { P::vibratoDepth, 15.0f } } },
 
         { "Whisper ASMR", "Character", "neutral-whisper",
-          { dspEngine, { P::breath, 70.0f }, { P::compressor, 60.0f }, { P::reverbMix, 6.0f } } },
+          { dspEngine, { P::compressor, 60.0f }, { P::reverbMix, 6.0f } } },
 
         { "Classic Soul", "Soul", "female-soul",
           { smartRegister, { P::saturation, 15.0f }, { P::reverbMix, 20.0f }, { P::rasp, 15.0f } } },

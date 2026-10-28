@@ -129,6 +129,8 @@ private:
     ConsonantKeeper consonants;
     RKeeper rKeeper;
     VowelKeeper vowels;
+    Grit grit;
+    Whisperizer whisperizer;
     BreathKeeper breaths;
     CharacterProcessor character;
     DeEsser deEsser;
@@ -139,6 +141,7 @@ private:
 
     std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, voicedNowBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
     std::vector<float> dryHzBuf, leadHzBuf;   // both voices' pitches on the bus timeline (vowel keeper)
+    std::vector<float> whisperIn;             // the input, early by the whisperizer's latency
 
     // Alignment delays towards totalLatency: DSP bus (stereo), neural lead (mono) and, while the neural lead
     // is active, the DSP lead that fills its gaps, the neural coverage that crossfades the two and the dry input

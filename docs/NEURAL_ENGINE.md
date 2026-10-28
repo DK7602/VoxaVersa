@@ -185,6 +185,19 @@ singer's) is limited to ±10 dB, glides over ~20 ms and drives a bank of 1/6-oct
 overlap is solved once (least squares) so the summed response hits the wanted dB at the band centres. No added
 latency. On "quits" (Male Pop): F1 / F2 from 344 / 1970 to 423 / 1826 Hz. Not used for Text to Sing's guide.
 
+Above the AI singer's top note (the 97th percentile of what they sang, minus a semitone) a model turns thin
+and "chipmunk": the vowel keeper then also lowers the AI voice's resonances, 0.4 semitone per semitone above,
+at most 2.5 (its bank reads the envelope k/2 bands higher for a k-semitone shift).
+
+### Grit (`Grit`)
+
+A synthetic rasp on an AI singer sounded like static, and soft-clipping a sung note only adds clean
+harmonics (measured on a male vocal through Male Rap: the spectral flatness of 1.5 - 5 kHz moved by 0.1 dB).
+Grit is irregularity: the voice's level wobbles at random 35 - 120 Hz (the rate heard as roughness, up to
++-45 % x amount) and 1.2 - 6 kHz noise follows that band's own envelope within milliseconds, so it pulses with
+the glottal beats. Male Rap (0.5) and Male Blues (0.35), scaled by Style: flatness -11.0 to -6.4 dB (Rap),
+-14.8 to -9.3 dB (Blues).
+
 ### Choir Ensemble
 
 A user heard the old choir (the AI singer, two delayed copies and a big reverb) as "one person with an echo".

@@ -29,11 +29,17 @@ struct VoiceTraits
     float registerBiasSemis = 0.0f;
     // The voice itself snaps every note to the scale at once, with no vibrato or drift (Hard Tune Robot).
     bool hardTune = false;
+    // The voice's own light auto-tune (retune ms, -1 = none), while the Tune switch is off (Female Trap).
+    float selfTuneMs = -1.0f;
     // A choir section: with an AI singer, a second singer of the other gender an octave away and copies of both,
     // each a little late, detuned and coloured differently (Choir Ensemble).
     bool choir = false;
     // An effect no AI singer can sing (Whisper): the voice is always the DSP voice and never given a singer.
     bool noAiSinger = false;
+    // The voice whispers: the lead is the input's own spectral envelope on noise (no pitch).
+    bool whisper = false;
+    // Grit added to an AI singer (0..1: Male Rap's street edge, Male Blues' rasp).
+    float aiGrit = 0.0f;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift

@@ -72,6 +72,7 @@ private:
     // correction state
     float corrState = 0.0f;
     int currentNote = -1;
+    int pendingNote = -1, pendingFrames = 0;   // a self-tuning voice's next note, until it has held
     bool wasVoiced = false;
     float unvoicedTime = 1.0f, noteTime = 0.0f;
 

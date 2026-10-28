@@ -205,6 +205,9 @@ public:
         formants over the input's (1 for the same gender, ~1.17 for a man's input into a woman's voice). */
     void process (float* lead, const float* input, const float* inputHz, const float* leadHz, int numSamples,
                   float tractRatio) noexcept;
+    /** The AI singer's top note (MIDI, 0 = unknown). Above it a model turns thin and "chipmunk": the keeper then
+        also lowers the AI voice's resonances, 0.4 semitone per semitone above, at most 2.5. */
+    void setTopNote (float midi) noexcept { topMidi = midi; }
 
     static constexpr int numBands = 25;
     static constexpr float strength = 1.0f, maxDb = 10.0f;
@@ -228,8 +231,46 @@ private:
     float dryBase[numBands] {}, leadBase[numBands] {}, dryEnv[numBands] {}, leadEnv[numBands] {};
     float wanted[numBands] {}, smoothed[numBands] {}, gainDb[numBands] {}, previousDb[numBands] {};
     bool haveBase = false;
-    float baseCoeff = 0.0f, smoothCoeff = 0.0f;
+    float baseCoeff = 0.0f, smoothCoeff = 0.0f, topMidi = 0.0f;
     Biquad bank[numBands];
+};
+
+/** Street / blues grit for an AI singer, whose own breath and rasp a synthetic rasp would only turn to static.
+    Grit in a voice is irregularity, not distortion (clipping a sung note only adds clean harmonics): a growl (the
+    voice's level wobbling at random 35 - 120 Hz, the rate the ear hears as roughness) and noise that pulses with
+    the voice's own glottal beats (1.2 - 6 kHz noise following that band's envelope within milliseconds). */
+class Grit
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    void process (float* left, float* right, int numSamples, float amount) noexcept;
+
+private:
+    double sr = 48000.0;
+    Biquad growlBand[2], noiseBand[2], voiceHigh[2], voiceLow[2];
+    float growlPower = 1.0f, noisePower = 1.0f, env[2] {}, attack = 0.0f, release = 0.0f, powerCoeff = 0.0f;
+    juce::Random random { 4321 };
+};
+
+/** A whisper made from the voice itself: short-time spectra with their harmonics smoothed away (~+-180 Hz) and
+    random phases, so the vocal tract's resonances stay and the pitch goes. The output is `getLatency()` samples
+    late: feed it the input that much early. */
+class Whisperizer
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    int getLatency() const noexcept { return size; }
+    void process (const float* input, float* output, int numSamples) noexcept;
+
+private:
+    void frame() noexcept;
+
+    int size = 1024, hop = 256, write = 0, read = 0, sinceHop = 0, smoothBins = 4;
+    std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<float> ring, accum, window, data, magnitude, smoothed;
+    juce::Random random { 12345 };
 };
 
 /** One-knob vocal compressor (feed-forward, soft knee, stereo linked, auto make-up). */

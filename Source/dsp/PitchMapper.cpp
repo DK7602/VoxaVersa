@@ -14,6 +14,8 @@ void PitchMapper::reset()
 {
     corrState = 0.0f;
     currentNote = -1;
+    pendingNote = -1;
+    pendingFrames = 0;
     wasVoiced = false;
     unvoicedTime = 1.0f;
     noteTime = 0.0f;
@@ -222,7 +224,9 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     const ScaleType scale = getEffectiveScale (s);
     const bool midiControlled = s.midiNote >= 0;
     const bool hardTune = s.traits.hardTune && ! midiControlled;   // a hard-tune voice: instant, exact notes
-    const bool correcting = (s.tuneOn || midiControlled || hardTune) && ! s.sourceIsSynth;
+    // a voice with its own (light) auto-tune, while the Tune switch is off
+    const bool selfTune = ! hardTune && ! midiControlled && ! s.tuneOn && s.traits.selfTuneMs >= 0.0f;
+    const bool correcting = (s.tuneOn || midiControlled || hardTune || selfTune) && ! s.sourceIsSynth;
 
     float corrected = src;
 
@@ -236,12 +240,27 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         else
         {
             const int candidate = music::nearestScaleNote (src, keyRoot, scale);
-            // Hysteresis: only leave the current note when clearly closer to another.
+            // Hysteresis: only leave the current note when clearly closer to another. A voice that tunes itself
+            // snaps instantly, so a voice hovering between two neighbouring notes would warble: the new note must
+            // also hold for ~12 ms (onsets and larger steps land at once).
+            const bool snapping = hardTune || selfTune;
             if (currentNote >= 0 && music::isInScale (currentNote, keyRoot, scale)
                 && std::abs (src - (float) currentNote) < std::abs (src - (float) candidate) + 0.18f)
                 target = currentNote;
             else
                 target = candidate;
+            if (snapping && ! onset && currentNote >= 0 && target != currentNote && std::abs (target - currentNote) <= 1)
+            {
+                pendingFrames = target == pendingNote ? pendingFrames + 1 : 1;
+                pendingNote = target;
+                if ((float) pendingFrames * hopSec < 0.012f)
+                    target = currentNote;
+            }
+            else
+            {
+                pendingNote = -1;
+                pendingFrames = 0;
+            }
         }
 
         if (onset || currentNote < 0)
@@ -250,7 +269,8 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         }
         else
         {
-            const float retune = hardTune ? 0.0f : (midiControlled ? juce::jmax (10.0f, s.retuneMs) : s.retuneMs);
+            const float retune = hardTune ? 0.0f : (midiControlled ? juce::jmax (10.0f, s.retuneMs)
+                                                                   : (selfTune ? s.traits.selfTuneMs : s.retuneMs));
             if (retune < 1.0f)
             {
                 corrState = (float) target;
@@ -272,7 +292,7 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
         currentNote = target;
 
         const float deviation = src - (float) target;
-        corrected = corrState + deviation * (hardTune ? 0.0f : s.humanize) * 0.7f;
+        corrected = corrState + deviation * (hardTune ? 0.0f : (selfTune ? 0.15f : s.humanize)) * 0.7f;
     }
     else
     {

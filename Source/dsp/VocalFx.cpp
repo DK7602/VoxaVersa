@@ -1099,12 +1099,25 @@ void VowelKeeper::analyse (float inputHz, float leadHz, float tractRatio) noexce
             std::copy (leadEnv, leadEnv + numBands, leadBase);
             haveBase = true;
         }
+        // Above the singer's top note: the envelope the AI voice would have with its resonances lower (bands are
+        // 1/6 octave apart, so a shift of k semitones reads k/2 bands higher).
+        float topShift = 0.0f;
+        if (topMidi > 0.0f)
+            topShift = juce::jmin (2.5f, 0.4f * juce::jmax (0.0f, 69.0f + 12.0f * std::log2 (leadHz / 440.0f) - topMidi));
         float mean = 0.0f, weights = 0.0f;
         for (int j = 0; j < numBands; ++j)
         {
             dryBase[j] += (dryEnv[j] - dryBase[j]) * baseCoeff;
             leadBase[j] += (leadEnv[j] - leadBase[j]) * baseCoeff;
             wanted[j] = (dryEnv[j] - dryBase[j]) - (leadEnv[j] - leadBase[j]);
+            if (topShift > 0.0f)
+            {
+                const float at = juce::jmin ((float) (numBands - 1), (float) j + 0.5f * topShift);
+                const int k = (int) at;
+                const float frac = at - (float) k;
+                const float lowered = leadEnv[k] + (k + 1 < numBands ? (leadEnv[k + 1] - leadEnv[k]) * frac : 0.0f);
+                wanted[j] += lowered - leadEnv[j];
+            }
             mean += wanted[j] * bandWeight[j];
             weights += bandWeight[j];
         }
@@ -1171,6 +1184,149 @@ void VowelKeeper::process (float* lead, const float* input, const float* inputHz
         for (auto& f : bank)
             y = f.process (y);
         lead[i] = y;
+    }
+}
+
+//==============================================================================
+void Grit::prepare (double sampleRate)
+{
+    sr = sampleRate;
+    for (int k = 0; k < 2; ++k)
+    {
+        growlBand[k].c = BiquadCoeffs::bandPass (sr, 65.0, 0.7);
+        noiseBand[k].c = BiquadCoeffs::bandPass (sr, 2700.0, 0.6);
+        voiceHigh[k].c = BiquadCoeffs::highPass (sr, 1200.0);
+        voiceLow[k].c = BiquadCoeffs::lowPass (sr, 6000.0);
+    }
+    attack = (float) (1.0 - std::exp (-1.0 / (0.0005 * sr)));
+    release = (float) (1.0 - std::exp (-1.0 / (0.004 * sr)));
+    powerCoeff = (float) (1.0 - std::exp (-1.0 / (0.5 * sr)));
+    reset();
+}
+
+void Grit::reset()
+{
+    for (int k = 0; k < 2; ++k)
+    {
+        growlBand[k].reset();
+        noiseBand[k].reset();
+        voiceHigh[k].reset();
+        voiceLow[k].reset();
+        env[k] = 0.0f;
+    }
+    growlPower = noisePower = 0.02f;
+}
+
+void Grit::process (float* left, float* right, int n, float amount) noexcept
+{
+    if (amount <= 0.001f)
+        return;
+    for (int i = 0; i < n; ++i)
+    {
+        // one growl and one noise for both channels (the voice sits in the middle)
+        const float g = growlBand[1].process (growlBand[0].process (2.0f * random.nextFloat() - 1.0f));
+        growlPower += (g * g - growlPower) * powerCoeff;
+        const float growl = 1.0f + 0.45f * amount * juce::jlimit (-2.5f, 2.5f, g / std::sqrt (growlPower + 1.0e-12f));
+        const float w = noiseBand[1].process (noiseBand[0].process (2.0f * random.nextFloat() - 1.0f));
+        noisePower += (w * w - noisePower) * powerCoeff;
+        const float noise = w / std::sqrt (noisePower + 1.0e-12f);
+
+        for (int c = 0; c < 2; ++c)
+        {
+            float* x = c == 0 ? left : right;
+            if (x == nullptr)
+                continue;
+            const float band = std::abs (voiceLow[c].process (voiceHigh[c].process (x[i])));
+            env[c] += (band - env[c]) * (band > env[c] ? attack : release);
+            x[i] = x[i] * growl + 0.5f * amount * env[c] * noise;
+        }
+    }
+}
+
+//==============================================================================
+void Whisperizer::prepare (double sampleRate)
+{
+    size = juce::nextPowerOfTwo (juce::roundToInt (sampleRate * 0.021));   // ~21 ms
+    hop = size / 4;
+    fft = std::make_unique<juce::dsp::FFT> ((int) std::round (std::log2 ((double) size)));
+    ring.assign ((size_t) size, 0.0f);
+    accum.assign ((size_t) size * 2, 0.0f);
+    data.assign ((size_t) size * 2, 0.0f);
+    magnitude.assign ((size_t) size / 2 + 1, 0.0f);
+    smoothed.assign ((size_t) size / 2 + 1, 0.0f);
+    window.resize ((size_t) size);
+    for (int i = 0; i < size; ++i)   // square-root Hann at both ends
+        window[(size_t) i] = std::sqrt (0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) size));
+    smoothBins = juce::jmax (1, juce::roundToInt (180.0 / (sampleRate / size)));
+    reset();
+}
+
+void Whisperizer::reset()
+{
+    std::fill (ring.begin(), ring.end(), 0.0f);
+    std::fill (accum.begin(), accum.end(), 0.0f);
+    write = read = sinceHop = 0;
+}
+
+void Whisperizer::frame() noexcept
+{
+    for (int i = 0; i < size; ++i)
+        data[(size_t) i] = ring[(size_t) ((write + i) % size)] * window[(size_t) i];
+    std::fill (data.begin() + size, data.end(), 0.0f);
+    fft->performRealOnlyForwardTransform (data.data(), true);
+
+    const int bins = size / 2 + 1;
+    double energy = 0.0, smoothEnergy = 0.0;
+    for (int k = 0; k < bins; ++k)
+    {
+        magnitude[(size_t) k] = std::hypot (data[(size_t) (2 * k)], data[(size_t) (2 * k + 1)]);
+        energy += (double) magnitude[(size_t) k] * magnitude[(size_t) k];
+    }
+    for (int k = 0; k < bins; ++k)
+    {
+        float sum = 0.0f;
+        int count = 0;
+        for (int j = juce::jmax (0, k - smoothBins); j <= juce::jmin (bins - 1, k + smoothBins); ++j, ++count)
+            sum += magnitude[(size_t) j];
+        smoothed[(size_t) k] = sum / (float) count;
+        smoothEnergy += (double) smoothed[(size_t) k] * smoothed[(size_t) k];
+    }
+    const float gain = smoothEnergy > 0.0 ? (float) std::sqrt (energy / smoothEnergy) : 0.0f;
+    for (int k = 0; k < bins; ++k)
+    {
+        const float phase = juce::MathConstants<float>::twoPi * random.nextFloat();
+        data[(size_t) (2 * k)] = smoothed[(size_t) k] * gain * std::cos (phase);
+        data[(size_t) (2 * k + 1)] = k == 0 || k == size / 2 ? 0.0f : smoothed[(size_t) k] * gain * std::sin (phase);
+    }
+    for (int k = 1; k < size / 2; ++k)   // the mirrored half, so the inverse transform is the whole real signal
+    {
+        data[(size_t) (2 * (size - k))] = data[(size_t) (2 * k)];
+        data[(size_t) (2 * (size - k) + 1)] = -data[(size_t) (2 * k + 1)];
+    }
+    fft->performRealOnlyInverseTransform (data.data());
+
+    // frame sample i belongs to output time read + i (the output runs `size` samples behind the input). With
+    // random phases the overlapping frames add up in power, not in amplitude: no 1/2 for the Hann overlap.
+    const int total = (int) accum.size();
+    for (int i = 0; i < size; ++i)
+        accum[(size_t) ((read + i) % total)] += data[(size_t) i] * window[(size_t) i];
+}
+
+void Whisperizer::process (const float* input, float* output, int n) noexcept
+{
+    const int total = (int) accum.size();
+    for (int i = 0; i < n; ++i)
+    {
+        ring[(size_t) write] = input[i];
+        write = (write + 1) % size;
+        output[i] = accum[(size_t) read];
+        accum[(size_t) read] = 0.0f;
+        read = (read + 1) % total;
+        if (++sinceHop >= hop)
+        {
+            sinceHop = 0;
+            frame();
+        }
     }
 }
 

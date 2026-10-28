@@ -72,6 +72,8 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     consonants.prepare (sr);
     rKeeper.prepare (sr);
     vowels.prepare (sr);
+    grit.prepare (sr);
+    whisperizer.prepare (sr);
     breaths.prepare (sr);
     character.prepare (sr);
     deEsser.prepare (sr);
@@ -80,7 +82,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR, &dryHzBuf, &leadHzBuf })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR, &dryHzBuf, &leadHzBuf, &whisperIn })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -154,6 +156,8 @@ void VoiceChain::reset()
     consonants.reset();
     rKeeper.reset();
     vowels.reset();
+    grit.reset();
+    whisperizer.reset();
     breaths.reset();
     character.reset();
     deEsser.reset();
@@ -193,8 +197,10 @@ void VoiceChain::setF0Capture (std::vector<float>* destination, double frameRate
 
 float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Settings& s) noexcept
 {
-    // MIDI notes, the Text to Sing guide and a hard-tune voice: exactly the target pitch, nothing of the input's.
-    if (s.midiNote >= 0 || s.sourceIsSynth || s.traits.hardTune)
+    // MIDI notes, the Text to Sing guide and a hard-tune voice: exactly the target pitch, nothing of the input's
+    // (a hard-tune voice where the live detector heard a note: elsewhere, e.g. a fast slide it lost, the neural
+    // tracker's pitch keeps the AI singing instead of breaking up).
+    if (s.midiNote >= 0 || s.sourceIsSynth || (s.traits.hardTune && pf.voiced))
         return std::numeric_limits<float>::quiet_NaN();
 
     // Correction moves a note by less than a semitone (and the profile's vibrato and scoops by less still);
@@ -319,6 +325,16 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     // The dry voice on the lead's timeline (an AI lead keeps its unvoiced consonants).
     for (int i = 0; i < n; ++i)
         dryBuf[(size_t) i] = analyzer.interpolate ((double) (tStart + i));
+
+    // A whispering voice: the input itself, its pitch removed (read early by the whisperizer's latency, which
+    // the DSP voice's own delay covers).
+    if (traits.whisper && ! s.pitch.sourceIsSynth)
+    {
+        const int early = juce::jmin (whisperizer.getLatency(), dspLatency);
+        for (int i = 0; i < n; ++i)
+            whisperIn[(size_t) i] = analyzer.interpolate ((double) (tStart + early + i));
+        whisperizer.process (whisperIn.data(), leadBuf.data(), n);
+    }
 
     // ... and a little earlier for the R keeper (the input is ahead of the lead by dspLatency).
     const auto aheadStart = tStart + rLookAhead;
@@ -516,6 +532,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
                 const auto target = s.pitch.traits.gender;
                 const float tract = source == 1 && target == VoiceGender::Female ? 1.17f
                                   : (source == 2 && target == VoiceGender::Male ? 1.0f / 1.17f : 1.0f);
+                vowels.setTopNote (traits.aiHighMidi > 0 ? (float) traits.aiHighMidi - 1.0f : 0.0f);
                 vowels.process (voiceBuf.data(), dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract);
             }
             for (int i = 0; i < n; ++i)
@@ -624,6 +641,8 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     const bool profileTexture = ! synth && ! aiLead;
     cs.breath = juce::jlimit (0.0f, 1.0f, s.breath + (profileTexture ? traits.breathiness * I : 0.0f) + juce::jmax (0.0f, -s.age) * 0.08f);
     cs.rasp = juce::jlimit (0.0f, 1.0f, s.rasp + (profileTexture ? traits.rasp * I * styleScale : 0.0f) + juce::jmax (0.0f, s.age) * 0.12f);
+    if (aiLead && traits.aiGrit > 0.0f)
+        grit.process (busL.data(), busR.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * styleScale));
     character.process (busL.data(), busR.data(), n, cs);
 
     //==========================================================================
