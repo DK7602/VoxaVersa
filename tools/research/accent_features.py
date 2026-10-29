@@ -39,12 +39,15 @@ d_drawl = mu("IH") - mu("AE")
 for word, kind, a, b in edits:
     k0, k1 = int(a * 50), min(len(acc), int(b * 50) + 1); m = k1 - k0
     if m < 2: continue
-    if kind == "mono":   # hold the steady "ah" just before the glide (the last 100 ms before the final 15 %)
+    if kind == "mono":   # hold the steady "ah" just before the glide (the last 60 ms before the final 15 %)
+        # through the vowel's last frame, fading in over 40 ms before the glide, then straight into the consonant
+        # (as a Southern "lahk" does): a hold that stopped a frame short let the glide back in ("like" broke up),
+        # and one that faded out into the consonant blurred it
         next(hi)
-        g = k0 + int(0.85 * m); j0 = max(k0 + 1, g - 5)
+        g = k0 + int(0.85 * m); j0 = max(k0 + 1, g - 3)
         hold = feats[j0:g].mean(0)
-        for k in range(j0, k1 - 1):
-            w = min(1.0, (k - j0 + 1) / 3)
+        for k in range(g - 2, min(len(acc), k1)):
+            w = min(1.0, (k - (g - 2) + 1) / 2)
             acc[k] = (1 - w) * feats[k] + w * hold
     for i, k in enumerate(range(k0, k1)):
         pos = i / max(1, m - 1); ramp = min(1.0, (i + 1) / 3, (m - i) / 3)
