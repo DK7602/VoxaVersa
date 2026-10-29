@@ -1119,7 +1119,11 @@ def apply_factory_voices(w, cfg, current=None):
     if not singers:
         return {}
     voices = fv.factory_voices()
-    result, costs = fv.assign(singers, voices)
+    # built-in voices whose singer was chosen by ear (pinned_voices.json) keep it
+    pins = (load_json(os.path.join(HERE, "pinned_voices.json")) or {}).get("voices", {})
+    name_of = {pack_id_of(v): v["name"] for v in cfg["voices"]}
+    fixed = {vid: name_of[pack] for vid, pack in pins.items() if pack in name_of}
+    result, costs = fv.assign(singers, voices, fixed=fixed)
     data = fv.write_table(singers, voices, result, costs, os.path.join(w.dir, "factory_assignment"))
     packs = {}
     for v in cfg["voices"]:

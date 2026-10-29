@@ -245,7 +245,8 @@ choice from the data:
    opera, theatre, angelic and deep bass gets a contemporary singer: classically trained singers made Female Pop sound like a child and
    Male Rock like country, and they train less true to themselves (similarity 0.16 - 0.49 against 0.60 -
    0.77). `assign(..., fixed=...)` keeps chosen voices with their singers (e.g. ones the owner likes) and
-   places the rest around them.
+   places the rest around them; the queue passes it the voices in `tools/training/pinned_voices.json` (the
+   singers chosen by ear in the listening audits).
 
 The result for all queued singers is kept in
 [`tools/training/factory_voice_assignment.md`](../tools/training/factory_voice_assignment.md). The training

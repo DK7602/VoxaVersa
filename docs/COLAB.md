@@ -99,7 +99,9 @@ checkpoint are all that stay.
 Each pack already lists the built-in genre voices it powers (for example Female Pop and Female EDM). Those
 voices show an **AI** badge and use the trained singer whenever *Use AI Voice Engine* is on. Packs that only
 power built-in voices don't appear as voices of their own. When more singers finish, the assignment can
-change: download and import the voices folder again (newer packs replace older ones).
+change: download and import the voices folder again (newer packs replace older ones). Built-in voices whose
+singer was chosen by ear in the listening audits are pinned in `tools/training/pinned_voices.json`: the queue
+keeps them, so a newer assignment only places the singers that are new.
 
 The notebook's step 7 plays a before/after sample for every finished singer and shows which built-in voices
 it powers.
