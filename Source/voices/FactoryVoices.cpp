@@ -290,23 +290,6 @@ namespace
                          { "Hard", "Clean and punchy, up front", rap (0.0f, 0.45f, 0.85f, 4.0f, 5.5f) },
                          { "Growl", "More growl", rap (0.3f, 0.3f, comp, body, presence) } };
         }
-        // Country twang ("needs country twang", listening audit 6): the brassy ring of a narrowed throat near
-        // 3 kHz, more nasal resonance and a little less chest; the former tone stays as Smooth.
-        if (juce::String (g.idPart) == "country")
-        {
-            const VoiceTraits smooth = t;
-            auto colour = [] (float ringHz, float ringDb, float nasalDb, float warmthDb, float presenceDb)
-            {
-                return [=] (VoiceTraits& v)
-                {
-                    v.ringHz = ringHz; v.ringDb = ringDb; v.nasalDb = nasalDb; v.warmthDb = warmthDb; v.presenceDb = presenceDb;
-                };
-            };
-            p.sounds = { { "Twang", "Bright, brassy and a little nasal", colour (3000.0f, 7.0f, smooth.nasalDb + 2.5f,
-                                                                                 smooth.warmthDb - 1.5f, smooth.presenceDb + 1.5f) },
-                         { "Smooth", "Warmer, less twang", colour (smooth.ringHz, smooth.ringDb, smooth.nasalDb,
-                                                                   smooth.warmthDb, smooth.presenceDb) } };
-        }
         return p;
     }
 
