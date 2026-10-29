@@ -51,16 +51,16 @@ for line in lines[1:]:
 def rule(word, phones, dur):
     """(vowel index, kind) for the stressed vowel this word changes, or None."""
     vow = [i for i, p in enumerate(phones) if p[-1].isdigit()]
-    if word == "and" and dur >= 0.25: return 0, "drawl"     # a held "and" is sung with a full "a"
+    if word == "and" and dur >= 0.25: return 0, "drawl", "AE"     # a held "and" is sung with a full "a"
     for vi, i in enumerate(vow):
         p, nxt = phones[i][:-1], (phones[i + 1] if i + 1 < len(phones) else "")
         stressed = phones[i][-1] in "12" or len(vow) == 1
         if not stressed: continue
-        if p == "AY": return vi, "mono"
-        if p == "OY": return vi, "mono"
-        if p == "EH" and nxt in ("N", "M"): return vi, "raise"
-        if p == "EY": return vi, "lower"
-        if p == "AE": return vi, "drawl"
+        if p == "AY": return vi, "mono", p
+        if p == "OY": return vi, "mono", p
+        if p == "EH" and nxt in ("N", "M"): return vi, "raise", p
+        if p == "EY": return vi, "lower", p
+        if p == "AE": return vi, "drawl", p
     return None
 
 def nuclei(a, b):
@@ -103,18 +103,27 @@ for wd in json.load(open(words_path)):
     if not phones: continue
     r = rule(word, phones, wd["end"] - wd["start"])
     if r is None: continue
-    vi, kind = r
+    vi, kind, phone = r
     a, b = int(wd["start"] * 1000 / FP), min(n, int(wd["end"] * 1000 / FP) + 1)
     runs = nuclei(a, b)
     if not runs: continue
     nv = sum(1 for p in phones if p[-1].isdigit())
     n0, n1 = runs[vi] if len(runs) == nv and vi < len(runs) else max(runs, key=lambda s: s[1] - s[0])
     m = n1 - n0
-    if kind == "mono":   # hold the colour of its steadiest 40 ms in the first half, keep the level contour
-        lo, hi = n0 + max(2, int(0.1 * m)), n0 + max(10, int(0.5 * m))
-        d = np.linalg.norm(np.diff(np.log(sp[lo:hi]), axis=0), axis=1)
-        best = min(range(max(1, len(d) - 7)), key=lambda i: d[i:i + 8].sum())
-        h0 = lo + best; h1 = h0 + 8
+    if kind == "mono":   # hold the vowel's own start, keep the level contour
+        # its most open moment for "I" (the highest F1: "ah"), its most rounded for "joy" (the lowest F2: "aw");
+        # the steadiest moment could be the consonant before it ("life" became "luf")
+        lo, hi = n0 + max(2, int(0.1 * m)), n0 + max(10, int(0.6 * m))
+        cand = [(k, f) for k, f in ((k, formants(k)) for k in range(lo, hi)) if f]
+        if cand:
+            score = (lambda f: -f[1]) if phone == "OY" else (lambda f: f[0])
+            ranked = sorted(cand, key=lambda kf: score(kf[1]), reverse=True)[:max(3, len(cand) // 4)]
+            kb = int(np.median([k for k, _ in ranked]))
+        else:
+            kb = lo + (hi - lo) // 3
+        h0 = max(n0, kb - 4); h1 = min(n1 - 2, h0 + 8)
+        hf = vowel_formants(h0, h1)
+        print("  %s held %.2f-%.2f s%s" % (word, h0 * FP / 1000, h1 * FP / 1000, "" if hf is None else " (F1 %.0f, F2 %.0f)" % (hf[0], hf[1])))
         shape = np.log(sp[h0:h1]).mean(0); level = 10 * np.log10(np.exp(shape).sum())
         for k in range(h1 - 6, n1 - 2):
             w = min(1.0, (k - (h1 - 6)) / 8)
