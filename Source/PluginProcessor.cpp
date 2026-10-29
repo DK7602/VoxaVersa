@@ -270,6 +270,8 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     juce::File lastRenderedFile, lastRecording;
     juce::String lastRenderError, singError;
     juce::uint32 singSeed = 1;
+    juce::AudioBuffer<float> guideOverride;   // developer tools only (setGuideOverrideForTools)
+    double guideOverrideRate = 0.0;
 
     // Recording
     juce::TimeSliceThread writerThread { "VoxaVersa recorder" };
@@ -1540,6 +1542,12 @@ double VoxaVersaProcessor::getSingTakeLengthSeconds() const
     return impl->take != nullptr ? impl->take->clip.playback.getNumSamples() / juce::jmax (1.0, currentSampleRate) : 0.0;
 }
 
+void VoxaVersaProcessor::setGuideOverrideForTools (const juce::AudioBuffer<float>& monoAudio, double sampleRate)
+{
+    impl->guideOverride = monoAudio;
+    impl->guideOverrideRate = sampleRate;
+}
+
 void VoxaVersaProcessor::cancelSinging()
 {
     impl->cancelSing.store (true);
@@ -1663,7 +1671,7 @@ void VoxaVersaProcessor::generateSinging()
     singPreviewPlaying.store (false);
 
     auto* self = this;
-    impl->pool.addJob ([self, request, model, loadModel]() mutable
+    impl->pool.addJob ([self, request, model, loadModel, guide = impl->guideOverride, guideRate = impl->guideOverrideRate]() mutable
     {
         auto& cancel = self->impl->cancelSing;
         sing::SingEngine engine;
@@ -1671,6 +1679,17 @@ void VoxaVersaProcessor::generateSinging()
         {
             self->singProgress.store (progress * (hasModel ? 0.6f : 0.98f));
         });
+        if (guide.getNumSamples() > 0 && result.ok())   // developer tools: another guide on the same notes
+        {
+            const double ratio = guideRate / result.sampleRate;
+            const int n = juce::jmin (result.audio.getNumSamples(), (int) (guide.getNumSamples() / ratio) - 4);
+            result.audio.clear();
+            for (int ch = 0; ch < result.audio.getNumChannels(); ++ch)
+            {
+                juce::LagrangeInterpolator interpolator;
+                interpolator.process (ratio, guide.getReadPointer (0), result.audio.getWritePointer (ch), n);
+            }
+        }
 
         if (loadModel && ! cancel.load() && result.ok())
         {
@@ -1699,6 +1718,16 @@ void VoxaVersaProcessor::generateSinging()
             juce::String error;
             if (model->convert (result.audio, result.sampleRate, result.f0Hz, result.f0FrameRate, converted, &cancel, error))
             {
+                // The AI singer blurs consonants ("spend" was heard as "is that", "singing" as "tinging"): the
+                // guide's own unvoiced consonants are kept, as Voice Transform keeps the singer's.
+                dsp::ConsonantKeeper consonants;
+                consonants.prepare (result.sampleRate);
+                const int n = juce::jmin (converted.getNumSamples(), result.audio.getNumSamples());
+                for (int ch = 0; ch < converted.getNumChannels(); ++ch)
+                {
+                    consonants.reset();
+                    consonants.process (converted.getWritePointer (ch), result.audio.getReadPointer (0), n);
+                }
                 newTake->clip.original = converted;
                 newTake->neuralRendered = true;
             }

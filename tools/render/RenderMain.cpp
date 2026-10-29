@@ -6,11 +6,12 @@
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //   VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice <id>] [--bpm 120] [--seed 1]
-//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai]] [--melody <file.mid>]
+//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai] [--guide <guide.wav>]] [--melody <file.mid>]
 //                                             Text to Sing with an automatic melody: the plain guide vocal,
 //                                             its phoneme plan (one row per segment) and, with --chain, the
 //                                             take rendered through the voice chain exactly as Generate +
-//                                             export do in the plug-in (DSP path, AI engine off).
+//                                             export do in the plug-in (DSP path, AI engine off). --guide
+//                                             sings a given guide audio on the same notes (experiments).
 //   VoxaVersaRender --rkeeper|--breaths <dry.wav> <ai.wav> <out.wav> [ai-lag-seconds] [f3.csv]
 //                                             developer check of the R keeper / breath keeper on its own
 //
@@ -165,6 +166,18 @@ namespace
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 
         processor.setLyrics (lyrics);
+        // --guide <file.wav>: sing this guide (e.g. a prototype) instead of the synthesized one, same notes
+        if (const auto guidePath = optionValue (args, "--guide", {}); guidePath.isNotEmpty())
+        {
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> r (formats.createReaderFor (cwd.getChildFile (guidePath)));
+            if (r == nullptr)
+                return fail ("cannot read " + guidePath);
+            juce::AudioBuffer<float> b ((int) r->numChannels, (int) r->lengthInSamples);
+            r->read (&b, 0, (int) r->lengthInSamples, 0, true, true);
+            processor.setGuideOverrideForTools (voxa::toMono (b), r->sampleRate);
+        }
         for (juce::uint32 i = 1; i < seed; ++i)   // the plug-in advances its seed on every Generate
         {
             processor.generateSinging();

@@ -147,7 +147,9 @@ own (as RVC's `protect` option does for the content features): where the dry inp
 not voice, the AI lead above 2.5 kHz (Linkwitz-Riley split, so it is untouched elsewhere) is replaced by the
 input's, level-matched to the AI voice on vowels. This applies to the live stream and to offline renders
 of an AI lead; on the test vocal it brought the "s" spectrum to within 0.6 dB (RMS over 2–12 kHz) of the
-singer's own, from 2.3 dB.
+singer's own, from 2.3 dB. A Text to Sing take keeps its guide's consonants the same way after the AI singer
+converts it: Whisper small.en recognised 84 % of the words of a test song through Female Pop and Male Pop,
+from 68 % and 79 % (Female Pop's "my friend" had been heard as "my flint").
 
 ### American R (`RKeeper`)
 

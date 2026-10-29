@@ -157,6 +157,9 @@ public:
     /** Renders the lyrics on a background thread using the current voice, key, scale, tempo & melody source. */
     void generateSinging();
     void cancelSinging();
+    /** Developer tools only (VoxaVersaRender --sing ... --guide): Generate sings this audio instead of the
+        synthesized guide, on the same notes and pitch, to try other guides through the real Text to Sing path. */
+    void setGuideOverrideForTools (const juce::AudioBuffer<float>& monoAudio, double sampleRate);
     SingState getSingState() const noexcept { return singState.load(); }
     float getSingProgress() const noexcept { return singProgress.load(); }
     juce::String getSingError() const;
