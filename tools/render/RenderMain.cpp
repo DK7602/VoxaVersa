@@ -384,9 +384,32 @@ int main (int argc, char* argv[])
         if (args[i] == "--voice" && i + 1 < args.size())
         {
             const auto id = args[++i];
-            if (processor.getVoiceLibrary().findById (id) == nullptr)
+            auto* voice = processor.getVoiceLibrary().findByIdForTools (id);
+            if (voice == nullptr)
                 return fail ("unknown voice " + id + " (see --list-voices)");
+            // --trait name=value (after --voice): try a voice setting without rebuilding (experiments)
+            for (int k = 2; k + 1 < args.size(); ++k)
+            {
+                if (args[k] != "--trait")
+                    continue;
+                const auto name = args[k + 1].upToFirstOccurrenceOf ("=", false, false);
+                const auto value = args[k + 1].fromFirstOccurrenceOf ("=", false, false).getFloatValue();
+                auto& t = voice->traits;
+                std::map<juce::String, float*> traits { { "aiGrit", &t.aiGrit }, { "tiltDb", &t.tiltDb }, { "warmthDb", &t.warmthDb },
+                                                        { "presenceDb", &t.presenceDb }, { "airDb", &t.airDb }, { "ringHz", &t.ringHz },
+                                                        { "ringDb", &t.ringDb }, { "bodyHz", &t.bodyHz }, { "bodyDb", &t.bodyDb },
+                                                        { "breathiness", &t.breathiness }, { "vibeSaturation", &t.vibeSaturation },
+                                                        { "vibeCompressor", &t.vibeCompressor }, { "vibeReverbMix", &t.vibeReverbMix },
+                                                        { "registerBiasSemis", &t.registerBiasSemis } };
+                if (traits.count (name) == 0)
+                    return fail ("unknown trait " + name);
+                *traits[name] = value;
+            }
             processor.selectVoice (id);
+        }
+        else if (args[i] == "--trait")
+        {
+            ++i;   // applied with --voice
         }
         else if (args[i] == "--preset" && i + 1 < args.size())
         {

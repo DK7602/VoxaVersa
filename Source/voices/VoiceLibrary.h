@@ -15,6 +15,8 @@ public:
 
     const std::vector<VoiceProfile>& getVoices() const noexcept { return voices; }
     const VoiceProfile* findById (const juce::String& id) const;
+    /** Developer tools only (VoxaVersaRender --trait): a voice to change before it is selected. */
+    VoiceProfile* findByIdForTools (const juce::String& id) { return const_cast<VoiceProfile*> (findById (id)); }
     int indexOf (const juce::String& id) const;
     const VoiceProfile& getDefaultVoice() const;
 
