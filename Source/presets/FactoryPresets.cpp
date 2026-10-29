@@ -10,9 +10,11 @@ std::vector<FactoryPreset> createFactoryPresets()
 
     // Choice parameters take their index; bools take 0/1.
     // Presets built on a male or female voice move the performance into that voice's register (Pitch Preserve
-    // off): a singer of the other gender lands an octave over, and an AI voice stays near its trained notes.
+    // off, also the default): a singer of the other gender lands an octave over, and an AI voice stays near its
+    // trained notes. Character presets that set their own pitch or are voiceless keep the melody as sung.
     // Effects that need the DSP engine (extreme pitch, whisper, the lowest latency) switch the AI voice off.
     const std::pair<juce::String, float> smartRegister { P::pitchPreserve, 0.0f };
+    const std::pair<juce::String, float> keepPitch { P::pitchPreserve, 1.0f };
     const std::pair<juce::String, float> dspEngine { P::aiEngine, 0.0f };
 
     return {
@@ -46,13 +48,13 @@ std::vector<FactoryPreset> createFactoryPresets()
           { smartRegister, { P::presence, 1.5f }, { P::delayMix, 10.0f }, { P::delayTime, 3.0f }, { P::reverbMix, 15.0f } } },
 
         { "Deep Voice", "Character", "male-deep-bass",
-          { { P::pitch, -5.0f }, { P::gender, -60.0f }, { P::tone, 30.0f } } },
+          { keepPitch, { P::pitch, -5.0f }, { P::gender, -60.0f }, { P::tone, 30.0f } } },
 
         { "Chipmunk", "Character", "female-kpop",
-          { dspEngine, { P::pitch, 12.0f }, { P::gender, 100.0f }, { P::age, -100.0f }, { P::tone, -40.0f } } },
+          { keepPitch, dspEngine, { P::pitch, 12.0f }, { P::gender, 100.0f }, { P::age, -100.0f }, { P::tone, -40.0f } } },
 
         { "Robot Hard Tune", "Character", "neutral-robot",
-          { { P::tuneOn, 1.0f }, { P::retuneSpeed, 0.0f }, { P::humanize, 0.0f },
+          { keepPitch, { P::tuneOn, 1.0f }, { P::retuneSpeed, 0.0f }, { P::humanize, 0.0f },
             { P::style, 100.0f }, { P::saturation, 25.0f } } },
 
         { "Lo-Fi Bedroom", "Lo-Fi", "female-lofi",
@@ -66,7 +68,7 @@ std::vector<FactoryPreset> createFactoryPresets()
           { smartRegister, { P::reverbMix, 42.0f }, { P::reverbSize, 90.0f }, { P::vibratoDepth, 15.0f } } },
 
         { "Whisper ASMR", "Character", "neutral-whisper",
-          { dspEngine, { P::compressor, 60.0f }, { P::reverbMix, 6.0f } } },
+          { keepPitch, dspEngine, { P::compressor, 60.0f }, { P::reverbMix, 6.0f } } },
 
         { "Classic Soul", "Soul", "female-soul",
           { smartRegister, { P::saturation, 15.0f }, { P::reverbMix, 20.0f }, { P::rasp, 15.0f } } },
@@ -85,7 +87,7 @@ std::vector<FactoryPreset> createFactoryPresets()
           { smartRegister, { P::reverbMix, 24.0f }, { P::reverbSize, 40.0f }, { P::tone, 20.0f } } },
 
         { "Angelic Choir", "Choir", "neutral-choir",
-          { { P::harmonyOn, 1.0f }, { P::harm1Interval, 7.0f }, { P::harm2Interval, 11.0f }, { P::harm3Interval, 1.0f },
+          { keepPitch, { P::harmonyOn, 1.0f }, { P::harm1Interval, 7.0f }, { P::harm2Interval, 11.0f }, { P::harm3Interval, 1.0f },
             { P::harm3Level, 40.0f }, { P::doublerOn, 1.0f }, { P::doublerAmount, 80.0f }, { P::reverbMix, 45.0f },
             { P::reverbSize, 95.0f } } },
 

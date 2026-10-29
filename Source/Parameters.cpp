@@ -140,7 +140,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     addFloat (layout, P::voiceBlend, "Voice Blend", range (0.0f, 100.0f, 1.0f), 0.0f, pctString, "%");
 
     // Advanced
-    addBool  (layout, P::pitchPreserve, "Pitch Preserve", true);
+    // off: every voice sings in its own register (a female AI singer was heard as "too masculine" at a man's pitch)
+    addBool  (layout, P::pitchPreserve, "Pitch Preserve", false);
     addBool  (layout, P::formantShift,  "Formant Shift", true);
     addBool  (layout, P::expression,    "Expression", true);
     addBool  (layout, P::vibe,          "Vibe", true);

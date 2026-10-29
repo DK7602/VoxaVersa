@@ -22,8 +22,10 @@ Settings): plug in a mic, pick a voice, sing.
    - **Tone**: bright to dark.
    - **Style**: natural to creative (scales vibrato, scoops, grit and saturation).
 4. **Advanced** toggles:
-   - **Pitch Preserve** *on* keeps your melody exactly. *Off* moves your performance into the
-     selected voice's natural register (e.g. a male vocal is lifted an octave into a female voice's range).
+   - **Pitch Preserve** *off* (the default) moves your performance into the selected voice's natural
+     register (e.g. a male vocal is lifted an octave into a female voice's range). *On* keeps your melody
+     exactly, so a voice of the other gender sings at your pitch (a female voice from a man's vocal sounds
+     masculine).
      With an AI voice the octave is the one that keeps the song inside its singer's range, including the
      song's high notes (above the singer's top a voice turns thin and "chipmunk"), from the first phrase on and
      for the whole song (it starts from a typical singer of your gender and changes only if you turn out to sing
@@ -72,8 +74,9 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   the whisper effect (an AI singer cannot whisper).
 - **Presets**: factory and user presets, A/B comparison, undo/redo. A factory preset keeps your session's
   mode, input/output level, key and scale, MIDI Pitch Control and Text to Sing tempo. Presets built on a male
-  or female voice turn **Pitch Preserve** off so any singer lands in that voice's register; *Chipmunk*,
-  *Whisper ASMR* and *Live Stage (Low Latency)* use the DSP engine (AI off).
+  or female voice keep **Pitch Preserve** off so any singer lands in that voice's register (*Deep Voice*,
+  *Chipmunk*, *Robot Hard Tune*, *Whisper ASMR* and *Angelic Choir* turn it on: they set their own pitch);
+  *Chipmunk*, *Whisper ASMR* and *Live Stage (Low Latency)* use the DSP engine (AI off).
 - **Quality**: *Low Latency* (~35 ms) for live monitoring, *Balanced*, *High Quality* for mixing
   (latency is reported to the DAW and compensated automatically). An AI voice adds ~0.85 s, reported as soon
   as it is chosen, so playback and exports line up. Switching between an AI voice and a DSP-only voice changes

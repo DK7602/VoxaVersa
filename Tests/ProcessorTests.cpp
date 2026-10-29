@@ -62,6 +62,8 @@ public:
             p.setPlayConfigDetails (2, 2, sr, block);
             p.prepareToPlay (sr, block);
             expect (p.getLatencySamples() > 0, "latency reported");
+            expect (p.getState().getRawParameterValue (ParamID::pitchPreserve)->load() < 0.5f,
+                    "Pitch Preserve off: a voice sings in its own register (a female voice at a man's pitch sounded masculine)");
 
             auto in = test::makeVoice (sr, (int) (sr * 2.0), [] (int) { return 196.0f; });
             auto out = run (p, in);
@@ -306,6 +308,7 @@ public:
 
             load ("Chipmunk");
             expect (value (ParamID::aiEngine) < 0.5f, "Chipmunk uses the DSP engine");
+            expect (value (ParamID::pitchPreserve) > 0.5f, "Chipmunk sets its own pitch");
             load ("Radio Pop Star");
             expect (value (ParamID::aiEngine) > 0.5f, "AI back on");
             expect (value (ParamID::pitchPreserve) < 0.5f, "smart register for a female voice");
