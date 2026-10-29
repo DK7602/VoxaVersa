@@ -395,13 +395,27 @@ static void giveModel (VoiceProfile& v, const VoiceProfile& singer)
     v.traits.aiHighMidi = singer.traits.aiHighMidi;
 }
 
+static void giveSound (VoiceProfile& v, const juce::String& name)
+{
+    if (v.sounds.empty())
+        return;
+    const auto* sound = &v.sounds.front();
+    for (const auto& s : v.sounds)
+        if (s.name == name)
+            sound = &s;
+    sound->apply (v.traits);
+    v.soundName = sound->name;
+}
+
 void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 {
     scannedDirectory = dir;
     aiSingers.clear();
     voices.resize (numFactoryVoices);
+    const auto sounds = juce::JSON::parse (dir.getChildFile (soundsFileName));
     for (auto& v : voices)
     {
+        giveSound (v, sounds.getProperty (v.id, {}).toString());
         v.packDirectory = juce::File();
         v.neuralModelFile = juce::File();
         v.neuralEncoder.clear();
@@ -637,6 +651,22 @@ void VoiceLibrary::setSingerChoice (const juce::String& voiceId, const juce::Str
     if (dir.createDirectory())
         file.replaceWithText (juce::JSON::toString (json));
     rescanUserVoices (dir);
+}
+
+void VoiceLibrary::setSoundChoice (const juce::String& voiceId, const juce::String& soundName)
+{
+    const int index = indexOf (voiceId);
+    if (index < 0 || index >= (int) numFactoryVoices)
+        return;
+    const auto file = scannedDirectory.getChildFile (soundsFileName);
+    auto json = juce::JSON::parse (file);
+    if (json.getDynamicObject() == nullptr)
+        json = juce::var (new juce::DynamicObject());
+    json.getDynamicObject()->setProperty (voiceId, soundName);
+    if (scannedDirectory.createDirectory())
+        file.replaceWithText (juce::JSON::toString (json));
+    giveSound (voices[(size_t) index], soundName);
+    sendChangeMessage();
 }
 
 bool VoiceLibrary::setSourceGender (VoiceGender g)

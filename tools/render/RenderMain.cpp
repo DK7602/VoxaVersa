@@ -387,6 +387,22 @@ int main (int argc, char* argv[])
             auto* voice = processor.getVoiceLibrary().findByIdForTools (id);
             if (voice == nullptr)
                 return fail ("unknown voice " + id + " (see --list-voices)");
+            // --sound name (after --voice): one of the voice's sounds (right-click > Style), not saved
+            for (int k = 2; k + 1 < args.size(); ++k)
+            {
+                if (args[k] != "--sound")
+                    continue;
+                bool found = false;
+                for (const auto& sound : voice->sounds)
+                    if (sound.name.equalsIgnoreCase (args[k + 1]))
+                    {
+                        sound.apply (voice->traits);
+                        voice->soundName = sound.name;
+                        found = true;
+                    }
+                if (! found)
+                    return fail ("voice " + id + " has no sound " + args[k + 1]);
+            }
             // --trait name=value (after --voice): try a voice setting without rebuilding (experiments)
             for (int k = 2; k + 1 < args.size(); ++k)
             {
@@ -407,7 +423,7 @@ int main (int argc, char* argv[])
             }
             processor.selectVoice (id);
         }
-        else if (args[i] == "--trait")
+        else if (args[i] == "--trait" || args[i] == "--sound")
         {
             ++i;   // applied with --voice
         }

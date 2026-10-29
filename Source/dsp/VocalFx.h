@@ -254,32 +254,39 @@ private:
     juce::Random random { 4321 };
 };
 
-/** A whisper made from the voice itself, the way whispering works: one continuous breath noise through the
-    voice's own vocal tract. Every 2.5 ms a 25 ms window of the (pre-emphasised) input gives an LPC filter (order
-    32); a lattice filter with those reflection coefficients, glided sample by sample, shapes white noise to the
-    input's envelope at its level, without its pitch. Below ~350 Hz a whisper has nothing (no voicing): a high-pass
-    takes that away. Frame-wise random-phase spectra sounded like static. The output is `getLatency()` samples
-    late (half the window): feed it the input that much early. */
+/** A whisper made from the voice itself, as the WORLD vocoder (M. Morise, modified BSD licence; see
+    docs/THIRD_PARTY.md) makes one: every 5 ms its CheapTrick analysis takes the voice's spectral envelope with a
+    pitch-adaptive window (3 periods long; a fixed 500 Hz "pitch" where it is unvoiced), and every 2 ms a short
+    burst of white noise goes through that envelope as a minimum-phase filter, overlapping into one breath. The
+    vocal tract and the words stay, the pitch goes. (A user chose this, by ear, over an LPC lattice whisper and
+    over random-phase short-time spectra, both "static".) The output is `getLatency()` samples late: feed it the
+    input that much early, with its pitch. */
 class Whisperizer
 {
 public:
     void prepare (double sampleRate);
     void reset();
-    int getLatency() const noexcept { return window / 2; }
-    void process (const float* input, float* output, int numSamples) noexcept;
+    int getLatency() const noexcept { return fftSize / 2 + hop; }
+    /** `f0Hz`: the input's pitch per sample (0 where unvoiced). */
+    void process (const float* input, const float* f0Hz, float* output, int numSamples) noexcept;
 
 private:
-    void analyse() noexcept;
+    void analyse (juce::int64 centre) noexcept;
+    void pulse (juce::int64 at) noexcept;
+    double randn() noexcept;
+    static void interp1Q (double x, double shift, const double* y, int xLength, const double* xi, int xiLength,
+                          double* yi, int* base, double* fraction, double* dy) noexcept;
 
-    static constexpr int order = 32;
-    double sampleRate = 48000.0;
-    int window = 1200, hop = 120, write = 0, sinceHop = 0;
-    std::vector<float> ring, shape;
-    double autoc[order + 1] {}, lpc[order + 1] {}, scratch[order + 1] {};
-    float k[order] {}, kFrom[order] {}, kTo[order] {}, back[order + 1] {};
-    float gain = 0.0f, gainFrom = 0.0f, gainTo = 0.0f, preState = 0.0f, deState = 0.0f;
-    Biquad highPass[2];
-    juce::Random random { 12345 };
+    int fs = 48000, fftSize = 2048, hop = 240, pulseInterval = 96;
+    double f0Floor = 71.0;
+    static constexpr double maxF0 = 1600.0;
+    std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<double> ring, f0Ring, window, power, smoothed;
+    std::vector<double> mirrorSpectrum, mirrorSegment, axis, low, high, scratchA, scratchB, scratchC;
+    std::vector<int> scratchIndex;
+    std::vector<float> real, hPrev, hCur, accum;   // hPrev / hCur: the last two frames' filters (complex)
+    juce::int64 written = 0, framePrev = -1, frameCur = -1, nextPulse = 0, nextFrame = 0, readPos = 0;
+    juce::uint32 rx = 123456789, ry = 362436069, rz = 521288629, rw = 88675123;
 };
 
 /** One-knob vocal compressor (feed-forward, soft knee, stereo linked, auto make-up). */

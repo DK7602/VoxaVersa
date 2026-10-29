@@ -2,6 +2,8 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_graphics/juce_graphics.h>
+#include <functional>
+#include <vector>
 
 namespace voxa
 {
@@ -133,6 +135,16 @@ struct VoiceProfile
     // Choir Ensemble: the singers of each section (pack ids) and the one singing with the current lead.
     juce::String sectionSingerMale, sectionSingerFemale, choirPartnerSinger;
     bool listed = true;                 // false: the pack only powers built-in voices and is not shown itself
+
+    /** One of a built-in voice's sounds, picked by ear (right-click the voice > Style): what it changes in the
+        voice's traits. Every sound of a voice sets the same traits, so any can follow any. */
+    struct Sound
+    {
+        juce::String name, description;
+        std::function<void (VoiceTraits&)> apply;
+    };
+    std::vector<Sound> sounds;          // the first is the voice's default
+    juce::String soundName;             // the sound it has now (VoiceLibrary::setSoundChoice)
 
     VoiceGender getGender() const noexcept { return traits.gender; }
     bool hasNeuralModel() const          { return neuralModelFile.existsAsFile(); }

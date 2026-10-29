@@ -87,6 +87,11 @@ public:
     void setSingerChoice (const juce::String& voiceId, const juce::String& singerPackId);
     static constexpr const char* choicesFileName = "singer_choices.json";
 
+    /** Gives a built-in voice one of its sounds (VoiceProfile::sounds; empty or unknown: its first). Kept in
+        <Voices>/voice_sounds.json, so it lasts. */
+    void setSoundChoice (const juce::String& voiceId, const juce::String& soundName);
+    static constexpr const char* soundsFileName = "voice_sounds.json";
+
     /** Neutral voices with a singer per gender (Hard Tune Robot, Choir Ensemble) take the one matching the input.
         Returns true when a voice's singer changed. */
     bool setSourceGender (VoiceGender);

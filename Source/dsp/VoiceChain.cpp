@@ -82,7 +82,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR, &dryHzBuf, &leadHzBuf, &whisperIn })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR, &dryHzBuf, &leadHzBuf, &whisperIn, &whisperHz })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -354,8 +354,13 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     {
         const int early = juce::jmin (whisperizer.getLatency(), dspLatency);
         for (int i = 0; i < n; ++i)
-            whisperIn[(size_t) i] = analyzer.interpolate ((double) (tStart + early + i));
-        whisperizer.process (whisperIn.data(), leadBuf.data(), n);
+        {
+            PitchFrame pf;
+            const auto t = tStart + early + i;
+            whisperIn[(size_t) i] = analyzer.interpolate ((double) t);
+            whisperHz[(size_t) i] = timeline.lookup ((double) t, pf) && pf.voiced ? music::midiToHz (pf.srcMidi) : 0.0f;
+        }
+        whisperizer.process (whisperIn.data(), whisperHz.data(), leadBuf.data(), n);
     }
 
     // ... and a little earlier for the R keeper (the input is ahead of the lead by dspLatency).

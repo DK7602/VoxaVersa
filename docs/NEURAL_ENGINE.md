@@ -196,10 +196,24 @@ growl of a blues or street voice) with cycle-to-cycle wobble. Noise is not rasp:
 breath noise pulsing with the voice, sounded "just like static" on an AI singer to a user. `Grit` modulates the
 AI singer at half its pitch (the target pitch per sample; subharmonics between its harmonics, at most ~-20 dB)
 with a depth drawn anew for every pair of cycles and a little cycle-to-cycle level jitter, gliding in and out
-of voiced sound. On a male vocal through Male Rap (0.5, scaled by Style) the harmonics-to-noise ratio went from
+of voiced sound. On a male vocal at 0.5 (scaled by the Style knob) the harmonics-to-noise ratio went from
 14.0 to 11.7 dB while the noise between the harmonics barely rose (1.5 - 5 kHz flatness -11.0 to -10.1 dB; the
-noise version: -6.4 dB). Male Blues: 0.35. It runs on the AI lead after the vowel keeper, live and in Text to
-Sing takes.
+noise version: -6.4 dB). 0.5 was "not natural" on Male Rap: its sounds (right-click > Style, chosen by ear in
+listening audit 5) are Street 0.2 with more saturation and compression, Hard 0 and Growl 0.3; Deep Bass 0.12 -
+0.2; Male Blues 0.35. It runs on the AI lead after the vowel keeper, live and in Text to Sing takes.
+
+### Whisper (`Whisperizer`)
+
+Not an AI singer (one cannot whisper): the input itself, resynthesized the way the WORLD vocoder (M. Morise,
+modified BSD licence, see THIRD_PARTY.md) makes unvoiced sound. Every 5 ms CheapTrick takes the voice's
+spectral envelope with a pitch-adaptive window (three periods; 500 Hz where it is unvoiced), and every 2 ms a
+burst of white noise goes through that envelope as a minimum-phase filter, the bursts overlapping into one
+breath. Listening audit 5 chose it over an LPC lattice whisper and random-phase short-time spectra ("static"),
+and with no EQ of its own (*Soft* adds a 240 Hz low cut and -8.5 dB air, -6 dB at the default 70 % Intensity).
+The port allocates nothing after `prepare()`; 26 ms latency at 48 kHz (half the 2048-sample FFT plus a frame),
+covered by the DSP voice's delay. On a 200 Hz vowel the 700 Hz / 2 kHz balance stays within 1 dB and the
+harmonics are gone (0 dB over the gaps). Rendered through the plug-in, a male vocal's long-term spectrum is within
+2 dB of the WORLD (pyworld) whisper chosen by ear, 125 Hz - 16 kHz.
 
 ### Choir Ensemble
 

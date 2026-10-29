@@ -1231,116 +1231,263 @@ void Grit::process (float* x, const float* hz, int n, float amount) noexcept
 }
 
 //==============================================================================
-void Whisperizer::prepare (double sr)
+// Whisperizer: CheapTrick and WORLD's aperiodic synthesis, ported from WORLD (https://github.com/mmorise/World,
+// Copyright (c) 2010 M. Morise, modified BSD licence) with every buffer allocated in prepare().
+void Whisperizer::prepare (double sampleRate)
 {
-    sampleRate = sr;
-    window = juce::roundToInt (sr * 0.025);
-    hop = juce::jmax (1, juce::roundToInt (sr * 0.0025));
-    ring.assign ((size_t) window, 0.0f);
-    shape.resize ((size_t) window);
-    for (int i = 0; i < window; ++i)
-        shape[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) (window - 1));
-    highPass[0].c = highPass[1].c = BiquadCoeffs::highPass (sr, 350.0);
+    fs = juce::roundToInt (sampleRate);
+    fftSize = (int) std::pow (2.0, 1.0 + (int) (std::log (3.0 * fs / 71.0 + 1.0) / std::log (2.0)));   // GetFFTSizeForCheapTrick
+    f0Floor = 3.0 * fs / (fftSize - 3.0);
+    hop = juce::roundToInt (0.005 * fs);
+    pulseInterval = juce::roundToInt (fs / 500.0);   // WORLD's unvoiced "pulses": every 1 / 500 s
+    fft = std::make_unique<juce::dsp::FFT> ((int) std::round (std::log2 ((double) fftSize)));
+
+    const int half = fftSize / 2;
+    const int maxWindow = 2 * juce::roundToInt (1.5 * fs / f0Floor) + 1;
+    const int maxBoundary = (int) (maxF0 * 2.0 / 3.0 * fftSize / fs) + 2;   // the widest linear smoothing
+    ring.assign ((size_t) fftSize * 2, 0.0);
+    f0Ring.assign (ring.size(), 0.0);
+    for (auto* v : { &power, &smoothed, &axis, &low, &high })
+        v->assign ((size_t) half + 1, 0.0);
+    window.assign ((size_t) maxWindow, 0.0);
+    mirrorSpectrum.assign ((size_t) (half + maxBoundary * 2 + 1), 0.0);
+    mirrorSegment.assign (mirrorSpectrum.size(), 0.0);
+    for (auto* v : { &scratchA, &scratchB, &scratchC })
+        v->assign (mirrorSpectrum.size() + (size_t) fftSize, 0.0);
+    scratchIndex.assign (mirrorSpectrum.size() + (size_t) fftSize, 0);
+    real.assign ((size_t) fftSize * 2, 0.0f);
+    hPrev.assign ((size_t) (half + 1) * 2, 0.0f);
+    hCur.assign (hPrev.size(), 0.0f);
+    accum.assign ((size_t) fftSize * 4, 0.0f);
     reset();
 }
 
 void Whisperizer::reset()
 {
-    std::fill (ring.begin(), ring.end(), 0.0f);
-    write = sinceHop = 0;
-    for (int m = 0; m < order; ++m)
-        k[m] = kFrom[m] = kTo[m] = 0.0f;
-    for (auto& b : back)
-        b = 0.0f;
-    gain = gainFrom = gainTo = preState = deState = 0.0f;
-    highPass[0].reset();
-    highPass[1].reset();
+    std::fill (ring.begin(), ring.end(), 0.0);
+    std::fill (f0Ring.begin(), f0Ring.end(), 0.0);
+    std::fill (accum.begin(), accum.end(), 0.0f);
+    std::fill (hPrev.begin(), hPrev.end(), 0.0f);
+    std::fill (hCur.begin(), hCur.end(), 0.0f);
+    written = 0;
+    framePrev = frameCur = -1;
+    nextFrame = 0;
+    nextPulse = 0;
+    readPos = -getLatency();
+    rx = 123456789; ry = 362436069; rz = 521288629; rw = 88675123;
 }
 
-void Whisperizer::analyse() noexcept
+double Whisperizer::randn() noexcept   // WORLD's Gaussian (xorshift, sum of 12 uniforms)
 {
-    // autocorrelation of the windowed, pre-emphasised last 25 ms (the ring holds pre-emphasised input)
-    for (int lag = 0; lag <= order; ++lag)
+    juce::uint32 t = rx ^ (rx << 11);
+    rx = ry; ry = rz; rz = rw;
+    rw = (rw ^ (rw >> 19)) ^ (t ^ (t >> 8));
+    juce::uint32 tmp = rw >> 4;
+    for (int i = 0; i < 11; ++i)
     {
-        double sum = 0.0;
-        for (int i = lag; i < window; ++i)
-            sum += (double) ring[(size_t) ((write + i) % window)] * shape[(size_t) i]
-                 * (double) ring[(size_t) ((write + i - lag) % window)] * shape[(size_t) (i - lag)];
-        autoc[lag] = sum;
+        t = rx ^ (rx << 11);
+        rx = ry; ry = rz; rz = rw;
+        rw = (rw ^ (rw >> 19)) ^ (t ^ (t >> 8));
+        tmp += rw >> 4;
     }
-    for (int m = 0; m < order; ++m)
-        kFrom[m] = kTo[m];
-    gainFrom = gainTo;
-
-    if (autoc[0] < 1.0e-9)
-    {
-        for (int m = 0; m < order; ++m)
-            kTo[m] = 0.0f;
-        gainTo = 0.0f;
-        return;
-    }
-
-    // a Gaussian lag window smooths the envelope over ~+-200 Hz (a sharper one traces the voice's harmonics, a
-    // pitched whisper), a little lag-0 lift for stability; Levinson-Durbin gives the lattice's coefficients
-    for (int lag = 1; lag <= order; ++lag)
-        autoc[lag] *= std::exp (-0.5 * juce::square (juce::MathConstants<double>::twoPi * 200.0 * lag / sampleRate));
-    autoc[0] *= 1.0001;
-    double error = autoc[0];
-    for (int i = 0; i <= order; ++i)
-        lpc[i] = 0.0;
-    lpc[0] = 1.0;
-    for (int m = 1; m <= order; ++m)
-    {
-        double acc = autoc[m];
-        for (int j = 1; j < m; ++j)
-            acc += lpc[j] * autoc[m - j];
-        const double km = -acc / error;
-        for (int j = 1; j < m; ++j)
-            scratch[j] = lpc[j] + km * lpc[m - j];
-        for (int j = 1; j < m; ++j)
-            lpc[j] = scratch[j];
-        lpc[m] = km;
-        error *= (1.0 - km * km);
-        kTo[m - 1] = (float) juce::jlimit (-0.999, 0.999, km);
-        if (error <= 0.0)
-            break;
-    }
-    // the residual's power per sample (Hann-window power 3/8) sets the noise level
-    gainTo = (float) std::sqrt (juce::jmax (0.0, error) / (0.375 * window));
+    return tmp / 268435456.0 - 6.0;
 }
 
-void Whisperizer::process (const float* input, float* output, int n) noexcept
+void Whisperizer::interp1Q (double x, double shift, const double* y, int xLength, const double* xi, int xiLength,
+                            double* yi, int* base, double* fraction, double* dy) noexcept
 {
+    for (int i = 0; i < xiLength; ++i)
+    {
+        base[i] = (int) ((xi[i] - x) / shift);
+        fraction[i] = (xi[i] - x) / shift - base[i];
+    }
+    for (int i = 0; i < xLength - 1; ++i)
+        dy[i] = y[i + 1] - y[i];
+    dy[xLength - 1] = 0.0;
+    for (int i = 0; i < xiLength; ++i)
+    {
+        const int b = juce::jlimit (0, xLength - 1, base[i]);
+        yi[i] = y[b] + dy[b] * fraction[i];
+    }
+}
+
+void Whisperizer::analyse (juce::int64 centre) noexcept
+{
+    const int half = fftSize / 2, size = (int) ring.size();
+    const double storedF0 = f0Ring[(size_t) (centre % size)];
+    const double f0 = storedF0 <= f0Floor ? 500.0 : juce::jmin (storedF0, maxF0);   // kDefaultF0 where unvoiced
+    const int h = juce::jmin (juce::roundToInt (1.5 * fs / f0), (int) (window.size() - 1) / 2);
+
+    // F0-adaptive Hann window over three periods, normalised; the DC under it removed
+    double norm = 0.0;
+    for (int i = -h; i <= h; ++i)
+    {
+        const double w = 0.5 * std::cos (juce::MathConstants<double>::pi * (i / 1.5 / fs) * f0) + 0.5;
+        window[(size_t) (i + h)] = w;
+        norm += w * w;
+    }
+    norm = std::sqrt (norm);
+    double sumWave = 0.0, sumWindow = 0.0;
+    std::fill (real.begin(), real.end(), 0.0f);
+    for (int i = 0; i <= 2 * h; ++i)
+    {
+        window[(size_t) i] /= norm;
+        const double x = ring[(size_t) ((centre - h + i + size) % size)] * window[(size_t) i] + randn() * 1.0e-12;
+        scratchA[(size_t) i] = x;
+        sumWave += x;
+        sumWindow += window[(size_t) i];
+    }
+    for (int i = 0; i <= 2 * h; ++i)
+        real[(size_t) i] = (float) (scratchA[(size_t) i] - window[(size_t) i] * sumWave / sumWindow);
+
+    // power spectrum
+    fft->performRealOnlyForwardTransform (real.data(), true);
+    for (int k = 0; k <= half; ++k)
+        power[(size_t) k] = (double) real[(size_t) (2 * k)] * real[(size_t) (2 * k)] + (double) real[(size_t) (2 * k + 1)] * real[(size_t) (2 * k + 1)];
+
+    // DC correction: below F0 the spectrum gets its mirror image around F0
+    {
+        const int upper = 2 + (int) (f0 * fftSize / fs);
+        for (int i = 0; i < upper; ++i)
+            axis[(size_t) i] = (double) i * fs / fftSize;
+        interp1Q (f0, -(double) fs / fftSize, power.data(), upper + 1, axis.data(), upper - 1, low.data(),
+                  scratchIndex.data(), scratchB.data(), scratchC.data());
+        for (int i = 0; i < upper - 1; ++i)
+            power[(size_t) i] += low[(size_t) i];
+    }
+
+    // linear smoothing over 2/3 F0
+    {
+        const double width = f0 * 2.0 / 3.0;
+        const int boundary = (int) (width * fftSize / fs) + 1;
+        for (int i = 0; i < boundary; ++i)
+            mirrorSpectrum[(size_t) i] = power[(size_t) (boundary - i)];
+        for (int i = boundary; i < half + boundary; ++i)
+            mirrorSpectrum[(size_t) i] = power[(size_t) (i - boundary)];
+        for (int i = half + boundary; i <= half + boundary * 2; ++i)
+            mirrorSpectrum[(size_t) i] = power[(size_t) (half - (i - (half + boundary)))];
+        const int n = half + boundary * 2 + 1;
+        mirrorSegment[0] = mirrorSpectrum[0] * fs / fftSize;
+        for (int i = 1; i < n; ++i)
+            mirrorSegment[(size_t) i] = mirrorSpectrum[(size_t) i] * fs / fftSize + mirrorSegment[(size_t) (i - 1)];
+        for (int i = 0; i <= half; ++i)
+            axis[(size_t) i] = (double) i / fftSize * fs - width / 2.0;
+        const double origin = -(boundary - 0.5) * fs / fftSize, step = (double) fs / fftSize;
+        interp1Q (origin, step, mirrorSegment.data(), n, axis.data(), half + 1, low.data(), scratchIndex.data(),
+                  scratchB.data(), scratchC.data());
+        for (int i = 0; i <= half; ++i)
+            axis[(size_t) i] += width;
+        interp1Q (origin, step, mirrorSegment.data(), n, axis.data(), half + 1, high.data(), scratchIndex.data(),
+                  scratchB.data(), scratchC.data());
+        for (int i = 0; i <= half; ++i)
+            smoothed[(size_t) i] = (high[(size_t) i] - low[(size_t) i]) / width + std::abs (randn()) * 2.2204460492503131e-16;
+    }
+
+    // log-spectrum smoothing and recovery on the cepstrum (q1 = -0.15)
+    std::fill (real.begin(), real.end(), 0.0f);
+    for (int i = 0; i <= half; ++i)
+        real[(size_t) i] = (float) std::log (smoothed[(size_t) i]);
+    for (int i = 1; i < half; ++i)
+        real[(size_t) (fftSize - i)] = real[(size_t) i];
+    fft->performRealOnlyForwardTransform (real.data(), true);
+    constexpr double q1 = -0.15;
+    for (int k = 0; k <= half; ++k)
+    {
+        const double q = (double) k / fs;
+        const double smoothing = k == 0 ? 1.0 : std::sin (juce::MathConstants<double>::pi * f0 * q) / (juce::MathConstants<double>::pi * f0 * q);
+        const double compensation = (1.0 - 2.0 * q1) + 2.0 * q1 * std::cos (2.0 * juce::MathConstants<double>::pi * q * f0);
+        real[(size_t) (2 * k)] = (float) (real[(size_t) (2 * k)] * smoothing * compensation);
+        real[(size_t) (2 * k + 1)] = 0.0f;
+    }
+    // the minimum-phase response of the envelope's square root, from that cepstrum (WORLD's
+    // GetMinimumPhaseSpectrum: folded onto positive quefrencies, halved for the square root)
+    const float scale = 1.0f / (float) fftSize;
+    for (int n = 0; n <= half; ++n)
+        real[(size_t) n] = real[(size_t) (2 * n)] * scale * (n == 0 || n == half ? 0.5f : 1.0f);
+    std::fill (real.begin() + half + 1, real.end(), 0.0f);
+    fft->performRealOnlyForwardTransform (real.data(), true);
+    std::swap (hPrev, hCur);
+    for (int k = 0; k <= half; ++k)
+    {
+        const float mag = std::exp (real[(size_t) (2 * k)]), phase = real[(size_t) (2 * k + 1)];
+        hCur[(size_t) (2 * k)] = mag * std::cos (phase);
+        hCur[(size_t) (2 * k + 1)] = mag * std::sin (phase);
+    }
+    framePrev = frameCur;
+    frameCur = centre;
+}
+
+void Whisperizer::pulse (juce::int64 at) noexcept
+{
+    const int half = fftSize / 2;
+    const float a = frameCur > framePrev && framePrev >= 0 ? juce::jlimit (0.0f, 1.0f, (float) (at - framePrev) / (float) (frameCur - framePrev)) : 1.0f;
+
+    // a burst of white noise (mean removed) as long as the pulse interval, through that filter
+    std::fill (real.begin(), real.end(), 0.0f);
+    double mean = 0.0;
+    for (int i = 0; i < pulseInterval; ++i)
+    {
+        real[(size_t) i] = (float) randn();
+        mean += real[(size_t) i];
+    }
+    mean /= pulseInterval;
+    for (int i = 0; i < pulseInterval; ++i)
+        real[(size_t) i] -= (float) mean;
+    fft->performRealOnlyForwardTransform (real.data(), true);
+    for (int k = 0; k <= half; ++k)   // the filter between the frames on either side (WORLD interpolates the envelope)
+    {
+        const float re = hPrev[(size_t) (2 * k)] * (1.0f - a) + hCur[(size_t) (2 * k)] * a;
+        const float im = hPrev[(size_t) (2 * k + 1)] * (1.0f - a) + hCur[(size_t) (2 * k + 1)] * a;
+        const float nr = real[(size_t) (2 * k)], ni = real[(size_t) (2 * k + 1)];
+        real[(size_t) (2 * k)] = re * nr - im * ni;
+        real[(size_t) (2 * k + 1)] = re * ni + im * nr;
+    }
+    fft->performRealOnlyInverseTransform (real.data());
+
+    // fftshift and overlap-add: the response starts just after the pulse
+    const int size = (int) accum.size();
+    const auto first = juce::jmax (readPos, (juce::int64) 0);   // what is already played (or before the start) is gone
+    for (int j = 0; j < fftSize; ++j)
+    {
+        const juce::int64 t = at - half + 1 + j;
+        if (t >= first)
+            accum[(size_t) (t % size)] += real[(size_t) ((j + half) % fftSize)];
+    }
+}
+
+void Whisperizer::process (const float* input, const float* f0Hz, float* output, int n) noexcept
+{
+    const int size = (int) ring.size(), accumSize = (int) accum.size();
+    const int half = fftSize / 2;
     for (int i = 0; i < n; ++i)
     {
-        const float pre = input[i] - 0.97f * preState;
-        preState = input[i];
-        ring[(size_t) write] = pre;
-        write = (write + 1) % window;
-        if (++sinceHop >= hop)
+        ring[(size_t) (written % size)] = input[i];
+        f0Ring[(size_t) (written % size)] = f0Hz[i];
+        ++written;
+
+        // a new envelope every 5 ms, centred half a frame (FFT) behind the newest input: its future is known
+        const juce::int64 centre = written - 1 - half;
+        if (centre >= nextFrame)
         {
-            sinceHop = 0;
-            analyse();
+            analyse (centre);
+            nextFrame = centre + hop;
+            while (nextPulse <= frameCur)
+            {
+                pulse (nextPulse);
+                nextPulse += pulseInterval;
+            }
         }
 
-        // glide the filter and level from the previous analysis to this one over the hop
-        const float t = (float) sinceHop / (float) hop;
-        for (int m = 0; m < order; ++m)
-            k[m] = kFrom[m] + (kTo[m] - kFrom[m]) * t;
-        gain = gainFrom + (gainTo - gainFrom) * t;
-
-        // all-pole lattice: white noise through 1/A(z)
-        float f = gain * (2.0f * random.nextFloat() - 1.0f) * 1.7320508f;   // unit-variance noise
-        for (int m = order; m >= 1; --m)
+        if (readPos >= 0)
         {
-            f -= k[m - 1] * back[m - 1];
-            back[m] = back[m - 1] + k[m - 1] * f;
+            output[i] = accum[(size_t) (readPos % accumSize)];
+            accum[(size_t) (readPos % accumSize)] = 0.0f;
         }
-        back[0] = f;
-
-        const float de = f + 0.97f * deState;   // undo the pre-emphasis
-        deState = de;
-        output[i] = highPass[1].process (highPass[0].process (de));
+        else
+        {
+            output[i] = 0.0f;
+        }
+        ++readPos;
     }
 }
 

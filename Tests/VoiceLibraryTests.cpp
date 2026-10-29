@@ -291,6 +291,34 @@ public:
             expect (own != nullptr && own->name == "Clarion Tenor", own != nullptr ? own->name : "missing");
         }
 
+        beginTest ("A voice's sound chosen by ear sets its traits and lasts");
+        {
+            auto dir = root.getChildFile ("sounds");
+            dir.createDirectory();
+            VoiceLibrary library;
+            library.rescanUserVoices (dir);
+            const auto* rap = library.findById ("male-rap");
+            expect (rap->sounds.size() == 3 && rap->soundName == "Street", rap->soundName);
+            expectWithinAbsoluteError (rap->traits.aiGrit, 0.2f, 1.0e-6f);
+            const float body = rap->traits.bodyDb;
+
+            library.setSoundChoice ("male-rap", "Hard");
+            expectEquals (library.findById ("male-rap")->soundName, juce::String ("Hard"));
+            expectWithinAbsoluteError (library.findById ("male-rap")->traits.aiGrit, 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (library.findById ("male-rap")->traits.presenceDb, 5.5f, 1.0e-6f);
+            library.rescanUserVoices (dir);   // e.g. after an import, or the next session: the choice stays
+            expectEquals (library.findById ("male-rap")->soundName, juce::String ("Hard"));
+            library.setSoundChoice ("male-rap", "Growl");   // any sound can follow any
+            expectWithinAbsoluteError (library.findById ("male-rap")->traits.aiGrit, 0.3f, 1.0e-6f);
+            expectWithinAbsoluteError (library.findById ("male-rap")->traits.bodyDb, body, 1.0e-6f);
+
+            expectEquals (library.findById ("male-deep-bass")->soundName, juce::String ("Natural"));
+            expectEquals (library.findById ("neutral-whisper")->soundName, juce::String ("Natural"));
+            for (const auto& v : library.getVoices())
+                for (const auto& sound : v.sounds)
+                    expect (sound.apply != nullptr && sound.name.isNotEmpty() && sound.description.isNotEmpty(), v.id);
+        }
+
         beginTest ("Built-in voices have unique ids and sensible ranges");
         {
             VoiceLibrary library;

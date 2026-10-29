@@ -702,6 +702,20 @@ void VoiceLibraryPanel::showCardMenu (int index)
         m.addSubMenu ("AI Singer", sm);
     }
 
+    // A built-in voice's sounds, picked by ear (Male Rap: Street, Hard, Growl...).
+    constexpr int soundBase = 400;
+    if (! v.sounds.empty())
+    {
+        juce::PopupMenu sm;
+        for (int i = 0; i < (int) v.sounds.size(); ++i)
+        {
+            const auto& sound = v.sounds[(size_t) i];
+            sm.addItem (soundBase + i, sound.name + (i == 0 ? " (default)" : "") + " - " + sound.description, true,
+                        sound.name == v.soundName);
+        }
+        m.addSubMenu ("Style", sm);
+    }
+
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, v, index, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
     {
         if (safeThis == nullptr)
@@ -730,6 +744,14 @@ void VoiceLibraryPanel::showCardMenu (int index)
             default:
             {
                 auto& library = ctx.processor.getVoiceLibrary();
+                if (juce::isPositiveAndBelow (r - soundBase, (int) v.sounds.size()))
+                {
+                    const auto& sound = v.sounds[(size_t) (r - soundBase)];
+                    library.setSoundChoice (v.id, sound.name);
+                    ctx.processor.voiceSoundChanged();
+                    ctx.toast (v.name + ": " + sound.name);
+                    break;
+                }
                 const auto& list = library.getAiSingers();
                 if (r == singerBase - 1 || juce::isPositiveAndBelow (r - singerBase, (int) list.size()))
                 {

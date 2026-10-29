@@ -239,9 +239,7 @@ namespace
             const juce::String id (g.idPart);
             t.singAccent = id == "country" ? 1 : id == "reggae" ? 2 : id == "latin" ? 3 : id == "afrobeats" ? 4 : 0;
         }
-        // An AI singer's street grit (Male Rap) and blues rasp (Male Blues).
-        if (male && juce::String (g.idPart) == "rap")
-            t.aiGrit = 0.5f;
+        // An AI singer's blues rasp (Male Blues); Male Rap's grit is in its sounds (below).
         if (male && juce::String (g.idPart) == "blues")
             t.aiGrit = 0.35f;
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
@@ -274,6 +272,24 @@ namespace
         t.vibeLowCutHz = g.lowCut + (male ? 0.0f : 20.0f);
         t.singLegato = g.legato;
         t.singRhythmBusy = g.busy;
+
+        // Male Rap's sounds, picked by ear (listening audit 5): a light growl with more drive and compression
+        // by default; a clean, punchy one; and more growl.
+        if (male && juce::String (g.idPart) == "rap")
+        {
+            const float body = t.bodyDb, presence = t.presenceDb, comp = t.vibeCompressor;
+            auto rap = [=] (float grit, float sat, float compressor, float bodyDb, float presenceDb)
+            {
+                return [=] (VoiceTraits& v)
+                {
+                    v.aiGrit = grit; v.vibeSaturation = sat; v.vibeCompressor = compressor;
+                    v.bodyDb = bodyDb; v.presenceDb = presenceDb;
+                };
+            };
+            p.sounds = { { "Street", "A light growl, more drive and compression", rap (0.2f, 0.35f, 0.8f, body, presence) },
+                         { "Hard", "Clean and punchy, up front", rap (0.0f, 0.45f, 0.85f, 4.0f, 5.5f) },
+                         { "Growl", "More growl", rap (0.3f, 0.3f, comp, body, presence) } };
+        }
         return p;
     }
 
@@ -315,6 +331,17 @@ std::vector<VoiceProfile> createFactoryVoices()
         t.vibratoDepthCents = 15.0f; t.vibratoRateHz = 5.0f; t.jitterCents = 4.0f;
         t.vibeCompressor = 0.5f; t.vibeReverbMix = 0.15f; t.vibeLowCutHz = 40.0f;
     }));
+    {
+        // picked by ear (listening audit 5): a touch of roughness, a little less boom and more presence, so it
+        // sounds human; or the warmer, rounder bass
+        auto bass = [] (float grit, float body, float warmth, float presence)
+        {
+            return [=] (VoiceTraits& t) { t.aiGrit = grit; t.bodyDb = body; t.warmthDb = warmth; t.presenceDb = presence; };
+        };
+        voices.back().sounds = { { "Natural", "A touch of roughness, clear words", bass (0.12f, 3.5f, 3.0f, 2.5f) },
+                                 { "Warm", "Rounder and deeper", bass (0.12f, 5.0f, 3.5f, 1.5f) },
+                                 { "Gritty", "Rounder, with more grit", bass (0.2f, 5.0f, 3.5f, 1.5f) } };
+    }
 
     voices.push_back (makeSpecialty ("female-angelic", "Angelic Soprano", "Pure, ethereal head voice", VoiceGender::Female,
                                      { "Airy", "Ethereal", "Classical" }, 0xffbfd9ff, 0xffffffff, [] (VoiceTraits& t)
@@ -340,11 +367,20 @@ std::vector<VoiceProfile> createFactoryVoices()
                                      { "Breathy", "Intimate", "Airy" }, 0xff8fa3bf, 0xffe1e8f2, [] (VoiceTraits& t)
     {
         t.rangeLowMidi = 48; t.rangeHighMidi = 72; t.formantSemis = 0.2f; t.noAiSinger = true; t.whisper = true;
-        // the whisper is the breath: synthetic breath noise on top of it was "static"
-        t.breathiness = 0.1f; t.airDb = 4.0f; t.presenceDb = 1.0f; t.vibratoDepthCents = 0.0f;
-        t.ringHz = 6000.0f; t.ringDb = 3.0f; t.bodyHz = 250.0f; t.bodyDb = -3.0f;
-        t.vibeCompressor = 0.6f; t.vibeReverbMix = 0.08f; t.vibeDeEsser = 0.5f;
+        // the whisper is the breath: synthetic breath noise on top of it was "static"; and it is the voice's own
+        // (the EQ is in its sounds, below)
+        t.breathiness = 0.0f; t.vibratoDepthCents = 0.0f;
+        t.vibeCompressor = 0.5f; t.vibeReverbMix = 0.08f;
     }));
+    {
+        // picked by ear (listening audit 5): the whisper as it comes; or softer, with less low end and top
+        auto whisper = [] (float lowCutHz, float airDb)
+        {
+            return [=] (VoiceTraits& t) { t.vibeLowCutHz = lowCutHz; t.airDb = airDb; };
+        };
+        voices.back().sounds = { { "Natural", "The whisper as it comes", whisper (80.0f, 0.0f) },
+                                 { "Soft", "Less low end, a softer top", whisper (240.0f, -8.5f) } };
+    }
 
     voices.push_back (makeSpecialty ("neutral-robot", "Hard Tune Robot", "Zero-latency robotic pitch snap", VoiceGender::Neutral,
                                      { "Auto-Tuned", "Robotic", "Creative" }, 0xff00e5c7, 0xffb2fff3, [] (VoiceTraits& t)
@@ -364,6 +400,12 @@ std::vector<VoiceProfile> createFactoryVoices()
         t.vibeDoubler = 0.9f; t.vibeReverbMix = 0.38f; t.vibeReverbSize = 0.85f; t.vibeCompressor = 0.4f; t.choir = true;
     }));
 
+    for (auto& v : voices)   // a voice with sounds starts with its first
+        if (! v.sounds.empty())
+        {
+            v.sounds.front().apply (v.traits);
+            v.soundName = v.sounds.front().name;
+        }
     return voices;
 }
 

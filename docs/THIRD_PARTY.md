@@ -28,6 +28,38 @@ per word, and gzip the result.
 - **Licence:** a work of the US Government, in the public domain. The rules were re-typed with
   ARPAbet output; no third-party code is included.
 
+## WORLD vocoder (CheapTrick and unvoiced synthesis)
+
+- **Used for:** the Whisper voice (`Whisperizer` in `Source/dsp/VocalFx.cpp`): its spectral envelope
+  analysis (CheapTrick) and noise synthesis are ported from WORLD, rewritten to allocate nothing while
+  processing.
+- **Source:** <https://github.com/mmorise/World> (`cheaptrick.cpp`, `synthesis.cpp`, `common.cpp`,
+  `matlabfunctions.cpp`)
+- **Copyright:** © 2010 M. Morise. All rights reserved.
+- **Licence:** modified BSD (3-clause). Because the port ships in the binary, this notice must also ship
+  with the product (for example in the About box or the installer's licence notes):
+
+  > Redistribution and use in source and binary forms, with or without modification, are permitted
+  > provided that the following conditions are met: Redistributions of source code must retain the above
+  > copyright notice, this list of conditions and the following disclaimer. Redistributions in binary form
+  > must reproduce the above copyright notice, this list of conditions and the following disclaimer in the
+  > documentation and/or other materials provided with the distribution. Neither the name of the M. Morise
+  > nor the names of its contributors may be used to endorse or promote products derived from this
+  > software without specific prior written permission.
+  >
+  > THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+  > WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+  > PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+  > ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  > LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  > INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+  > TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+  > ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+- **Modifications:** buffers are allocated once in `prepare()`; frames are analysed as audio arrives
+  (half an FFT ahead) instead of over a whole file; only the unvoiced (noise) synthesis is used; JUCE's
+  FFT replaces FFTSG.
+
 ## Published methods implemented from the literature (no code copied)
 
 - Liljencrants-Fant glottal flow model (Fant, Liljencrants & Lin, 1985) and its Rd

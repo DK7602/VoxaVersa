@@ -1005,27 +1005,35 @@ public:
             expectWithinAbsoluteError (20.0 * std::log10 (rms (x, n / 2, n) / rms (before, n / 2, n)), 0.0, 1.5);
         }
 
-        beginTest ("The whisper keeps the level and loses the pitch");
+        beginTest ("The whisper keeps the level and the vowel and loses the pitch");
         {
-            std::vector<float> in ((size_t) n), out ((size_t) n);
+            // a vowel-like voice at 200 Hz: harmonics falling 6 dB an octave, a resonance at 700 Hz
+            std::vector<float> in ((size_t) n), out ((size_t) n), hz ((size_t) n, 200.0f);
             for (int i = 0; i < n; ++i)
                 for (int h = 1; h <= 20; ++h)
-                    in[(size_t) i] += 0.05f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
+                    in[(size_t) i] += (h == 3 || h == 4 ? 0.15f : 0.05f) / (float) h
+                                      * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
             dsp::Whisperizer w;
             w.prepare (sr);
             for (int pos = 0; pos < n; pos += 480)
-                w.process (in.data() + pos, out.data() + pos, juce::jmin (480, n - pos));
-            const int from = n / 2;
-            // a whisper has nothing below ~350 Hz: compare the level above it
-            auto above = [sr] (std::vector<float> x)
+                w.process (in.data() + pos, hz.data() + pos, out.data() + pos, juce::jmin (480, n - pos));
+            const int from = n / 2, lag = w.getLatency();
+            expectWithinAbsoluteError (20.0 * std::log10 (rms (out, from, n) / rms (in, from - lag, n - lag)), 0.0, 3.0);
+
+            // the resonance stays: the 600-800 Hz band over the 1.6-2.4 kHz band, as in the voice
+            auto band = [sr] (std::vector<float> x, double centre, int a, int b)
             {
-                dsp::Biquad hp[2];
-                hp[0].c = hp[1].c = dsp::BiquadCoeffs::highPass (sr, 350.0);
+                dsp::Biquad bp[2];
+                bp[0].c = bp[1].c = dsp::BiquadCoeffs::bandPass (sr, centre, 2.0);
                 for (auto& v : x)
-                    v = hp[1].process (hp[0].process (v));
-                return x;
+                    v = bp[1].process (bp[0].process (v));
+                return 20.0 * std::log10 (rms (x, a, b) + 1.0e-9);
             };
-            expectWithinAbsoluteError (20.0 * std::log10 (rms (out, from, n) / rms (above (in), from - w.getLatency(), n - w.getLatency())), 0.0, 3.0);
+            const double dryTilt = band (in, 700.0, from - lag, n - lag) - band (in, 2000.0, from - lag, n - lag);
+            const double tilt = band (out, 700.0, from, n) - band (out, 2000.0, from, n);
+            logMessage ("700 Hz over 2 kHz: dry " + juce::String (dryTilt, 1) + " dB, whisper " + juce::String (tilt, 1) + " dB");
+            expectWithinAbsoluteError (tilt, dryTilt, 4.0);
+
             // the harmonics no longer stand out from the gaps between them
             const double peak = tone (out, from, n, 1000.0, sr), gap = tone (out, from, n, 1100.0, sr);
             const double dryPeak = tone (in, from, n, 1000.0, sr), dryGap = tone (in, from, n, 1100.0, sr);
