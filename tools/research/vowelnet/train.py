@@ -46,6 +46,7 @@ for ep in range(EPOCHS):
         acc = lambda m: (p[m] == yc[m]).mean() if m.any() else float("nan")
         vow = np.array([c not in ("C", "SIL") for c in Y[check]])
         print("epoch %d: train acc %.3f, held-out acc %.3f (vowel frames %.3f)" % (ep + 1, acc(~tc), acc(tc), acc(tc & vow)), flush=True)
+        torch.save(dict(state=net.state_dict(), classes=classes, mu=mu, sd=sd, epoch=ep + 1), sys.argv[1])   # a checkpoint
 torch.save(dict(state=net.state_dict(), classes=classes, mu=mu, sd=sd), sys.argv[1])
 if test.any():
     for c in ("AY", "AY_g", "OY", "OY_g", "EH_N", "EY", "AE", "AA", "AH", "AW", "OW"):
