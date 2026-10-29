@@ -45,6 +45,45 @@ def holds(P, classes, voiced, V0=V0, G0=G0, E0=E0, N0=N0):
         if g[d] < G0: evidence.append(a[d] + g[d]); nucleus.append(a[d])
     return out
 
+# The other Southern vowels (step 2), each a shift of the content features by a difference of vowel means, as the
+# approved prototype (tools/research/accent_features.py) made them, in shapes the plug-in can decide live:
+#   raise (friend, ten: "eh" before n / m towards "ih"): the whole vowel, in and out over 3 frames;
+#   lower (pain, taking: "ay" starts lower): from the vowel's start, in over 3 frames, gone after L frames;
+#   drawl (and, laughing: "a" with a glide towards "ih"): a 160 ms bump from D0 frames into the vowel.
+# A vowel gets at most one; each starts once the vowel so far (at least 3 frames) is that vowel by P(class | vowel).
+TR, TL, TD, L, D0 = 0.4, 0.4, 0.4, 8, 5
+
+def shifts(P, classes, voiced, TR=TR, TL=TL, TD=TD, L=L, D0=D0, V0=V0):
+    """Per-frame weights (raise, lower, drawl) [T][3], as the plug-in leaves them (2 frames of lookahead; a start
+    reaches back 2 frames)."""
+    ci = {c: i for i, c in enumerate(classes)}
+    vow = [ci[c] for c in classes if c not in ("C", "SIL")]
+    v = P[:, vow].sum(1); T = len(P)
+    rel = np.stack([P[:, ci["EH_N"]], P[:, ci["EY"]], P[:, ci["AE"]]], 1) / v[:, None]
+    isv = np.append(np.asarray(voiced, bool) & (v >= V0), [False, False])
+    w = np.zeros((T, 3), np.float32); need = (TR, TL, TD)
+    on, start, sums = -1, 0, np.zeros(3)
+    bump = lambda k: 0.0 if k < 0 else ((k + 1) / 4 if k < 4 else max(0.0, 1 - (k - 3) / 4))
+    for d in range(T):
+        if not isv[d]: on, sums = -1, np.zeros(3); continue
+        if d == 0 or not isv[d - 1]: start = d
+        i = d - start; sums += rel[d]
+        out = 1 / 3 if not isv[d + 1] else (2 / 3 if not isv[d + 2] else 1.0)
+        if on < 0 and i >= 2:
+            means = sums / (i + 1); best = int(np.argmax(means - np.array(need)))
+            if means[best] >= need[best]:
+                on = best; drawl0 = max(d, start + D0)
+                if on == 0:
+                    for j in (d - 2, d - 1):
+                        if j >= start: w[j, 0] = (j - (d - 2) + 1) / 3
+                if on == 1:
+                    for j in (d - 2, d - 1):
+                        if j >= start: w[j, 1] = min(1, (j - start + 1) / 3) * max(0.0, 1 - (j - start) / L)
+        if on == 0: w[d, 0] = out
+        elif on == 1: w[d, 1] = min(1, (i + 1) / 3) * max(0.0, 1 - i / L) * out
+        elif on == 2: w[d, 2] = bump(d - drawl0) * out
+    return w
+
 if __name__ == "__main__":
     net, classes, mu, sd = load(sys.argv[1]); d = np.load(sys.argv[2], allow_pickle=True)
     P = posteriors(net, mu, sd, W=d["W"]) if "W" in d else posteriors(net, mu, sd, d["F"].astype(np.float32))

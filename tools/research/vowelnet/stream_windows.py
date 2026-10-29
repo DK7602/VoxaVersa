@@ -13,11 +13,15 @@ from scipy.signal import resample_poly
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from features import label_rows
 
-so = ort.SessionOptions(); so.intra_op_num_threads = 2
-enc = ort.InferenceSession(sys.argv[1], so, providers=["CPUExecutionProvider"])
+_sessions = {}
 
-def windows(wav, context_ms):
+def windows(wav, context_ms, encoder=None):
     """[T][5*768] float16: each encoder frame's window from the chunk that decides it."""
+    path = encoder or sys.argv[1]
+    if path not in _sessions:
+        so = ort.SessionOptions(); so.intra_op_num_threads = 2
+        _sessions[path] = ort.InferenceSession(path, so, providers=["CPUExecutionProvider"])
+    enc = _sessions[path]
     x, sr = sf.read(wav, dtype="float32", always_2d=True); x = x.mean(1)
     g = math.gcd(int(sr), 16000); x = resample_poly(x, 16000 // g, int(sr) // g).astype(np.float32)
     n10 = len(x) // 160; T = n10 // 2; chunk = 40 + ((9 + context_ms // 10 + 1) & ~1)
