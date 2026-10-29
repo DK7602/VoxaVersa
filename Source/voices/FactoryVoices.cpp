@@ -273,6 +273,23 @@ namespace
         t.singLegato = g.legato;
         t.singRhythmBusy = g.busy;
 
+        // Female Country's sounds, picked by ear (listening audit 9: "a little high pitched, needs maturity"):
+        // darker and fuller by default; or an octave lower, in the low end of her singer's range.
+        if (! male && juce::String (g.idPart) == "country")
+        {
+            const VoiceTraits own = t;
+            auto country = [] (float tilt, float warmth, float body, float air, float presence, float bias)
+            {
+                return [=] (VoiceTraits& v)
+                {
+                    v.tiltDb = tilt; v.warmthDb = warmth; v.bodyDb = body; v.airDb = air; v.presenceDb = presence;
+                    v.registerBiasSemis = bias;
+                };
+            };
+            p.sounds = { { "Mature", "Darker and fuller, more chest", country (-0.5f, 3.5f, 4.0f, -0.5f, 1.5f, own.registerBiasSemis) },
+                         { "Low", "An octave lower, the low end of her range",
+                           country (own.tiltDb, own.warmthDb, own.bodyDb, own.airDb, own.presenceDb, -6.0f) } };
+        }
         // Male Rap's sounds, picked by ear (listening audit 5): a light growl with more drive and compression
         // by default; a clean, punchy one; and more growl.
         if (male && juce::String (g.idPart) == "rap")
