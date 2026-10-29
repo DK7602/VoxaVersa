@@ -1,5 +1,5 @@
 """Word timings of a vocal: faster-whisper small.en with word timestamps -> JSON [{word, start, end}].
-usage: words.py in.wav out.json"""
+usage: word_timings.py in.wav out.json"""
 import os, sys, json
 os.environ.setdefault("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
 import numpy as np, soundfile as sf
