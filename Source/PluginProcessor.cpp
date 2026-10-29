@@ -1718,16 +1718,6 @@ void VoxaVersaProcessor::generateSinging()
             juce::String error;
             if (model->convert (result.audio, result.sampleRate, result.f0Hz, result.f0FrameRate, converted, &cancel, error))
             {
-                // The AI singer blurs consonants ("spend" was heard as "is that", "singing" as "tinging"): the
-                // guide's own unvoiced consonants are kept, as Voice Transform keeps the singer's.
-                dsp::ConsonantKeeper consonants;
-                consonants.prepare (result.sampleRate);
-                const int n = juce::jmin (converted.getNumSamples(), result.audio.getNumSamples());
-                for (int ch = 0; ch < converted.getNumChannels(); ++ch)
-                {
-                    consonants.reset();
-                    consonants.process (converted.getWritePointer (ch), result.audio.getReadPointer (0), n);
-                }
                 newTake->clip.original = converted;
                 newTake->neuralRendered = true;
             }
