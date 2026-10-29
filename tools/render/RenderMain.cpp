@@ -6,7 +6,8 @@
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //   VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice <id>] [--bpm 120] [--seed 1]
-//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai] [--guide <guide.wav>]] [--melody <file.mid>]
+//                   [--segments <plan.tsv>] [--chain <voiced.wav> [--ai] [--guide <guide.wav>] [--set id=value ...]]
+//                   [--melody <file.mid>]
 //                                             Text to Sing with an automatic melody: the plain guide vocal,
 //                                             its phoneme plan (one row per segment) and, with --chain, the
 //                                             take rendered through the voice chain exactly as Generate +
@@ -14,6 +15,11 @@
 //                                             sings a given guide audio on the same notes (experiments).
 //   VoxaVersaRender --rkeeper|--breaths <dry.wav> <ai.wav> <out.wav> [ai-lag-seconds] [f3.csv]
 //                                             developer check of the R keeper / breath keeper on its own
+//   VoxaVersaRender --southern <features.f32> <f0.f32> [contextMs]
+//                                             developer check of the Southern "ah" (SouthernVowels) on a
+//                                             vocal's content features (float32 [frames][768], 20 ms) and
+//                                             pitch (float32 per 10 ms, 0 unvoiced), in chunks as the live
+//                                             stream: prints what it holds (tools/research/vowelnet)
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // --realtime feeds the blocks at the pace of live playback (what a DAW does while playing);
@@ -28,6 +34,7 @@
 #include "dsp/PitchDetector.h"
 #include "dsp/VoiceGenderEstimator.h"
 #include "dsp/VocalFx.h"
+#include "neural/RvcModel.h"
 #include "sing/Lyrics.h"
 #include "sing/Melody.h"
 #include "sing/OfflineRenderer.h"
@@ -159,6 +166,16 @@ namespace
         set (voxa::ParamID::singTempo, (float) bpm);
         set (voxa::ParamID::key, 0.0f);            // automatic
         set (voxa::ParamID::aiEngine, args.contains ("--ai") ? 1.0f : 0.0f);   // --ai: the AI singer sings the take
+        for (int i = 3; i + 1 < args.size(); ++i)   // --set name=value: a plug-in parameter (e.g. effects off: vibe=0)
+        {
+            if (args[i] != "--set")
+                continue;
+            const auto kv = args[i + 1];
+            auto* p = state.getParameter (kv.upToFirstOccurrenceOf ("=", false, false));
+            if (p == nullptr)
+                return fail ("unknown parameter in " + kv + " (see --list-params)");
+            p->setValueNotifyingHost (p->convertTo0to1 (kv.fromFirstOccurrenceOf ("=", false, false).getFloatValue()));
+        }
         processor.setPlayConfigDetails (2, 2, sr, 512);
         for (int i = 0; i < 1200 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
             juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
@@ -309,6 +326,78 @@ static int rKeeperTool (const juce::StringArray& args)
     return 0;
 }
 
+/** Developer check of the Southern "ah": --southern features.f32 f0.f32 [contextMs]. */
+static int southernTool (const juce::StringArray& args)
+{
+    using namespace voxa::neural;
+    const auto* vowels = SouthernVowels::get();
+    if (vowels == nullptr)
+        return fail ("the Southern vowel recognizer is not embedded");
+
+    auto read = [] (const juce::String& path)
+    {
+        juce::MemoryBlock block;
+        juce::File::getCurrentWorkingDirectory().getChildFile (path).loadFileAsData (block);
+        std::vector<float> v (block.getSize() / sizeof (float));
+        std::memcpy (v.data(), block.getData(), v.size() * sizeof (float));
+        return v;
+    };
+    const int channels = vowels->getChannels();
+    const auto features = read (args[1]);
+    auto f0 = read (args[2]);
+    const int numEncoder = (int) features.size() / channels, numFrames = 2 * numEncoder;
+    if (numEncoder < 10)
+        return fail ("no features in " + args[1]);
+    f0.resize ((size_t) numFrames, 0.0f);
+
+    // the stream's chunks (NeuralVoiceModel::Impl::chunkFramesFor / generatorSkipFor)
+    const int context = args.size() > 3 ? args[3].getIntValue() / 10 : 15;
+    const int chunkFrames = streaming::blockFrames + ((streaming::tailFrames + context + 1) & ~1);
+    const int skip = juce::jmax (0, chunkFrames - (streaming::blockFrames + streaming::tailFrames + streaming::generatorContextFrames));
+    std::vector<char> held ((size_t) numFrames, 0);
+    SouthernVowels::State state;
+    std::vector<float> chunkFeatures, chunkF0, phone, original, scratch;
+
+    for (int end = streaming::blockFrames; end - streaming::blockFrames - streaming::tailFrames < numFrames; end += streaming::blockFrames)
+    {
+        const int start = end - chunkFrames;   // even, as live
+        chunkFeatures.assign ((size_t) (chunkFrames / 2 * channels), 0.0f);
+        chunkF0.assign ((size_t) chunkFrames, 0.0f);
+        for (int e = 0; e < chunkFrames / 2; ++e)
+            if (const int a = start / 2 + e; a >= 0 && a < numEncoder)
+                std::copy_n (features.data() + (size_t) a * (size_t) channels, channels, chunkFeatures.data() + (size_t) e * (size_t) channels);
+        for (int i = 0; i < chunkFrames; ++i)
+            if (const int a = start + i; a >= 0 && a < numFrames)
+                chunkF0[(size_t) i] = f0[(size_t) a];
+
+        phone.resize ((size_t) ((chunkFrames - skip) * channels));
+        for (int i = skip; i < chunkFrames; ++i)
+            std::copy_n (chunkFeatures.data() + (size_t) (i / 2) * (size_t) channels, channels, phone.data() + (size_t) (i - skip) * (size_t) channels);
+        original = phone;
+        vowels->apply (chunkFeatures.data(), chunkFrames / 2, channels, chunkF0.data(), chunkFrames, skip, start, phone.data(), state, scratch);
+
+        // what this chunk plays: its new block, before the tail
+        for (int i = chunkFrames - streaming::blockFrames - streaming::tailFrames; i < chunkFrames - streaming::tailFrames; ++i)
+            if (const int a = start + i; i >= skip && a >= 0 && a < numFrames)
+                for (int c = 0; c < channels; ++c)
+                    if (phone[(size_t) ((i - skip) * channels + c)] != original[(size_t) ((i - skip) * channels + c)])
+                    {
+                        held[(size_t) a] = 1;
+                        break;
+                    }
+    }
+
+    for (int a = 0; a < numFrames; ++a)
+        if (held[(size_t) a] && (a == 0 || ! held[(size_t) a - 1]))
+        {
+            int b = a;
+            while (b < numFrames && held[(size_t) b])
+                ++b;
+            std::printf ("held %.2f - %.2f s\n", a / 100.0, b / 100.0);
+        }
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -338,6 +427,9 @@ int main (int argc, char* argv[])
 
     if (args.size() >= 4 && (args[0] == "--rkeeper" || args[0] == "--breaths"))
         return rKeeperTool (args);
+
+    if (args.size() >= 3 && args[0] == "--southern")
+        return southernTool (args);
 
     if (args.size() < 2 && ! args.contains ("--analyse") && ! args.contains ("--detect"))
         return fail ("usage: VoxaVersaRender <in.wav> <out.wav> [--voice id] [--preset name] [--quality 0|1|2] [--set id=value ...]");

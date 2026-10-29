@@ -223,6 +223,8 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
         return true;
     };
 
+    SouthernVowels::get();   // unpacked here, not in the stream's first chunk
+
     if (! config.generatorFile.existsAsFile())
     {
         error = "Voice model file not found: " + config.generatorFile.getFullPathName();
@@ -732,6 +734,26 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
         }
     }
 
+    // The country voices' Southern "ah": an "I" that glides to "ee" keeps its open vowel (SouthernVowels)
+    if (ws.southern)
+    {
+        if (const auto* southern = SouthernVowels::get())
+        {
+            const float* features = ws.encoderOut.data.data();
+            if (channelMajor)
+            {
+                ws.timeMajor.resize ((size_t) (numEncoderFrames * channels));
+                for (int64_t t = 0; t < numEncoderFrames; ++t)
+                    for (size_t ch = 0; ch < c; ++ch)
+                        ws.timeMajor[(size_t) t * c + ch] = ws.encoderOut.data[ch * (size_t) numEncoderFrames + (size_t) t];
+                features = ws.timeMajor.data();
+            }
+            if (f0Frames != nullptr)
+                southern->apply (features, (int) numEncoderFrames, (int) channels, f0Frames, numFrames, generatorSkip,
+                                 firstFrame, ws.phone.data(), ws.southernState, ws.southernScratch);
+        }
+    }
+
     //=== Generator ============================================================
     std::array<InputTensor, 6> inputs {};
     size_t numInputs = 0;
@@ -800,7 +822,8 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
 bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                                       const std::vector<float>& f0Hz, double f0FrameRate,
                                       juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel,
-                                      juce::String& error, const std::vector<float>* pitchShiftSemis) const
+                                      juce::String& error, const std::vector<float>* pitchShiftSemis,
+                                      bool southernVowels) const
 {
     const int inputRate = juce::roundToInt (inputSampleRate);
     const int numInputSamples = input.getNumSamples();
@@ -933,6 +956,10 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
         const int runStart = juce::jmax (0, a - contextFrames);
         const int runEnd = juce::jmin (totalFrames, b + contextFrames);
         const bool first = s == 0, last = s + 2 == cuts.size();
+
+        // each run on its own (its 1 s of context on both sides covers any vowel at its edges)
+        ws.southern = southernVowels;
+        ws.southernState.reset();
 
         if (! runFrames (padded.data() + (size_t) runStart * dsp::samplesPerFrame16k, runEnd - runStart,
                          f0Frames.data() + runStart, runStart, ws, true, error))

@@ -189,6 +189,32 @@ Above the AI singer's top note (the 97th percentile of what they sang, minus a s
 and "chipmunk": the vowel keeper then also lowers the AI voice's resonances, 0.4 semitone per semitone above,
 at most 2.5 (its bank reads the envelope k/2 bands higher for a k-semitone shift).
 
+### Southern accent (`SouthernVowels`)
+
+Male and Female Country sing *I, my, time, like* with the Southern "ah" in Voice Transform (and *joy* closer to
+"jaw"), whatever accent the user sings with. The AI singer sings the vowels its content encoder hears, so the
+change is made there, before the generator, and adds no latency (listening audits 10 - 13: the same edit made on
+the audio first turned "life" into "luf", and a hold that stopped 20 ms short let the glide back in, "like"
+broke up). A small recognizer (`Resources/neural/southern_vowels.gz`: an MLP on five 20 ms frames of content
+features, ~2 MB, built by `tools/research/vowelnet`) gives every frame its probability of being a vowel, the
+"ah" of "I" / "oy", and their glide towards "ee". `SouthernVowels::Rule` decides each frame 40 ms later (the
+stream's 90 ms tail covers that): in a voiced vowel the glide starts where two frames sound like it, or, a glide
+too short to see, 40 ms before the vowel ends; the vowel is held when its frames before that sounded like "I" /
+"oy" (mean 0.4 relative to P(vowel)) and the last three still sound like "ah" (a "pain" sung with an open start
+does not). From 40 ms before the glide to the end of the vowel the generator then gets the mean features of the
+60 ms of the vowel that sound most like "ah", fading in over 40 ms and going straight into the consonant. Probabilities are taken relative
+to P(vowel): on real, dry singing the recognizer still ranks the vowels right but spreads them more than on the
+voices it learnt from. The recognizer learnt from the
+features as the stream computes them (chunk by chunk, with only 0.15 - 1 s of audio before each frame) as well
+as from whole files: trained on whole files alone it caught "life" but not "like" or "joy" in the plug-in.
+Offline renders of a loaded sample use it too (each segment on its own); Text to Sing does not (its accents are
+in its pronunciation). On real singing it never heard (12 VocalSet singers' *Row, Row, Row Your Boat*, whose
+"life" is the target, and a user's vocal), as the stream sees it: 13 of 15 "I" / "oy" held with 1 s of context
+(exports) and one hold elsewhere (the end of "stream"); 11 of 15 with 150 ms (live playback on a slow
+computer) and four elsewhere, each the end of a plain vowel, which keeps its own sound; from whole files 14 of
+15 and one. *Joy* is the one it misses most. `VoxaVersaRender --southern` runs the plug-in's rule on a file's
+features, chunk by chunk; it decides the frames `tools/research/vowelnet/rule.py` does.
+
 ### Grit (`Grit`)
 
 Rasp is the vocal folds vibrating irregularly, every other cycle stronger than the next (period doubling: the

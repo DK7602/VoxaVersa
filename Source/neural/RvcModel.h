@@ -3,6 +3,7 @@
 #include "NeuralRuntime.h"
 #include "NeuralDsp.h"
 #include "NeuralPitch.h"
+#include "SouthernVowels.h"
 
 #include <functional>
 
@@ -74,6 +75,11 @@ struct NeuralVoiceModel::Impl
         OutputTensor encoderOut, generatorOut;
         NeuralPitchTracker::Workspace tracker;
         std::vector<float> tracked;
+
+        // The Southern "ah" of the country voices (SouthernVowels): on for this caller's chunks when set
+        bool southern = false;
+        SouthernVowels::State southernState;
+        std::vector<float> southernScratch, timeMajor;
     };
 
     /** `cancel` (optional) is checked between the loading steps and the timing runs. */
@@ -91,7 +97,7 @@ struct NeuralVoiceModel::Impl
     bool convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
                   juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel, juce::String& error,
-                  const std::vector<float>* pitchShiftSemis = nullptr) const;
+                  const std::vector<float>* pitchShiftSemis = nullptr, bool southernVowels = false) const;
 
     /** With the neural pitch tracker: the target pitch of frames [firstFrame, numFrames) becomes the pitch the
         tracker hears in `audio16k` (numFrames * 160 samples), shifted by `shiftSemis` (one per frame; NaN keeps

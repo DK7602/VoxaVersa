@@ -77,10 +77,10 @@ bool NeuralVoiceModel::convert (const juce::AudioBuffer<float>& monoInput, doubl
                                 const std::vector<float>& f0Hz, double f0FrameRate,
                                 juce::AudioBuffer<float>& output,
                                 const std::atomic<bool>* cancel, juce::String& error,
-                                const std::vector<float>* pitchShiftSemis) const
+                                const std::vector<float>* pitchShiftSemis, bool southernVowels) const
 {
     error.clear();
-    return impl->convert (monoInput, inputSampleRate, f0Hz, f0FrameRate, output, cancel, error, pitchShiftSemis);
+    return impl->convert (monoInput, inputSampleRate, f0Hz, f0FrameRate, output, cancel, error, pitchShiftSemis, southernVowels);
 }
 
 //==============================================================================
@@ -226,6 +226,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
     bool isRunningInRealTime() const noexcept    { return modelSet.load() && realTime.load(); }
     uint32_t getNumMissedChunks() const noexcept { return missedChunks.load (std::memory_order_relaxed); }
     void setNonRealtime (bool b) noexcept        { hostOffline.store (b, std::memory_order_relaxed); }
+    void setSouthernVowels (bool b) noexcept     { southern.store (b, std::memory_order_relaxed); }
 
     //==============================================================================
     // Audio thread
@@ -629,6 +630,12 @@ private:
             }
         }
 
+        if (const bool on = southern.load (std::memory_order_relaxed); on != workspace.southern)
+        {
+            workspace.southern = on;
+            workspace.southernState.reset();
+        }
+
         if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip))
         {
             if (! reportedError)
@@ -661,7 +668,7 @@ private:
     int64_t inputMask = 0, outputMask = 0;
     std::atomic<int64_t> inputWritten { 0 }, audioReadPosition { 0 }, outputWritten { 0 }, resetPosition { 0 };
     std::atomic<uint32_t> resetGeneration { 0 }, underruns { 0 }, missedChunks { 0 };
-    std::atomic<bool> realTime { false }, modelSet { false }, hostOffline { false }, offlineMode { false };
+    std::atomic<bool> realTime { false }, modelSet { false }, hostOffline { false }, offlineMode { false }, southern { false };
 
     // Audio thread only
     struct Pace
@@ -709,6 +716,7 @@ bool NeuralVoiceStream::isRunningInRealTime() const noexcept                    
 uint32_t NeuralVoiceStream::getNumMissedChunks() const noexcept                   { return impl->getNumMissedChunks(); }
 void NeuralVoiceStream::setNonRealtime (bool isNonRealtime) noexcept              { impl->setNonRealtime (isNonRealtime); }
 void NeuralVoiceStream::reset() noexcept                                          { impl->reset(); }
+void NeuralVoiceStream::setSouthernVowels (bool shouldBeOn) noexcept             { impl->setSouthernVowels (shouldBeOn); }
 
 void NeuralVoiceStream::process (const float* input, const float* targetF0Hz, float* output, int numSamples,
                                  float* coverage, const float* pitchShiftSemis) noexcept

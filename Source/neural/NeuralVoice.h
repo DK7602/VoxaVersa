@@ -56,12 +56,13 @@ public:
         With `pitchShiftSemis` (same frame rate; NaN where `f0Hz` must be used as it is) and the neural pitch
         tracker installed, the voice sings the input's own pitch as that tracker hears it, shifted by these
         semitones (see NeuralPitchTracker); `f0Hz` is then only the fallback.
+        `southernVowels`: the country voices' Southern "ah" (SouthernVowels), as setSouthernVowels() live.
         The result is written to `output` at `inputSampleRate`. */
     bool convert (const juce::AudioBuffer<float>& monoInput, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
                   juce::AudioBuffer<float>& output,
                   const std::atomic<bool>* cancel, juce::String& error,
-                  const std::vector<float>* pitchShiftSemis = nullptr) const;
+                  const std::vector<float>* pitchShiftSemis = nullptr, bool southernVowels = false) const;
 
     /** True when the neural pitch tracker (<Encoders>/fcpe.onnx) was installed when this model loaded. */
     bool hasNeuralPitch() const noexcept;
@@ -109,6 +110,10 @@ public:
         installed, the voice sings the input's pitch as that tracker hears it, shifted by these semitones. */
     void process (const float* input, const float* targetF0Hz, float* output, int numSamples,
                   float* coverage = nullptr, const float* pitchShiftSemis = nullptr) noexcept;
+
+    /** Any thread. The Southern "ah" of the country voices (SouthernVowels): an "I" that glides to "ee" keeps its
+        open vowel. Off by default. */
+    void setSouthernVowels (bool shouldBeOn) noexcept;
 
     /** Audio thread. Clears all buffered audio (e.g. on transport jumps). */
     void reset() noexcept;

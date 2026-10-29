@@ -97,6 +97,16 @@ image was reviewed and anything resembling a recognisable person was rejected.
 
 The model weights are not redistributed with VoxaVersa; only the generated images are.
 
+## Training data of the Southern vowel recognizer (`Resources/neural/southern_vowels.gz`)
+
+- **Used for:** the Southern "ah" of the country voices (`Source/neural/SouthernVowels.cpp`). The file holds the
+  weights of a small network trained by `tools/research/vowelnet` (no audio).
+- **Trained on:** Text to Sing takes sung by AI singers trained on public-domain US military band recordings and
+  on **VocalSet** (J. Wilkins, P. Seetharaman, A. Wahl, B. Pardo, *VocalSet: A Singing Voice Dataset*, ISMIR 2018,
+  <https://zenodo.org/records/1442513>, CC BY 4.0), and on speech from **Kokoro-82M** (hexgrad,
+  <https://huggingface.co/hexgrad/Kokoro-82M>, Apache License 2.0). Its input features come from ContentVec
+  (MIT), the content encoder of the AI voices.
+
 ## Bundled with the installers (not part of the source code)
 
 | Component | Use | Licence |
