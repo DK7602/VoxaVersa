@@ -32,6 +32,7 @@ public:
         float vowel = 0.0f;   // probability that it is a vowel (any)
         float iy = 0.0f;      // ... the vowel part of "I" or "oy"
         float glide = 0.0f;   // ... their glide towards "ee"
+        std::array<float, 3> shift {};   // ... "eh" before n / m, "ay", the "a" of "cat" (ShiftRule's shifts)
     };
 
     /** The decision rule, one frame at a time with two frames of lookahead (separate from the recognizer so it
@@ -66,6 +67,35 @@ public:
         bool held = false;
     };
 
+    /** Step 2 of the accent, the approved prototype's other changes: each a shift of the content features by a
+        difference of vowel means, in shapes that can be decided live. `raise` ("eh" before n / m towards "ih":
+        friend, ten) over the whole vowel, in and out over 3 frames; `lower` (the start of "ay": pain, taking) from
+        the vowel's start, in over 3 frames and gone after `lowerFrames`; `drawl` (a glide towards "ih" in the "a"
+        of and, laughing) a 160 ms bump from `drawlDelay` frames into the vowel. A vowel gets at most one, once the
+        vowel so far (3 frames or more) is that vowel by its mean P(class | vowel). */
+    struct ShiftRule
+    {
+        enum Shift { raise, lower, drawl, numShifts };
+        static constexpr std::array<float, numShifts> needed { 0.4f, 0.4f, 0.4f };   // mean P(class | vowel)
+        static constexpr int lowerFrames = 8, drawlDelay = 5;
+
+        /** A frame's shift (-1: none) and weight, and the weights it gives the two frames before it (negative:
+            as they were). */
+        struct Decision
+        {
+            int shift = -1;
+            float weight = 0.0f;
+            std::array<float, 2> before { -1.0f, -1.0f };
+        };
+
+        void reset() noexcept { *this = {}; }
+        /** Decides frame `f`, given the two after it. */
+        Decision step (const Frame& f, const Frame& next, const Frame& afterNext) noexcept;
+
+        int shift = -1, index = -1, drawlStart = 0;   // the vowel's shift; frames into the vowel
+        std::array<double, numShifts> sums {};        // P(class | vowel) summed over the vowel so far
+    };
+
     /** Per stream: the rule's state and the last frames (absolute 20 ms frame numbers). */
     struct State
     {
@@ -73,12 +103,15 @@ public:
         void reset() noexcept;
 
         Rule rule;
+        ShiftRule shiftRule;
         int64_t recognised = -1;                    // the last frame recognised (decided: `Rule::lookahead` before)
         static constexpr int history = 512;
         std::array<int64_t, history> frameOf {};    // which frame each slot holds
         std::array<Frame, history> frames {};       // the recognizer's output
         std::array<float, history> weight {};       // how much of the hold it gets
         std::array<uint8_t, history> holdIndex {};  // which of the two holds
+        std::array<int8_t, history> shiftOf {};     // its shift (-1: none)
+        std::array<float, history> shiftWeight {};  // and how much of it
         std::vector<float> holds[2];
         uint8_t currentHold = 0;
     };
@@ -91,6 +124,14 @@ public:
                 int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch) const;
 
     int getChannels() const noexcept { return channels; }
+    /** True when the data has step 2's shifts. */
+    bool hasShifts() const noexcept
+    {
+        for (const auto& d : deltas)
+            if (d.size() != (size_t) channels)
+                return false;
+        return true;
+    }
 
     /** The recognizer's probabilities for one encoder frame (context frames clamped to the chunk). */
     Frame recognise (const float* features, int numEncoderFrames, int frame, std::vector<float>& scratch) const;
@@ -102,6 +143,8 @@ private:
     int channels = 0, context = 0, hidden = 0, numClasses = 0;
     std::vector<float> w1, b1, w2, b2;   // the standardisation is folded into w1 / b1
     std::vector<int> vowelClasses, iyClasses, glideClasses;
+    std::array<int, ShiftRule::numShifts> shiftClasses { -1, -1, -1 };   // EH_N, EY, AE
+    std::array<std::vector<float>, ShiftRule::numShifts> deltas;         // the shifts (version 2 data)
 };
 
 } // namespace voxa::neural

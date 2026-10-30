@@ -57,13 +57,18 @@ const SouthernVowels* SouthernVowels::get()
     return instance;
 }
 
-/** "VXVW", version 1, channels, context, hidden, classes (uint32 each), the class names (uint8 length + text),
-    then float16: w1 [hidden][context * channels], b1 [hidden], w2 [classes][hidden], b2 [classes]. */
+/** "VXVW", version (1 or 2), channels, context, hidden, classes (uint32 each), the class names (uint8 length +
+    text), then float16: w1 [hidden][context * channels], b1 [hidden], w2 [classes][hidden], b2 [classes].
+    Version 2 goes on with the shifts (ShiftRule): their number (uint32), then each its name (uint8 length + text:
+    raise, lower, drawl) and float16 [channels]. */
 bool SouthernVowels::load (const void* data, size_t size)
 {
     juce::MemoryInputStream in (data, size, false);
     char magic[4];
-    if (in.read (magic, 4) != 4 || std::memcmp (magic, "VXVW", 4) != 0 || in.readInt() != 1)
+    if (in.read (magic, 4) != 4 || std::memcmp (magic, "VXVW", 4) != 0)
+        return false;
+    const int version = in.readInt();
+    if (version != 1 && version != 2)
         return false;
 
     channels = in.readInt(); context = in.readInt(); hidden = in.readInt(); numClasses = in.readInt();
@@ -72,10 +77,12 @@ bool SouthernVowels::load (const void* data, size_t size)
 
     for (int c = 0; c < numClasses; ++c)
     {
-        const auto length = (int) in.readByte();
-        juce::MemoryBlock name;
-        in.readIntoMemoryBlock (name, length);
-        const auto label = name.toString();
+        const auto label = [&in]
+        {
+            juce::MemoryBlock name;
+            in.readIntoMemoryBlock (name, (int) in.readByte());
+            return name.toString();
+        }();
 
         if (label == "AY" || label == "OY")
             iyClasses.push_back (c);
@@ -83,7 +90,17 @@ bool SouthernVowels::load (const void* data, size_t size)
             glideClasses.push_back (c);
         if (label != "C" && label != "SIL")
             vowelClasses.push_back (c);
+        if (label == "EH_N") shiftClasses[ShiftRule::raise] = c;
+        if (label == "EY")   shiftClasses[ShiftRule::lower] = c;
+        if (label == "AE")   shiftClasses[ShiftRule::drawl] = c;
     }
+
+    auto readName = [&in]
+    {
+        juce::MemoryBlock name;
+        in.readIntoMemoryBlock (name, (int) in.readByte());
+        return name.toString();
+    };
 
     auto readHalves = [&in] (std::vector<float>& dest, size_t count)
     {
@@ -94,9 +111,27 @@ bool SouthernVowels::load (const void* data, size_t size)
     };
 
     const auto inputs = (size_t) (context * channels);
-    return readHalves (w1, (size_t) hidden * inputs) && readHalves (b1, (size_t) hidden)
-        && readHalves (w2, (size_t) numClasses * (size_t) hidden) && readHalves (b2, (size_t) numClasses)
-        && in.getPosition() == in.getTotalLength() && ! iyClasses.empty() && ! glideClasses.empty();
+    if (! (readHalves (w1, (size_t) hidden * inputs) && readHalves (b1, (size_t) hidden)
+           && readHalves (w2, (size_t) numClasses * (size_t) hidden) && readHalves (b2, (size_t) numClasses)
+           && ! iyClasses.empty() && ! glideClasses.empty()))
+        return false;
+
+    if (version == 2)
+    {
+        const int numShifts = in.readInt();
+        for (int k = 0; k < numShifts; ++k)
+        {
+            const auto name = readName();
+            std::vector<float> delta;
+            if (! readHalves (delta, (size_t) channels))
+                return false;
+            const int which = name == "raise" ? ShiftRule::raise : name == "lower" ? ShiftRule::lower : name == "drawl" ? ShiftRule::drawl : -1;
+            if (which >= 0 && shiftClasses[(size_t) which] >= 0)
+                deltas[(size_t) which] = std::move (delta);
+        }
+    }
+
+    return in.getPosition() == in.getTotalLength();
 }
 
 //==============================================================================
@@ -135,9 +170,65 @@ SouthernVowels::Rule::Event SouthernVowels::Rule::step (const Frame& f, const Fr
     return Event::none;
 }
 
+SouthernVowels::ShiftRule::Decision SouthernVowels::ShiftRule::step (const Frame& f, const Frame& next,
+                                                                    const Frame& afterNext) noexcept
+{
+    if (! Rule::isVowel (f))
+    {
+        reset();
+        return {};
+    }
+
+    ++index;
+    for (size_t k = 0; k < numShifts; ++k)
+        sums[k] += (double) (f.shift[k] / f.vowel);
+
+    auto lowerShape = [] (int i) { return juce::jmin (1.0f, (float) (i + 1) / 3.0f) * juce::jmax (0.0f, 1.0f - (float) i / (float) lowerFrames); };
+    auto bump = [] (int k) { return k < 0 ? 0.0f : (k < 4 ? (float) (k + 1) / 4.0f : juce::jmax (0.0f, 1.0f - (float) (k - 3) / 4.0f)); };
+
+    Decision d;
+    if (shift < 0 && index >= 2)
+    {
+        int best = -1;
+        double margin = -1.0e9;
+        for (size_t k = 0; k < numShifts; ++k)
+            if (const auto m = sums[k] / (index + 1) - (double) needed[k]; m > margin)
+            {
+                margin = m;
+                best = (int) k;
+            }
+
+        if (margin >= 0.0)
+        {
+            shift = best;
+            drawlStart = juce::jmax (index, drawlDelay);
+            for (int j = 0; j < 2; ++j)   // the two frames before: raise and lower start there
+            {
+                const int at = index - 2 + j;
+                if (at >= 0 && shift == raise)
+                    d.before[(size_t) j] = (float) (j + 1) / 3.0f;
+                else if (at >= 0 && shift == lower)
+                    d.before[(size_t) j] = lowerShape (at);
+            }
+        }
+    }
+
+    if (shift >= 0)
+    {
+        // in and out with the vowel's end, known 2 frames ahead
+        const float out = ! Rule::isVowel (next) ? 1.0f / 3.0f : (! Rule::isVowel (afterNext) ? 2.0f / 3.0f : 1.0f);
+        d.shift = shift;
+        d.weight = out * (shift == raise ? 1.0f : shift == lower ? lowerShape (index) : bump (index - drawlStart));
+    }
+    return d;
+}
+
 void SouthernVowels::State::reset() noexcept
 {
     rule.reset();
+    shiftRule.reset();
+    shiftOf.fill (-1);
+    shiftWeight.fill (0.0f);
     recognised = -1;
     frameOf.fill (-1);
     weight.fill (0.0f);
@@ -191,6 +282,9 @@ SouthernVowels::Frame SouthernVowels::recognise (const float* features, int numE
     for (auto c : vowelClasses) f.vowel += logits[c] / total;
     for (auto c : iyClasses)    f.iy += logits[c] / total;
     for (auto c : glideClasses) f.glide += logits[c] / total;
+    for (size_t k = 0; k < ShiftRule::numShifts; ++k)
+        if (shiftClasses[k] >= 0)
+            f.shift[k] = logits[shiftClasses[k]] / total;
     return f;
 }
 
@@ -223,6 +317,8 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
         state.frameOf[s] = a;
         state.frames[s] = f;
         state.weight[s] = 0.0f;
+        state.shiftOf[s] = -1;
+        state.shiftWeight[s] = 0.0f;
         state.recognised = a;
 
         const int64_t d = a - Rule::lookahead;
@@ -288,17 +384,39 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
             state.weight[sd] = 1.0f;
             state.holdIndex[sd] = state.currentHold;
         }
+
+        if (hasShifts())
+        {
+            const auto decision = state.shiftRule.step (state.frames[sd], state.frames[slot (d + 1)], f);
+            state.shiftOf[sd] = (int8_t) decision.shift;
+            state.shiftWeight[sd] = decision.weight;
+            for (int j = 0; j < 2; ++j)
+            {
+                const int64_t b = d - 2 + j;
+                const auto t = slot (b);
+                if (decision.before[(size_t) j] >= 0.0f && state.frameOf[t] == b)
+                {
+                    state.shiftOf[t] = (int8_t) decision.shift;
+                    state.shiftWeight[t] = decision.before[(size_t) j];
+                }
+            }
+        }
     }
 
     const int64_t decided = state.recognised - Rule::lookahead;
 
-    // the generator's frames: decided ones as decided; the last few (no context yet) go on holding while voiced
+    // the generator's frames: decided ones as decided; the last few (no context yet) go on as the last decided
+    // frame did while voiced
+    const auto lastDecided = slot (decided);
+    const bool lastKnown = decided >= 0 && state.frameOf[lastDecided] == decided;
+
     for (int i = skip; i < numFrames; ++i)
     {
         const int e = i / 2;
         const int64_t a = first + e;
-        float w = 0.0f;
+        float w = 0.0f, shiftWeight = 0.0f;
         uint8_t which = state.currentHold;
+        int shift = -1;
 
         if (a <= decided)
         {
@@ -307,20 +425,32 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
             {
                 w = state.weight[s];
                 which = state.holdIndex[s];
+                shift = state.shiftOf[s];
+                shiftWeight = state.shiftWeight[s];
             }
         }
-        else if (state.rule.held && voicedAt (e))
+        else if (voicedAt (e))
         {
-            w = 1.0f;
+            w = state.rule.held ? 1.0f : 0.0f;
+            if (lastKnown)
+            {
+                shift = state.shiftOf[lastDecided];
+                shiftWeight = state.shiftWeight[lastDecided];
+            }
         }
 
-        const auto& hold = state.holds[which];
-        if (w <= 0.0f || hold.size() != (size_t) channels)
-            continue;
-
         float* dest = phone + (size_t) (i - skip) * (size_t) channels;
-        for (int c = 0; c < channels; ++c)
-            dest[c] += w * (hold[(size_t) c] - dest[c]);
+
+        if (const auto& hold = state.holds[which]; w > 0.0f && hold.size() == (size_t) channels)
+            for (int c = 0; c < channels; ++c)
+                dest[c] += w * (hold[(size_t) c] - dest[c]);
+
+        if (shift >= 0 && shiftWeight > 0.0f)
+        {
+            const auto& delta = deltas[(size_t) shift];
+            for (int c = 0; c < channels; ++c)
+                dest[c] += shiftWeight * delta[(size_t) c];
+        }
     }
 }
 

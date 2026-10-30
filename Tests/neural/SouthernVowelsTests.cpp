@@ -113,6 +113,61 @@ public:
                           "the real glide later in the same vowel");
         }
 
+        beginTest ("Step 2: each shift on its own vowel, in shapes decided live");
+        {
+            using Shift = SouthernVowels::ShiftRule;
+            auto shiftVowel = [] (int which, float p)
+            {
+                Frame f = vowel (0.0f);
+                f.shift[(size_t) which] = p;
+                return f;
+            };
+            // runs the rule over a vowel of `frames` frames (then a consonant): the final weight of each frame
+            auto run = [] (const Frame& x, int frames, int& shift)
+            {
+                std::vector<Frame> v ((size_t) frames, x);
+                v.insert (v.end(), 3, consonant());
+                std::vector<float> w ((size_t) frames, 0.0f);
+                Shift rule;
+                shift = -1;
+                for (int d = 0; d < frames; ++d)
+                {
+                    const auto r = rule.step (v[(size_t) d], v[(size_t) d + 1], v[(size_t) d + 2]);
+                    w[(size_t) d] = r.weight;
+                    for (int j = 0; j < 2; ++j)
+                        if (r.before[(size_t) j] >= 0.0f && d - 2 + j >= 0)
+                            w[(size_t) (d - 2 + j)] = r.before[(size_t) j];
+                    if (r.shift >= 0)
+                        shift = r.shift;
+                }
+                return w;
+            };
+
+            int shift = -1;
+            auto w = run (shiftVowel (Shift::raise, 0.8f), 8, shift);
+            expectEquals (shift, (int) Shift::raise, "\"eh\" before n: raised");
+            expectWithinAbsoluteError (w[0], 1.0f / 3.0f, 1.0e-5f, "in over 3 frames");
+            expectWithinAbsoluteError (w[1], 2.0f / 3.0f, 1.0e-5f);
+            expectWithinAbsoluteError (w[4], 1.0f, 1.0e-5f, "the whole vowel");
+            expectWithinAbsoluteError (w[7], 1.0f / 3.0f, 1.0e-5f, "out over 3 frames");
+
+            w = run (shiftVowel (Shift::lower, 0.8f), 12, shift);
+            expectEquals (shift, (int) Shift::lower, "\"ay\": lowered");
+            expect (w[1] > w[0] && w[2] > w[4] && w[4] > w[6], "from the start, fading");
+            expectEquals (w[Shift::lowerFrames], 0.0f, "gone after lowerFrames");
+
+            w = run (shiftVowel (Shift::drawl, 0.8f), 16, shift);
+            expectEquals (shift, (int) Shift::drawl, "\"a\": drawled");
+            expectEquals (w[Shift::drawlDelay - 1], 0.0f, "not before drawlDelay");
+            expectWithinAbsoluteError (w[Shift::drawlDelay + 3], 1.0f, 1.0e-5f, "the bump's peak");
+            expectEquals (w[Shift::drawlDelay + 8], 0.0f, "and back");
+
+            run (vowel (0.1f), 10, shift);
+            expectEquals (shift, -1, "other vowels are left alone");
+            run (shiftVowel (Shift::raise, 0.2f), 10, shift);
+            expectEquals (shift, -1, "not on a guess");
+        }
+
         beginTest ("Embedded recognizer");
         {
             const auto* vowels = SouthernVowels::get();
