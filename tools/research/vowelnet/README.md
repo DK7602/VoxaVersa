@@ -72,3 +72,8 @@ singer sang takes (with the voices above: Male 1, 3, 4, 8 and Female 1, 2, 6, 9)
   like "ah".
 - On the open vowels the first recognizer (few takes, no open-vowel lines) held the end of *down, but, row,
   merrily*; that is what `lyrics_open.txt` is for.
+- Step 2 (the prototype's *friend* -> "frinnd", lowered "ay", drawl; `rule.shifts`, `evaluate_shifts.py`) was
+  not precise enough on real singing, even with LibriSpeech's real voices (`libri_feats.py`) in training: 5 of 30
+  "eh"s before n / m raised, 4 of 6 "ay"s, 0 of 2 drawls, and 35 changes on other words (*merrily* raised, *gently*
+  drawled). These vowels differ less than "I" from the rest, and the n of *friend* comes after the vowel the plug-in
+  must already be changing. The plug-in's ShiftRule stays off (weights format version 1); the accent stops at step 1.
