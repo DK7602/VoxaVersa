@@ -1,4 +1,7 @@
-"""Round 22: the accent's consonants made in the recording, smoother than round 21.
+"""Round 23: the accent's consonants made in the recording. Round 22's "d" (a quiet murmur and a 12 ms click) was
+heard as the sound cutting out; round 21's (a whole "d" with the start of its vowel) was heard, but broke up at the
+join (the other voice's pitch). Here each "d" is a whole one again, re-pitched (WORLD) to the note you sang there,
+after a short closure, blended into your vowel over 30 ms.
   each "d" (that, this, the): the "th" becomes a short silence, then a voice bar (a low murmur at the vowel's
             pitch, as every real "d" has), then only the 12 ms burst of Kokoro's "d", straight into your own vowel
   "think":  silence, then Kokoro's "t" burst and aspiration (no vowel), into your vowel
@@ -19,9 +22,35 @@ def burst(name, ms):
 low = butter(4, 450, "lowpass", fs=sr, output="sos")
 def xfade(a, b, n):
     r = np.linspace(0, 1, n); return a[:n] * (1 - r) + b[:n] * r
+import json
+BURSTS = json.load(open("%s/bursts.json" % sdir))
+def repitched_d(name, f_target):
+    """Kokoro's "a d-vowel" re-synthesised at the singer's note; returns 5 ms before the burst to 70 ms after it."""
+    s, r = sf.read("%s/%s_full.wav" % (sdir, name), dtype="float64")
+    f0, t = pw.harvest(s, r, frame_period=5.0, f0_floor=60, f0_ceil=600)
+    sp = pw.cheaptrick(s, f0, t, r); ap = pw.d4c(s, f0, t, r)
+    f0 = np.where(f0 > 0, f_target, 0.0)
+    syn = pw.synthesize(f0, sp, ap, r, frame_period=5.0)
+    b0 = int(BURSTS[name] * r); seg = syn[b0 - int(0.005 * r):b0 + int(0.070 * r)]
+    return resample_poly(seg, sr, r)
+def sung_f0(t0):
+    a, b = int(t0 * sr), int((t0 + 0.12) * sr)
+    f0, _ = pw.harvest(x[a:b], sr, frame_period=5.0, f0_floor=70, f0_ceil=900)
+    v = f0[f0 > 0]; return float(np.median(v)) if len(v) else 150.0
+D3 = [("d_a", 2.70, 2.86, 2.99), ("d_i", 3.20, 3.31, 3.325), ("d_e", 4.15, 4.28, 4.30)]   # (sample, hiss start, hiss end, vowel)
+for name, h0, h1, v0 in D3:
+    v = int(v0 * sr); seg = repitched_d(name, sung_f0(v0))
+    xf = int(0.030 * sr); start = v + xf - len(seg)              # the segment ends 30 ms into your vowel
+    a = int(h0 * sr)
+    # the "th" hiss and the gap up to the "d": a short closure (faint room noise)
+    fade = int(0.008 * sr)
+    y[a:start] = y[a:start] * np.r_[np.linspace(1, 0, fade), np.zeros(max(0, start - a - fade))][:start - a] \
+        + rng.standard_normal(start - a) * 10 ** (-66 / 20)
+    vow = x[v:v + xf]; seg *= rms(vow) / rms(seg[-xf:])
+    y[start:v] = seg[:v - start]
+    rr = np.linspace(0, 1, xf); y[v:v + xf] = seg[v - start:] * (1 - rr) + x[v:v + xf] * rr
 # (kind, sample, closure start, voice bar start, vowel onset)
-STOPS = [("t", "t_i_am", 1.84, None, 2.06), ("d", "d_a_am", 2.70, 2.935, 2.99), ("d", "d_i_am", 3.12, 3.27, 3.325),
-         ("d", "d_e_am", 4.17, 4.245, 4.30)]
+STOPS = [("t", "t_i_am", 1.84, None, 2.06)]          # the "d"s are done above
 for kind, name, c0, vb0, v0 in STOPS:
     a, v = int(c0 * sr), int(v0 * sr); fade = int(0.008 * sr)
     vow = x[v:v + int(0.04 * sr)]

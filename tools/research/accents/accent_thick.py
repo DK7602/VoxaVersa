@@ -151,12 +151,12 @@ def render(Fx, out, f0x=None):
 
 # Round 20: each "th" rebuilt as a stop. Your "th" frames are unvoiced, and the generator voices only where the pitch
 # track is on, so a "d" gets the next vowel's pitch; the closure is silence (the recognizer data's mean silence frame).
-STOPS = [("t", 1.84, 2.015, 2.06, "think"), ("d", 2.70, 2.935, 2.99, "that"), ("d", 3.12, 3.27, 3.325, "this"),
-         ("d", 4.17, 4.245, 4.30, "the")]
+STOPS = [("t", 1.84, 2.015, 2.06, "think"), ("d", 2.70, 2.95, 2.99, "that"), ("d", 3.20, 3.285, 3.325, "this"),
+         ("d", 4.15, 4.26, 4.30, "the")]
 f0_acc = f0.copy()
 
 def stops(G, log):
-    """Round 22: the stops are made in the recording (edit_input.py); here only their pitch: none in the closure,
+    """Round 23: the stops are made in the recording (edit_input.py); here only their pitch: none in the closure,
     the next vowel's pitch under a "d"'s voice bar and burst, none under a "t"."""
     for c, s0, r0, v0, word in STOPS:
         a, r, v = int(round(s0 * 50)), int(round(r0 * 50)), int(round(v0 * 50))
@@ -168,5 +168,5 @@ def stops(G, log):
 
 log = []
 G = stops(strong(F.copy(), log), log)
-render(G, prefix + "-r22.wav", f0_acc)
+render(G, prefix + "-r23.wav", f0_acc)
 print("\n".join(log))

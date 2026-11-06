@@ -44,3 +44,8 @@ spliced "d" brought 40 ms of the text-to-speech voice's vowel at another pitch, 
 (`edit_input.py` as it is now): a short closure, a voice bar (the singer's own vowel, low-passed, quiet: the murmur
 of a real "d"), only the 12 ms burst, then the singer's own vowel; the "d" of "and" before "you" becomes a held "n"
 (WORLD envelope swap, pitch filled through the gap).
+
+Round 22 verdict: the d's unintelligible, the sound just cuts out: a quiet voice bar and a 12 ms click render as
+near-silence. Round 23: a whole "d" with the start of its vowel again (`make_stops_full.py` keeps Kokoro's whole
+clip and burst time), re-synthesised by WORLD at the note sung there, after a short closure, blended into the
+singer's vowel over 30 ms.
