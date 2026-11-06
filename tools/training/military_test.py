@@ -10,7 +10,7 @@ covers: only the voice is used.
 Runs on the Colab GPU as a background job of colab_queue.py (docs/COLAB.md); every stage is resumable:
 
   fetch     downloads the songs (~90 files, ~6 h of music) with a polite, identified client
-  separate  vocals out of the band (BS-Roformer, viperx ep 317), then reverb out (Mel-Band-Roformer, anvuew):
+  separate  vocals out of the band (Kim's Mel-Band-Roformer, MIT), then reverb out (Mel-Band-Roformer, anvuew):
             band mixes put reverb on the voice, and prepare_dataset.py rejects reverberant clips (and clips with
             backing harmonies, so mostly the solo verses remain)
   clean     prepare_dataset.py: 3 - 10 s clips without harmonies, noise or reverb
@@ -49,12 +49,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCES = os.path.join(HERE, "military_sources.csv")
 USER_AGENT = "VoxaVersa-voice-research/0.1 (https://github.com/DK7602/VoxaVersa; public-domain training data test)"
 MODELS = {
-    "vocals": ("bs_roformer", "model_bs_roformer_ep_317_sdr_12.9755.ckpt", "model_bs_roformer_ep_317_sdr_12.9755.yaml",
-               "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
-               "model_bs_roformer_ep_317_sdr_12.9755.ckpt", "vocals"),
+    # Kim Jensen's vocal model (MIT licence; vocal SDR 10.98 on Multisong, against 10.87 for the viperx BS-Roformer
+    # used before, whose weights carry no licence). Its settings file is ZFTurbo's (MIT), fetched with it.
+    "vocals": ("mel_band_roformer", "MelBandRoformer.ckpt", "config_vocals_mel_band_roformer_kj.yaml",
+               "https://huggingface.co/KimberleyJSN/melbandroformer/resolve/main/MelBandRoformer.ckpt", "vocals",
+               "https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/KimberleyJensen/"
+               "config_vocals_mel_band_roformer_kj.yaml"),
     "dereverb": ("mel_band_roformer", "dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt", "dereverb_mel_band_roformer_anvuew.yaml",
                  "https://huggingface.co/anvuew/dereverb_mel_band_roformer/resolve/main/"
-                 "dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt", "noreverb"),
+                 "dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt", "noreverb", None),
 }
 MALE_MAX_F0, FEMALE_MIN_F0 = 200.0, 260.0   # cluster_singers.py's gender guess from the median sung pitch
 
@@ -125,12 +128,14 @@ def separator(rvc, weights, key):
     sys.path.insert(0, os.path.join(rvc, "tools"))
     import torch
     from pymss import MSSeparator
-    model_type, ckpt, config, url, stem = MODELS[key]
+    model_type, ckpt, config, url, stem, config_url = MODELS[key]
     path = os.path.join(weights, ckpt)
     if not os.path.exists(path):
         log("downloading the %s model" % key)
         if not download(url, path):
             raise RuntimeError("could not download " + url)
+    if config_url and not os.path.exists(os.path.join(weights, config)):
+        download(config_url, os.path.join(weights, config))
     if not os.path.exists(os.path.join(weights, config)):
         raise RuntimeError("missing %s in %s (the RVC WebUI checkout ships it)" % (config, weights))
     cuda = torch.cuda.is_available()
@@ -481,6 +486,54 @@ def add_singers(args, vocals, clips, clusters, data, spec):
     return voices
 
 
+def add_like(args, clips, clusters, data):
+    """--like "3 female=a.wav,b.wav": the singer whose voice print is closest to those recordings (for example
+    renders of an earlier Band Female 3 model) becomes training set military_female_3, whatever number the
+    grouping gave them this time. Several --like are allowed."""
+    import torch
+    from speechbrain.inference.speaker import EncoderClassifier
+    sys.path.insert(0, HERE)
+    from cluster_singers import MODEL, load_16k
+    if not os.path.exists(os.path.join(clusters, "clusters.json")):   # a new session: group the clips again
+        clean(args, os.path.join(args.work, "military", "vocals"), clips)
+        singers(args, clips, clusters)
+    report = describe(clusters, data)
+    model = EncoderClassifier.from_hparams(source=MODEL, savedir=os.path.join(clusters, "ecapa_model"), run_opts={"device": "cpu"})
+    voices = (load(os.path.join(data, "voices_military.json")) or {}).get("voices", [])
+    lines = ["", "## Singers found by reference recordings", ""]
+    for spec in args.like:
+        head, files = spec.split("=", 1)
+        number, gender = head.split()
+        es = []
+        for f in files.split(","):
+            with torch.no_grad():
+                e = model.encode_batch(torch.from_numpy(load_16k(f.strip()))[None]).squeeze().numpy()
+            es.append(e / (np.linalg.norm(e) + 1e-9))
+        ref = np.mean(es, 0)
+        ref /= np.linalg.norm(ref)
+        cands = [r for r in report if r["gender"] in (gender, "unclear")] or report
+        sims = [float(r["centre"] @ ref) for r in cands]
+        order = np.argsort(sims)[::-1]
+        r = cands[order[0]]
+        v = voice_entry(gender, int(number), r)
+        copy_clips(data, v, r)
+        voices = [x for x in voices if x["name"] != v["name"]] + [v]
+        lines.append("* %s: singer %s, %.1f clean minutes (similarity %.2f; next closest %.2f)" % (
+            v["display_name"], r["cluster"], r["minutes"], sims[order[0]], sims[order[1]] if len(order) > 1 else 0))
+    save_voices(data, voices)
+    with open(os.path.join(args.work, "military", "report.md"), "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    log("\n".join(lines))
+    return voices
+
+
+def load(path):
+    try:
+        return json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def normalise(spec):
     return ",".join(" ".join(part.lower().split()) for part in spec.replace(";", ",").split(",") if part.strip())
 
@@ -517,6 +570,8 @@ def cmd_run(args):
             voices = json.load(open(os.path.join(data, "voices_military.json")))["voices"]
         if more_wanted(args.work, args.singers):
             voices = add_singers(args, vocals, clips, clusters, data, args.singers)
+        if args.like:
+            voices = add_like(args, clips, clusters, data)
         names = ", ".join(v["display_name"] for v in voices) or "none"
         status(args.work, "military-band singers: ready (%s in the queue; report in queue/military/report.md)" % names)
     except BaseException as e:
@@ -537,6 +592,8 @@ def main():
     r.add_argument("--min-minutes", type=float, default=10.0, help="least clean audio for a singer to be trained")
     r.add_argument("--singers", default="", help='more previewed singers to train, e.g. "2, 4, 5 male theatre, 6 male country"')
     r.add_argument("--sources", default=SOURCES, help="CSV with the columns file,url (default: military_sources.csv)")
+    r.add_argument("--like", action="append", default=[], help='"3 female=ref1.wav,ref2.wav": the singer closest to '
+                   "those recordings becomes Band Female 3 (repeatable)")
     r.add_argument("--limit", type=int, default=0, help="(testing) only the first N songs")
     r.add_argument("--seconds", type=float, default=0.0, help="(testing) only the first S seconds of each song")
     args = p.parse_args()

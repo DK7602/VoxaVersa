@@ -10,6 +10,9 @@ VOXAVERSA_KAGGLE (the push tool writes it at the top of the kernel source):
    "data": "/kaggle/input/<dataset>",        the attached dataset
    "only": ["cymatics_female_blend"],        voices from the kit's voices.json to train
    "words_tests": {"cymatics_female_blend": [["/kaggle/input/<dataset>/user_excerpt.wav", 12, "lyric"]]},
+   "military": {"like": ["3 female=bf3_ref_a.wav,bf3_ref_b.wav"]},
+                                             optional: rebuild the military-band singers' audio (military_test.py:
+                                             download, separate, clean, group) and find singers by reference takes
    "resume": "/kaggle/input/<previous run>", optional: an earlier run's output, to continue from its checkpoints
    "hours": 11}                              stop (with checkpoints) before Kaggle's 12-hour limit
 
@@ -20,6 +23,7 @@ similarity, words missed), voices/<voice>/ (ONNX, .vxpack), listen/<voice>/ (bef
 import glob
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -67,20 +71,27 @@ def main():
         folder = os.path.dirname(glob.glob(os.path.join(CFG["data"], "**", "voices.json"), recursive=True)[0])
         kit = shutil.make_archive(TMP + "/VoxaVersa_Colab_Data", "zip", os.path.dirname(folder),
                                   os.path.basename(folder))
-    py, q = cs.PY, tools + "/colab_queue.py"
-    only = " ".join(CFG.get("only", []))
-    cs.run("%s %s data --work %s --kit '%s' --python %s --rvc %s --no-military" % (py, q, WORK, kit, py, cs.RVC))
-    cs.run("%s %s queue --work %s --rvc %s --python %s --precision mixed --batch 8 %s"
-           % (py, q, WORK, cs.RVC, py, ("--only " + only) if only else ""))
-
-    queue_path = os.path.join(WORK, "queue.json")
-    queue = json.load(open(queue_path))
     def find(path):     # a file of the attached dataset, wherever Kaggle mounted it
         if os.path.exists(path):
             return path
         hits = glob.glob(os.path.join(CFG["data"], "**", os.path.basename(path)), recursive=True)
         return hits[0] if hits else path
 
+    py, q = cs.PY, tools + "/colab_queue.py"
+    only = " ".join(CFG.get("only", []))
+    cs.run("%s %s data --work %s --kit '%s' --python %s --rvc %s --no-military" % (py, q, WORK, kit, py, cs.RVC))
+    if CFG.get("military"):
+        likes = []
+        for spec in CFG["military"].get("like", []):
+            head, files = spec.split("=", 1)
+            likes += ["--like", head + "=" + ",".join(find(f) for f in files.split(","))]
+        cs.run(" ".join(shlex.quote(a) for a in [py, tools + "/military_test.py", "run", "--work", WORK, "--rvc", cs.RVC,
+                                                   "--scratch", TMP + "/scratch", "--ecapa", TMP + "/ecapa_military"] + likes))
+    cs.run("%s %s queue --work %s --rvc %s --python %s --precision mixed --batch 8 %s"
+           % (py, q, WORK, cs.RVC, py, ("--only " + only) if only else ""))
+
+    queue_path = os.path.join(WORK, "queue.json")
+    queue = json.load(open(queue_path))
     for v in queue["voices"]:
         if v["name"] in CFG.get("words_tests", {}):
             v["words_tests"] = [[find(t[0])] + list(t[1:]) for t in CFG["words_tests"][v["name"]]]
