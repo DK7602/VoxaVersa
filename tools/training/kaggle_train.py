@@ -14,6 +14,8 @@ VOXAVERSA_KAGGLE (the push tool writes it at the top of the kernel source):
                                              optional: rebuild the military-band singers' audio (military_test.py:
                                              download, separate, clean, group) and find singers by reference takes
    "resume": "/kaggle/input/<previous run>", optional: an earlier run's output, to continue from its checkpoints
+                                             (and its separated band vocals)
+   "reset": ["military_female_3"],           optional: voices to train again from scratch
    "hours": 11}                              stop (with checkpoints) before Kaggle's 12-hour limit
 
 Output (/kaggle/working/queue): queue_state.json and QUEUE_STATUS.md (evaluations: validation mel, singer
@@ -59,6 +61,14 @@ def main():
         if prev:
             print("resuming from " + os.path.dirname(prev[0]), flush=True)
             shutil.copytree(os.path.dirname(prev[0]), WORK, symlinks=True)
+
+    # voices to train again from scratch, e.g. after their training set was rebuilt
+    for name in CFG.get("reset", []):
+        state_path = os.path.join(WORK, "queue_state.json")
+        if os.path.exists(state_path):
+            st = json.load(open(state_path)); st.pop(name, None); json.dump(st, open(state_path, "w"), indent=1)
+        shutil.rmtree(os.path.join(WORK, "rvc_logs", name), ignore_errors=True)
+        shutil.rmtree(os.path.join(WORK, "voices", name), ignore_errors=True)
 
     cs.install()
     cs.setup(WORK)

@@ -511,15 +511,18 @@ def add_like(args, clips, clusters, data):
             es.append(e / (np.linalg.norm(e) + 1e-9))
         ref = np.mean(es, 0)
         ref /= np.linalg.norm(ref)
-        cands = [r for r in report if r["gender"] in (gender, "unclear")] or report
+        # every singer with enough audio, whatever the male/female guess says: that guess leans on the singers
+        # already in training and can call a 330 Hz singer "male" (it did on a fresh Kaggle run)
+        cands = [r for r in report if r["minutes"] >= MORE_MIN_MINUTES] or report
         sims = [float(r["centre"] @ ref) for r in cands]
         order = np.argsort(sims)[::-1]
         r = cands[order[0]]
         v = voice_entry(gender, int(number), r)
         copy_clips(data, v, r)
         voices = [x for x in voices if x["name"] != v["name"]] + [v]
-        lines.append("* %s: singer %s, %.1f clean minutes (similarity %.2f; next closest %.2f)" % (
-            v["display_name"], r["cluster"], r["minutes"], sims[order[0]], sims[order[1]] if len(order) > 1 else 0))
+        lines.append("* %s: singer %s, %.1f clean minutes (similarity %.2f; then %s)" % (
+            v["display_name"], r["cluster"], r["minutes"], sims[order[0]],
+            ", ".join("%s %.2f" % (cands[j]["cluster"], sims[j]) for j in order[1:4])))
     save_voices(data, voices)
     with open(os.path.join(args.work, "military", "report.md"), "a", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
