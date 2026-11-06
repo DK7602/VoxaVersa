@@ -56,3 +56,8 @@ a 9 - 20 dB dip, then the vowel; the silence put before each "d" was another bre
 (`edit_input.py` as it is now): no silence (a voice bar at the vowel's pitch, 10 dB down), a short "d" (burst +
 25 ms, re-pitched) at the strong start of the vowel; "this" keeps round 23's version, which had no dip. The dips
 after the "d" fall to 0 - 8 dB (the male voices' remainder is mostly the 5 ms window catching single pitch cycles).
+
+Round 24 verdict: better (Female Reggae picked it over 23) but the d "warped", most in the voices with the hardest
+vowel pushes right after it (x3 on the short vowels of dat / dees / ees / de); Female Reggae, with the fewest,
+warped least. Round 25, the last on the d: A = round 24's d with those vowels at x1.8; B = no d change
+(`edit_input_no_d.py`: the singer's own "th", with tink, fo and an' you kept). The pick goes into the plug-in.
