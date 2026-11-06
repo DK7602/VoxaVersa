@@ -12,9 +12,13 @@ import subprocess
 import time
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-PY = "/content/rvc-env/bin/python"
+# Colab by default; kaggle_train.py points these at Kaggle's local disk.
+PY = os.environ.get("VOXAVERSA_PY", "/content/rvc-env/bin/python")
+ENV = os.path.dirname(os.path.dirname(PY))
 PITCH_PACKAGES = "torchfcpe==0.0.4 local-attention==1.11.2 hyper-connections==0.4.2 einops==0.8.2"
-RVC = "/content/rvc"
+# The training queue's word check ("words_tests"): the same recognizer as tools/research/voice_audit.py
+WORDS_PACKAGES = "faster-whisper==1.1.1 ctranslate2==4.5.0"
+RVC = os.environ.get("VOXAVERSA_RVC", "/content/rvc")
 
 
 def run(cmd, show=True, tail=80):
@@ -39,7 +43,7 @@ def install():
     if not os.path.exists(PY):
         print("Installing (about 3 - 5 minutes)...", flush=True)
         run("pip install -q uv", show=False)
-        run("uv venv -q --python 3.12 /content/rvc-env", show=False)
+        run("uv venv -q --python 3.12 %s" % ENV, show=False)
         run("uv pip install -q --python %s torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121"
             % PY, show=False)
         run("uv pip install -q --python %s numpy==1.26.4 scipy==1.17.1 librosa==0.10.2.post1 numba==0.68.0 "
@@ -50,6 +54,8 @@ def install():
     # their dependencies: the newest hyper-connections wants PyTorch >= 2.5 and would replace the trainer's.
     if subprocess.run([PY, "-c", "import torchfcpe"], capture_output=True).returncode != 0:
         run("uv pip install -q --no-deps --python %s %s" % (PY, PITCH_PACKAGES), show=False)
+    if subprocess.run([PY, "-c", "import faster_whisper"], capture_output=True).returncode != 0:
+        run("uv pip install -q --python %s numpy==1.26.4 %s" % (PY, WORDS_PACKAGES), show=False)
     # Repairs a runtime where an earlier version of this step let PyTorch be upgraded (speechbrain then fails).
     versions = subprocess.run([PY, "-c", "import torch, torchaudio; print(torch.__version__, torchaudio.__version__)"],
                               capture_output=True, text=True).stdout.split()

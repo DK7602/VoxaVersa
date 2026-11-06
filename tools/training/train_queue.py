@@ -167,6 +167,8 @@ class Work:
                 v.setdefault(k, cfg.get(k, d))
             v["dataset"] = os.path.join(root, v["dataset"])
             v["tests"] = [[os.path.join(root, t[0]), t[1]] for t in v.get("tests", [])]
+            if v.get("words_tests"):
+                v["words_tests"] = [[os.path.join(root, t[0])] + list(t[1:]) for t in v["words_tests"]]
         return cfg
 
     def voice(self, name):
@@ -371,8 +373,10 @@ def cmd_run(args):
                                        key=lambda e: e["epoch"])
                         best = pick_best(evals)
                         w.update_state(name, evals=evals, best=best, eval_failures=0)
-                        print("[%s] %s: e%d val mel %.4f, similarity %.3f (best e%d)" % (
-                            now(), name, epoch, res["val_mel"], res["sim"], best["epoch"]), flush=True)
+                        print("[%s] %s: e%d val mel %.4f, similarity %.3f%s (best e%d)" % (
+                            now(), name, epoch, res["val_mel"], res["sim"],
+                            ", words missed %.0f %%" % (100 * res["wer"]) if "wer" in res else "", best["epoch"]),
+                            flush=True)
                         prune_small(os.path.join(exp, "voxaversa_ckpt"), name, best["epoch"], epoch)
                         write_status(w)
                     have.add(epoch)
@@ -536,6 +540,66 @@ def prepare_eval(cfg, w, v, exp):
     save_json(done, dict(tests=tests, clips=len(clips)))
 
 
+def prepare_words(cfg, w, v, exp):
+    """"words_tests": [[recording, transpose, lyric], ...] - sung recordings converted at every evaluation and
+    transcribed, to keep the checkpoint that loses the fewest words. Caches their ContentVec features and RMVPE
+    f0 (voxaversa_eval/words_<i>.npz) and returns the reference texts: the lyric, or without one the
+    recognizer's transcript of the recording itself."""
+    out = os.path.join(exp, "voxaversa_eval")
+    os.makedirs(out, exist_ok=True)
+    done = os.path.join(out, "words.json")
+    tests = [list(t) + [""] * (3 - len(t)) for t in v["words_tests"]]
+    cached = load_json(done)
+    if cached and cached.get("tests") == tests:
+        return cached["refs"]
+    import numpy as np
+    import torch
+    rvc = cfg["rvc_dir"]
+    rvc_imports(rvc)
+    from infer.hubert import load_hubert_model, extract_hubert_features
+    from infer.rmvpe import RMVPE
+    hubert = load_hubert_model("cpu", False)
+    rmvpe = RMVPE(os.path.join(rvc, "assets/rmvpe/rmvpe.pt"), is_half=False, device="cpu")
+    asr = None
+    refs = []
+    for i, (path, transpose, lyric) in enumerate(tests):
+        x16 = load_audio(path, 16000)[: 16000 * 30]
+        with torch.no_grad():
+            feats = extract_hubert_features(hubert, torch.from_numpy(x16)[None], "v2").squeeze(0).numpy()
+        f0 = np.asarray(rmvpe.infer_from_audio(x16, thred=0.03), dtype=np.float32)
+        np.savez(os.path.join(out, "words_%d.npz" % i), feats=feats.astype(np.float32), f0=f0, transpose=float(transpose))
+        if not lyric:
+            asr = asr or load_asr(w)
+            lyric = transcribe(asr, x16)
+        refs.append(lyric)
+    save_json(done, dict(tests=tests, refs=refs))
+    return refs
+
+
+def load_asr(w):
+    """faster-whisper small.en on the CPU (int8): what voice_audit.py measures with."""
+    from faster_whisper import WhisperModel
+    root = os.path.expanduser(w.cfg().get("asr_dir") or os.path.join(w.dir, "asr_model"))
+    return WhisperModel("small.en", device="cpu", compute_type="int8", download_root=root)
+
+
+def transcribe(asr, x16):
+    segs, _ = asr.transcribe(x16, beam_size=5, language="en", condition_on_previous_text=False)
+    return " ".join(s.text for s in segs)
+
+
+def word_error_rate(ref, hyp):
+    import re
+    words = lambda t: re.sub(r"[^a-z' ]", " ", t.lower()).split()
+    r, h = words(ref), words(hyp)
+    d = list(range(len(h) + 1))
+    for i, rw in enumerate(r, 1):
+        prev, d[0] = d[:], i
+        for j, hw in enumerate(h, 1):
+            d[j] = min(prev[j] + 1, d[j - 1] + 1, prev[j - 1] + (rw != hw))
+    return d[len(h)] / max(1, len(r))
+
+
 def load_audio(path, sr):
     import numpy as np
     import soundfile as sf
@@ -665,14 +729,19 @@ def should_stop(evals, v):
     best_sim = max(e["sim"] for e in before)
     mel_better = min(e["val_mel"] for e in recent) < best_mel * (1 - 0.005)
     sim_better = max(e["sim"] for e in recent) > best_sim + 0.005
-    if not mel_better and not sim_better:
-        return True, "plateau: no gain in validation mel (>0.5 %%) or similarity (>0.005) for %d evaluations" % v["patience"]
+    words_better = (all("wer" in e for e in evals)
+                    and min(e["wer"] for e in recent) < min(e["wer"] for e in before) - 0.03)
+    if not mel_better and not sim_better and not words_better:
+        return True, "plateau: no gain in validation mel (>0.5 %%), similarity (>0.005) or words for %d evaluations" % v["patience"]
     return False, ""
 
 
 def pick_best(evals):
     top = max(e["sim"] for e in evals)
     cands = [e for e in evals if e["sim"] >= top - 0.01]
+    if all("wer" in e for e in cands):         # "words_tests": keep the words, within 3 points of the best
+        low = min(e["wer"] for e in cands)
+        cands = [e for e in cands if e["wer"] <= low + 0.03]
     return min(cands, key=lambda e: e["val_mel"])
 
 
@@ -901,7 +970,7 @@ def cmd_eval(args):
     sims = []
     from scipy import signal as sps
     lo, hi = 1127 * math.log(1 + 50 / 700), 1127 * math.log(1 + 1100 / 700)
-    for path in sorted(glob.glob(os.path.join(exp, "voxaversa_eval", "test_*.npz"))):
+    def convert(path):
         z = np.load(path)
         feats, f0 = z["feats"], z["f0"] * 2 ** (float(z["transpose"]) / 12)
         n = min(len(f0), 2 * len(feats))
@@ -916,10 +985,18 @@ def cmd_eval(args):
                           torch.from_numpy(f0)[None].to(dev), sid)[0]
         y = y.reshape(-1).float().cpu().numpy()
         g = math.gcd(info["sample_rate"], 16000)
-        y16 = sps.resample_poly(y, 16000 // g, info["sample_rate"] // g).astype(np.float32)
-        sims.append(float(np.dot(embed(ecapa, y16), cent)))
+        return sps.resample_poly(y, 16000 // g, info["sample_rate"] // g).astype(np.float32)
+
+    for path in sorted(glob.glob(os.path.join(exp, "voxaversa_eval", "test_*.npz"))):
+        sims.append(float(np.dot(embed(ecapa, convert(path)), cent)))
     res = dict(epoch=args.epoch, val_mel=float(np.mean(dists)), sim=float(np.mean(sims)), sims=[round(s, 4) for s in sims],
                time=now())
+    if v.get("words_tests"):
+        refs = prepare_words(cfg, w, v, exp)
+        asr = load_asr(w)
+        wers = [word_error_rate(ref, transcribe(asr, convert(os.path.join(exp, "voxaversa_eval", "words_%d.npz" % i))))
+                for i, ref in enumerate(refs)]
+        res.update(wer=float(np.mean(wers)), wers=[round(x, 3) for x in wers])
     save_json(args.pth + ".eval.json", res)
     print("eval", res, flush=True)
 
