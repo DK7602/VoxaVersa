@@ -61,3 +61,14 @@ Round 24 verdict: better (Female Reggae picked it over 23) but the d "warped", m
 vowel pushes right after it (x3 on the short vowels of dat / dees / ees / de); Female Reggae, with the fewest,
 warped least. Round 25, the last on the d: A = round 24's d with those vowels at x1.8; B = no d change
 (`edit_input_no_d.py`: the singer's own "th", with tink, fo and an' you kept). The pick goes into the plug-in.
+
+Round 25: A (the d with gentler vowels) for all six voices - the accent to build into the plug-in.
+
+## Rhythm prototype (round 26)
+
+`groove_render.py`: the accent A take re-timed toward each genre's groove on the take's own grid (93.3 BPM, eighths
+fitted to the vowel onsets), by time-warping the AI singer's content features and pitch frames before the
+generator (so the voice and pitch stay natural): each syllable's vowel onset moves to its target, its consonant
+shifts rigidly with it, the vowel stretches or shrinks. Reggae: 60 % to the nearest sixteenth, 50 ms laid back,
+connected notes cut at 85 % (clipped endings). Afrobeats: off-beat eighths half a sixteenth late (swung), 75 %,
+cut at 70 % (bounce). Latin: the first off-beat eighth of each half bar a sixteenth late (dembow 3+3+2), 85 %, legato.
