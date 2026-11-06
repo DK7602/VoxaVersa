@@ -38,3 +38,9 @@ burst, so no "t" / "d" to hear. Round 21 makes the consonants in the recording i
 turns each "th" into a closure plus one of them (level-matched, cross-faded into the singer's own vowel) and swaps
 the r-coloured end of "for" for its plain "aw" (WORLD envelope); `accent_thick.py` then pushes every vowel change
 harder (x2.4, short vowels x3). `spectrogram.py` shows the bursts in the AI singer's output.
+
+Round 21 verdict: much better, but the audio broke up on the d of dat / dis / de, and "and" still ended in d. The
+spliced "d" brought 40 ms of the text-to-speech voice's vowel at another pitch, after a long dead closure. Round 22
+(`edit_input.py` as it is now): a short closure, a voice bar (the singer's own vowel, low-passed, quiet: the murmur
+of a real "d"), only the 12 ms burst, then the singer's own vowel; the "d" of "and" before "you" becomes a held "n"
+(WORLD envelope swap, pitch filled through the gap).

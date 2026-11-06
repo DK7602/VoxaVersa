@@ -1,46 +1,66 @@
-"""Round 21: the accent's consonants made in the recording, before the AI singer hears it.
-  each "th": the hiss becomes silence (the closure), then a real "t" / "d" (Kokoro's, burst + 40 ms of vowel)
-  "for":     the r-coloured end of the vowel becomes the plain "aw" of its start (WORLD envelope swap)
+"""Round 22: the accent's consonants made in the recording, smoother than round 21.
+  each "d" (that, this, the): the "th" becomes a short silence, then a voice bar (a low murmur at the vowel's
+            pitch, as every real "d" has), then only the 12 ms burst of Kokoro's "d", straight into your own vowel
+  "think":  silence, then Kokoro's "t" burst and aspiration (no vowel), into your vowel
+  "for":    the r-coloured end of the vowel gets the plain "aw" of its start (WORLD envelope swap)
+  "and":    the "d" before "you" becomes a held "n" (an' you)
 usage: edit_input.py take.wav stops_dir out.wav"""
 import sys, numpy as np, soundfile as sf, pyworld as pw
-from scipy.signal import resample_poly
+from scipy.signal import resample_poly, butter, sosfiltfilt
 src, sdir, out = sys.argv[1:4]
 x, sr = sf.read(src, dtype="float64"); x = x.mean(1) if x.ndim > 1 else x
-y = x.copy()
+y = x.copy(); rng = np.random.default_rng(1)
 def load(name):
     s, r = sf.read("%s/%s.wav" % (sdir, name), dtype="float64"); return resample_poly(s, sr, r)
 def rms(a): return np.sqrt(np.mean(a ** 2) + 1e-12)
-# (sample, closure start, release start, vowel onset)
-STOPS = [("t_i_am", 1.84, 1.98, 2.06), ("d_a_am", 2.70, 2.92, 2.99), ("d_i_am", 3.12, 3.26, 3.33), ("d_e_am", 4.15, 4.24, 4.31)]
-for name, c0, r0, v0 in STOPS:
-    a, r, v = int(c0 * sr), int(r0 * sr), int(v0 * sr)
-    fade = int(0.006 * sr)
-    w = np.ones(r - a); w[:fade] = np.linspace(1, 0, fade); w[fade:] = 0.0
-    y[a:r] *= w                                         # closure: silence (with a faint room noise, as a real one)
-    y[a:r] += (1 - w) * np.random.default_rng(1).standard_normal(r - a) * 10 ** (-66 / 20)
-    s = load(name)
-    vow = rms(x[v:v + int(0.03 * sr)]); s *= vow / rms(s[-int(0.03 * sr):])   # its vowel part as loud as yours
-    n = min(len(s), v - r + int(0.03 * sr))
-    xf = int(0.02 * sr)                                 # cross-fade into your own vowel
-    seg = s[:n].copy()
-    y[r:r + n - xf] = seg[:n - xf]
-    ramp = np.linspace(0, 1, xf)
-    y[r + n - xf:r + n] = seg[n - xf:n] * (1 - ramp) + x[r + n - xf:r + n] * ramp
-# "for": the end of the vowel (its r) gets the envelope of the vowel's start
-a, b = int(5.08 * sr), int(5.62 * sr)
-seg = x[a:b]; FP = 5.0
-f0, t = pw.harvest(seg, sr, frame_period=FP, f0_floor=70, f0_ceil=900)
-sp = pw.cheaptrick(seg, f0, t, sr); ap = pw.d4c(seg, f0, t, sr)
-k = lambda s_: int((s_ - 5.08) * 1000 / FP)
-pure = sp[k(5.20):k(5.30)].mean(0)
-for i in range(k(5.32), k(5.54)):
-    w_ = min(1.0, (i - k(5.32)) / 6); sp[i] = (1 - w_) * sp[i] + w_ * pure
-syn = pw.synthesize(f0, sp, ap, sr, frame_period=FP)[: len(seg)]
-c0, c1 = int((5.28 - 5.08) * sr), int((5.56 - 5.08) * sr); xf = int(0.015 * sr)
-mix = seg.copy(); ramp = np.linspace(0, 1, xf)
-mix[c0:c0 + xf] = seg[c0:c0 + xf] * (1 - ramp) + syn[c0:c0 + xf] * ramp
-mix[c0 + xf:c1 - xf] = syn[c0 + xf:c1 - xf]
-mix[c1 - xf:c1] = syn[c1 - xf:c1] * (1 - ramp) + seg[c1 - xf:c1] * ramp
-y[a:b] = mix
+def burst(name, ms):
+    s = load(name); j = int(0.004 * sr); n = int(ms / 1000 * sr)        # the files start 4 ms before the burst
+    seg = s[: j + n].copy(); seg[-int(0.003 * sr):] *= np.linspace(1, 0, int(0.003 * sr)); return seg
+low = butter(4, 450, "lowpass", fs=sr, output="sos")
+def xfade(a, b, n):
+    r = np.linspace(0, 1, n); return a[:n] * (1 - r) + b[:n] * r
+# (kind, sample, closure start, voice bar start, vowel onset)
+STOPS = [("t", "t_i_am", 1.84, None, 2.06), ("d", "d_a_am", 2.70, 2.935, 2.99), ("d", "d_i_am", 3.12, 3.27, 3.325),
+         ("d", "d_e_am", 4.17, 4.245, 4.30)]
+for kind, name, c0, vb0, v0 in STOPS:
+    a, v = int(c0 * sr), int(v0 * sr); fade = int(0.008 * sr)
+    vow = x[v:v + int(0.04 * sr)]
+    if kind == "t":
+        b = burst(name, 45); b *= 0.5 * rms(vow) / rms(b)                 # burst + aspiration, quieter than the vowel
+        start = v - len(b)
+        y[a:start] = y[a:start] * np.r_[np.linspace(1, 0, fade), np.zeros(start - a - fade)] + rng.standard_normal(start - a) * 10 ** (-66 / 20)
+        y[start:v] = b
+    else:
+        vb = int(vb0 * sr); b = burst(name, 12); b *= 0.35 * rms(vow) / rms(b)
+        # closure: silence; then the voice bar: your vowel's first 40 ms, low-passed, quiet, faded in
+        y[a:vb] = y[a:vb] * np.r_[np.linspace(1, 0, fade), np.zeros(vb - a - fade)] + rng.standard_normal(vb - a) * 10 ** (-66 / 20)
+        bar_len = v - len(b) - vb
+        src_bar = sosfiltfilt(low, np.tile(vow, int(np.ceil(bar_len / len(vow))) + 1))[:bar_len]
+        src_bar *= 0.18 * np.linspace(0.3, 1, bar_len)
+        y[vb:vb + bar_len] = src_bar
+        y[vb + bar_len:v] = b + 0.18 * src_bar[-1] * 0
+    # into your own vowel, softly
+    n = int(0.006 * sr); y[v:v + n] = xfade(y[v:v + n], x[v:v + n], n)
+
+def envelope_swap(t0, t1, pure0, pure1, sw0, sw1, fill_f0=False):
+    """WORLD-resynthesise t0..t1 with the frames sw0..sw1 given the mean envelope of pure0..pure1."""
+    a, b = int(t0 * sr), int(t1 * sr); seg = x[a:b]; FP = 5.0
+    f0, t = pw.harvest(seg, sr, frame_period=FP, f0_floor=70, f0_ceil=900)
+    sp = pw.cheaptrick(seg, f0, t, sr); ap = pw.d4c(seg, f0, t, sr)
+    k = lambda s_: int((s_ - t0) * 1000 / FP)
+    pure = sp[k(pure0):k(pure1)].mean(0); pap = ap[k(pure0):k(pure1)].mean(0)
+    if fill_f0:                      # no unvoiced gap where the "d" was
+        vz = np.where(f0 > 0)[0]; f0 = np.interp(np.arange(len(f0)), vz, f0[vz])
+    for i in range(k(sw0), k(sw1)):
+        w_ = min(1.0, (i - k(sw0)) / 4, (k(sw1) - i) / 4); sp[i] = (1 - w_) * sp[i] + w_ * pure; ap[i] = (1 - w_) * ap[i] + w_ * pap
+    syn = pw.synthesize(f0, sp, ap, sr, frame_period=FP)[: len(seg)]
+    xf = int(0.015 * sr); c0, c1 = int((sw0 - 0.04 - t0) * sr), int((sw1 + 0.04 - t0) * sr)
+    mix = seg.copy(); r = np.linspace(0, 1, xf)
+    mix[c0:c0 + xf] = seg[c0:c0 + xf] * (1 - r) + syn[c0:c0 + xf] * r
+    mix[c0 + xf:c1 - xf] = syn[c0 + xf:c1 - xf]
+    mix[c1 - xf:c1] = syn[c1 - xf:c1] * (1 - r) + seg[c1 - xf:c1] * r
+    y[a:b] = mix
+envelope_swap(5.08, 5.62, 5.20, 5.30, 5.32, 5.54)                       # for -> fo
+envelope_swap(6.46, 7.00, 6.56, 6.63, 6.64, 6.80, fill_f0=True)           # and you -> an' you
 sf.write(out, y.astype(np.float32), sr, subtype="FLOAT")
 print("edited", out)
