@@ -25,3 +25,9 @@ Round 18 verdict: from "and" on (and -> an, girl -> gyal / gel, take -> tek, slo
 (the "th" sounds, the short vowels of that / this / is, the "r" of for) no change heard. Changes to held vowels carry
 through the AI singer; a nudge of a short consonant or vowel does not. `accent_stronger.py` (round 19) replaces "th"
 with a stop (a closure, then "t" / "d") and pushes the short vowels harder.
+
+Round 19 verdict: still "th" where a "d" belongs. Two causes: two of the four "th" spans were off (the user's "th" in
+"that" is a breathy hiss before a short pause, 0.3 s ahead of the vowel), and the generator voices only where the
+pitch track is on, so anything put in an unvoiced "th" comes out as hiss. `accent_stops.py` (round 20) rebuilds each
+"th" as a stop: silence (closure), then a "t" burst or a voiced "d" release with the next vowel's pitch switched on.
+The hiss in those spans drops by 8 - 26 dB.
