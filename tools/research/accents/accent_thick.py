@@ -151,8 +151,8 @@ def render(Fx, out, f0x=None):
 
 # Round 20: each "th" rebuilt as a stop. Your "th" frames are unvoiced, and the generator voices only where the pitch
 # track is on, so a "d" gets the next vowel's pitch; the closure is silence (the recognizer data's mean silence frame).
-STOPS = [("t", 1.84, 2.015, 2.06, "think"), ("d", 2.70, 2.95, 2.99, "that"), ("d", 3.20, 3.285, 3.325, "this"),
-         ("d", 4.15, 4.26, 4.30, "the")]
+STOPS = [("t", 1.84, 2.015, 2.06, "think"), ("d", 2.70, 2.96, 3.035, "that"), ("d", 3.20, 3.285, 3.325, "this"),
+         ("d", 4.15, 4.15, 4.285, "the")]
 f0_acc = f0.copy()
 
 def stops(G, log):
@@ -168,5 +168,5 @@ def stops(G, log):
 
 log = []
 G = stops(strong(F.copy(), log), log)
-render(G, prefix + "-r23.wav", f0_acc)
+render(G, prefix + "-r25.wav", f0_acc)
 print("\n".join(log))

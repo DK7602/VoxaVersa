@@ -49,3 +49,10 @@ Round 22 verdict: the d's unintelligible, the sound just cuts out: a quiet voice
 near-silence. Round 23: a whole "d" with the start of its vowel again (`make_stops_full.py` keeps Kokoro's whole
 clip and burst time), re-synthesised by WORLD at the note sung there, after a short closure, blended into the
 singer's vowel over 30 ms.
+
+Round 23 verdict: still breaks up on the d. Measured (5 ms levels, input against output): the singer's vowel after
+"th" starts softly and reaches full strength ~40 ms later, and the "d" sat before that soft start - the AI sang d,
+a 9 - 20 dB dip, then the vowel; the silence put before each "d" was another break in a legato line. Round 24
+(`edit_input.py` as it is now): no silence (a voice bar at the vowel's pitch, 10 dB down), a short "d" (burst +
+25 ms, re-pitched) at the strong start of the vowel; "this" keeps round 23's version, which had no dip. The dips
+after the "d" fall to 0 - 8 dB (the male voices' remainder is mostly the 5 ms window catching single pitch cycles).

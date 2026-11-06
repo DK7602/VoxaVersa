@@ -37,16 +37,37 @@ def sung_f0(t0):
     a, b = int(t0 * sr), int((t0 + 0.12) * sr)
     f0, _ = pw.harvest(x[a:b], sr, frame_period=5.0, f0_floor=70, f0_ceil=900)
     v = f0[f0 > 0]; return float(np.median(v)) if len(v) else 150.0
-D3 = [("d_a", 2.70, 2.86, 2.99), ("d_i", 3.20, 3.31, 3.325), ("d_e", 4.15, 4.28, 4.30)]   # (sample, hiss start, hiss end, vowel)
-for name, h0, h1, v0 in D3:
-    v = int(v0 * sr); seg = repitched_d(name, sung_f0(v0))
-    xf = int(0.030 * sr); start = v + xf - len(seg)              # the segment ends 30 ms into your vowel
-    a = int(h0 * sr)
-    # the "th" hiss and the gap up to the "d": a short closure (faint room noise)
+# Round 24: a legato "d". Round 23 placed the "d" before the soft start of your vowel (it reaches full strength
+# ~40 ms later: d - dip - vowel, heard as a break-up) and put silence in front of it. Now the voice never stops:
+# the "th" becomes a voice bar (your coming vowel, low-passed, 10 dB down) at the vowel's pitch, then a short "d"
+# (burst + 25 ms, re-pitched), placed right at the strong start of your vowel. "that" keeps your pause before it.
+D3 = [("d_a", 2.70, 2.96, 3.035, True), ("d_e", 4.15, 4.235, 4.285, False)]
+# "this" kept round 23's way (no dip measured there): short closure, whole re-pitched "d", 30 ms into your vowel
+v = int(3.325 * sr); seg = repitched_d("d_i", sung_f0(3.325)); xf = int(0.030 * sr); start = v + xf - len(seg)
+a = int(3.20 * sr); fade = int(0.008 * sr)
+y[a:start] = y[a:start] * np.r_[np.linspace(1, 0, fade), np.zeros(max(0, start - a - fade))][:start - a] + rng.standard_normal(start - a) * 10 ** (-66 / 20)
+vow = x[v:v + xf]; seg *= rms(vow) / rms(seg[-xf:]); y[start:v] = seg[:v - start]
+rr = np.linspace(0, 1, xf); y[v:v + xf] = seg[v - start:] * (1 - rr) + x[v:v + xf] * rr
+#      (sample, hiss start, voice bar start, strong vowel, pause before)
+for name, h0, vb0, v0, pause in D3:
+    v = int(v0 * sr); a = int(h0 * sr); vb = int(vb0 * sr)
+    seg = repitched_d(name, sung_f0(v0))
+    seg = seg[: int(0.002 * sr) + int(0.005 * sr) + int(0.025 * sr)]             # 5 ms lead, burst, 25 ms
+    xf = int(0.015 * sr); start = v + xf - len(seg)
+    vow = x[v:v + int(0.04 * sr)]
     fade = int(0.008 * sr)
-    y[a:start] = y[a:start] * np.r_[np.linspace(1, 0, fade), np.zeros(max(0, start - a - fade))][:start - a] \
-        + rng.standard_normal(start - a) * 10 ** (-66 / 20)
-    vow = x[v:v + xf]; seg *= rms(vow) / rms(seg[-xf:])
+    if pause:   # the hiss inside your pause goes; the pause stays
+        y[a:vb] = y[a:vb] * np.r_[np.linspace(1, 0, fade), np.zeros(vb - a - fade)] + rng.standard_normal(vb - a) * 10 ** (-66 / 20)
+        bar0 = vb
+    else:
+        bar0 = a
+    bar_len = start - bar0
+    bar = sosfiltfilt(low, np.tile(vow, int(np.ceil(bar_len / len(vow))) + 2))[:bar_len] * 10 ** (-10 / 20)
+    if pause: bar *= np.linspace(0.2, 1, bar_len)
+    else:       # cross-fade out of what you sang before (no silence, no click)
+        nn = min(int(0.01 * sr), bar_len); bar[:nn] = y[bar0:bar0 + nn] * np.linspace(1, 0, nn) + bar[:nn] * np.linspace(0, 1, nn)
+    y[bar0:start] = bar
+    seg *= rms(vow) / rms(seg[-xf:])
     y[start:v] = seg[:v - start]
     rr = np.linspace(0, 1, xf); y[v:v + xf] = seg[v - start:] * (1 - rr) + x[v:v + xf] * rr
 # (kind, sample, closure start, voice bar start, vowel onset)
