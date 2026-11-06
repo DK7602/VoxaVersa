@@ -31,3 +31,10 @@ Round 19 verdict: still "th" where a "d" belongs. Two causes: two of the four "t
 pitch track is on, so anything put in an unvoiced "th" comes out as hiss. `accent_stops.py` (round 20) rebuilds each
 "th" as a stop: silence (closure), then a "t" burst or a voiced "d" release with the next vowel's pitch switched on.
 The hiss in those spans drops by 8 - 26 dB.
+
+Round 20 verdict: still "th", and the "r" of "for". Its spectrogram showed why: a gap where the "th" was, but no
+burst, so no "t" / "d" to hear. Round 21 makes the consonants in the recording itself, before the AI singer:
+`make_stops.py` cuts clean "t" / "d" onsets (burst + 40 ms of vowel) from Kokoro-82M (Apache 2.0), `edit_input.py`
+turns each "th" into a closure plus one of them (level-matched, cross-faded into the singer's own vowel) and swaps
+the r-coloured end of "for" for its plain "aw" (WORLD envelope); `accent_thick.py` then pushes every vowel change
+harder (x2.4, short vowels x3). `spectrogram.py` shows the bursts in the AI singer's output.
