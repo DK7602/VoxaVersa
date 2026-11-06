@@ -15,3 +15,8 @@ before its generator. The AI singer keeps the input's pronunciation, so the acce
   finding them automatically in a live stream is the plug-in step, as `SouthernVowels` does for "I".
 * `check_accent.py` - the recognizer on the rendered audio (did the singer sing the changed vowel?) and the words a
   speech recognizer still hears.
+
+Round 17 (light and full, on the 14 s audit clip) was heard as no accent at all: a handful of small changes
+doesn't read as an accent. `accent_strong.py` is the decisive test (round 18): the user's line "I think that this is
+the time for me and you, girl, take it slow", rich in the words accents show on, with every change at 1.8x
+(each vowel moved from the class actually sung in that frame), next to no accent.
