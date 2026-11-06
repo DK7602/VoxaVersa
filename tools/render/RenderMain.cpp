@@ -177,7 +177,7 @@ namespace
             p->setValueNotifyingHost (p->convertTo0to1 (kv.fromFirstOccurrenceOf ("=", false, false).getFloatValue()));
         }
         processor.setPlayConfigDetails (2, 2, sr, 512);
-        for (int i = 0; i < 1200 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
+        for (int i = 0; i < 6000 && processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading; ++i)
             juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
         processor.prepareToPlay (sr, 512);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
@@ -575,7 +575,8 @@ int main (int argc, char* argv[])
 
     // An AI voice model loads on a background thread and is attached on the message thread: wait for it,
     // otherwise the render silently uses the DSP engine.
-    for (int i = 0; i < 1200 && (processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading
+    // (up to 5 minutes: loading includes timing runs, slow when several renders share the CPU)
+    for (int i = 0; i < 6000 && (processor.getNeuralStatus() == voxa::VoxaVersaProcessor::NeuralStatus::Loading
                                  || processor.isChoirPartnerLoading()); ++i)
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
     if (processor.getNeuralStatus() != voxa::VoxaVersaProcessor::NeuralStatus::NoModelForVoice)
