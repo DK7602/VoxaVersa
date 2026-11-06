@@ -153,6 +153,23 @@ latest checkpoint at any time (`USE_LATEST_CHECKPOINT`), so you can listen at, s
 Free Colab tips: keep the tab open (or use Drive so a disconnect only costs the epochs since the last
 checkpoint); if you run out of GPU time, continue the next day: run all cells again with the same voice name.
 
+### Free Kaggle GPUs (headless)
+
+Kaggle gives about 30 GPU-hours a week (two T4s per session, up to 12 hours a run) and keeps running with the
+browser closed. `tools/training/kaggle_train.py` runs the same queue there: upload the data kit (and any test
+recordings) as a **private** Kaggle dataset, then push the script as a GPU + internet "script" kernel with that
+dataset attached and its settings (commit, voices to train, word tests, military-band rebuild) in
+`VOXAVERSA_KAGGLE` at the top of the source. The work folder becomes the run's output: download
+`queue/voices/<voice>/*.vxpack` and `report.md`. A run stops with checkpoints before the 12-hour limit; the next
+one continues with the previous output attached as `"resume"`.
+
+**Word check.** A voice with `"words_tests": [[recording, transpose, lyric], ...]` in queue.json has every
+evaluated checkpoint convert those sung recordings, and a speech recognizer (faster-whisper small.en, as in
+`tools/research/voice_audit.py`) counts the words lost against the lyric (or, without one, against its own
+transcript of the recording). The kept checkpoint is then the one with the lowest validation mel distance among
+those within 0.01 of the best similarity **and** within 3 points of the fewest words lost, and fewer words lost
+counts as progress for the stop rule. The status table and `report.md` show a "words missed" column.
+
 ## 5. Training on your own GPU or a rented one
 
 The notebook is a thin layer over `tools/training/rvc_train.py`, which works on any Linux/Windows machine
@@ -369,7 +386,8 @@ you can, or use it as the timbre and let VoxaVersa's input performance supply th
 | [RVC WebUI](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) at commit `81eed5e` (release 2.3.260718 + fixes) | slicing, f0, features, training code, model definitions | MIT |
 | Pretrained v2 base (`f0G40k/f0D40k`, `f0G48k/f0D48k`), RMVPE (`rmvpe.pt`), ContentVec/HuBERT (`hubert_base/`, = RVC's `hubert_base.pt`) from [lj1995/VoiceConversionWebUI](https://huggingface.co/lj1995/VoiceConversionWebUI) at revision `e6d0c1a` | training base, pitch, content features | MIT (repository licence); ContentVec itself is MIT |
 | `contentvec-768.onnx` made by `export_encoder.py` | VoxaVersa's content encoder | MIT (derived from the above) |
-| BS-Roformer vocals model (viperx, `model_bs_roformer_ep_317_sdr_12.9755`, UVR public models) and Mel-Band-Roformer de-reverb (anvuew, GPL-3.0) via the RVC WebUI's `tools/pymss` | the military-band test only: separating singers from band recordings (not shipped) | as published by their authors |
+| Mel-Band-Roformer vocals model ([Kim Jensen](https://huggingface.co/KimberleyJSN/melbandroformer), settings file from [ZFTurbo](https://github.com/ZFTurbo/Music-Source-Separation-Training)) and Mel-Band-Roformer de-reverb ([anvuew](https://huggingface.co/anvuew/dereverb_mel_band_roformer)) via the RVC WebUI's `tools/pymss` | the military-band singers only: separating singers from band recordings (not shipped) | MIT; de-reverb GPL-3.0. Band singers prepared before November 2026 used the viperx BS-Roformer (`model_bs_roformer_ep_317_sdr_12.9755`), whose weights state no licence |
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `small.en` | the training queue's word check and `voice_audit.py` only (not shipped) | MIT |
 | [FCPE](https://github.com/CNChTu/FCPE) (`torchfcpe` 0.0.4, bundled `fcpe_c_v001` weights) -> `fcpe.onnx` made by `export_pitch.py` | the AI voices' pitch tracker | MIT |
 | [SpeechBrain](https://github.com/speechbrain/speechbrain) + [`speechbrain/spkrec-ecapa-voxceleb`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) | singer clustering only (not shipped) | Apache-2.0 (model trained on VoxCeleb) |
 | PyTorch, transformers, ONNX, ONNX Runtime, librosa, NumPy, SciPy | tooling | BSD / Apache-2.0 / MIT / ISC |

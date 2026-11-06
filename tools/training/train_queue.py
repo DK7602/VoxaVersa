@@ -220,7 +220,12 @@ def write_status(w, note=None):
         if os.path.exists(extra):
             text = open(extra, encoding="utf-8").read().strip()
             lines += [("VocalSet singers: " + text) if "vocalset" in os.path.basename(extra) else text, ""]
-    lines += ["## Queue", "", "| # | Voice | Status | Epoch | Best eval (epoch: val mel, similarity) | Last eval |", "|---|---|---|---|---|---|"]
+    lines += ["## Queue", "", "| # | Voice | Status | Epoch | Best eval (epoch: val mel, similarity[, words missed]) | Last eval |",
+              "|---|---|---|---|---|---|"]
+
+    def ev(e):
+        return "e%d: %.3f, %.3f%s" % (e["epoch"], e["val_mel"], e["sim"], (", %.0f %%" % (100 * e["wer"])) if "wer" in e else "")
+
     for i, v in enumerate(cfg["voices"]):
         s = st.get(v["name"], {})
         evals = s.get("evals", [])
@@ -228,8 +233,7 @@ def write_status(w, note=None):
         last = evals[-1] if evals else None
         lines.append("| %d | %s | %s | %s | %s | %s |" % (
             i + 1, v["name"], s.get("status", "pending"), s.get("epoch_done", "-"),
-            ("e%d: %.3f, %.3f" % (best["epoch"], best["val_mel"], best["sim"])) if best else "-",
-            ("e%d: %.3f, %.3f" % (last["epoch"], last["val_mel"], last["sim"])) if last else "-"))
+            ev(best) if best else "-", ev(last) if last else "-"))
     done = [v["name"] for v in cfg["voices"] if st.get(v["name"], {}).get("status") == "done"]
     if done:
         lines += ["", "## Finished voices", ""]
@@ -1057,8 +1061,12 @@ def cmd_finalize(args):
 
     lines = ["# %s" % v.get("display_name", name), "", "Best checkpoint: epoch %s (%s)" % (best["epoch"], st.get("stop_reason", "")), ""]
     if st.get("evals"):
-        lines += ["| Epoch | Validation mel distance | Similarity to the voice |", "|---|---|---|"]
-        lines += ["| %d | %.4f | %.3f |" % (e["epoch"], e["val_mel"], e["sim"]) for e in st["evals"]]
+        if all("wer" in e for e in st["evals"]):
+            lines += ["| Epoch | Validation mel distance | Similarity to the voice | Words missed |", "|---|---|---|---|"]
+            lines += ["| %d | %.4f | %.3f | %.0f %% |" % (e["epoch"], e["val_mel"], e["sim"], 100 * e["wer"]) for e in st["evals"]]
+        else:
+            lines += ["| Epoch | Validation mel distance | Similarity to the voice |", "|---|---|---|"]
+            lines += ["| %d | %.4f | %.3f |" % (e["epoch"], e["val_mel"], e["sim"]) for e in st["evals"]]
         lines.append("")
     summary = "epoch %s" % best["epoch"]
     render = cfg.get("render")
