@@ -20,3 +20,8 @@ Round 17 (light and full, on the 14 s audit clip) was heard as no accent at all:
 doesn't read as an accent. `accent_strong.py` is the decisive test (round 18): the user's line "I think that this is
 the time for me and you, girl, take it slow", rich in the words accents show on, with every change at 1.8x
 (each vowel moved from the class actually sung in that frame), next to no accent.
+
+Round 18 verdict: from "and" on (and -> an, girl -> gyal / gel, take -> tek, slow -> slo) a good accent; before it
+(the "th" sounds, the short vowels of that / this / is, the "r" of for) no change heard. Changes to held vowels carry
+through the AI singer; a nudge of a short consonant or vowel does not. `accent_stronger.py` (round 19) replaces "th"
+with a stop (a closure, then "t" / "d") and pushes the short vowels harder.
