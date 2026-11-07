@@ -29,7 +29,7 @@ public:
     struct Frame
     {
         bool voiced = false;
-        float th = 0.0f, dh = 0.0f, d = 0.0f, t = 0.0f, n = 0.0f, r = 0.0f, vowel = 0.0f;   // probabilities
+        float th = 0.0f, dh = 0.0f, d = 0.0f, t = 0.0f, n = 0.0f, r = 0.0f, y = 0.0f, vowel = 0.0f;   // probabilities
     };
 
     /** The decision rule, one frame at a time with two frames of lookahead (separate from the recognizer so it can
@@ -45,15 +45,19 @@ public:
         static constexpr int maxDroppedD = 8;       // frames: a longer "d" / "t" after "n" is one to keep
         static constexpr int nWithin = 2;           // the "d" / "t" starts this many frames after the "n" at most
         static constexpr int vowelBeforeR = 3;      // frames of vowel before an "r" that is not sung
+        static constexpr float cleanVowelR = 0.15f; // P(r) of the vowel frames such an "r" holds
         // an "r" is held from its 2nd frame when the two after that are "r" too (at least 4 frames: not the short
         // one between vowels of "very")
 
-        enum Template : int8_t { t = 0, dA, dE, dI, numTemplates };
+        // Kokoro's "t" / "d"s (4 frames each), and the Latin accent's Spanish rolled "rr" (2) and the "j" of "jou" (5)
+        enum Template : int8_t { t = 0, dA, dE, dI, roll, jh, numTemplates };
+        static constexpr float yNeeded = 0.5f;   // P(y) of the "y" that becomes "j"
 
         struct Decision
         {
-            enum Kind : uint8_t { none, closure, voiceBar, stop, holdN, holdVowel } kind = none;
-            int8_t frame = 0;          // stop: which of its template's last two frames (2 or 3 of 0..3)
+            enum Kind : uint8_t { none, closure, voiceBar, stop, holdN, holdVowel, roll, jh } kind = none;
+            int8_t frame = 0;          // stop: which of its template's last two frames (2 or 3 of 0..3); roll, jh:
+                                       // which of theirs
             bool voicedStop = false;   // a "d" (from "dh"), else a "t"
             float weight = 1.0f;       // holdN / holdVowel: fading in
         };
@@ -74,6 +78,8 @@ public:
         int vowelRun = 0;             // vowel frames just before
         int rRun = 0;
         bool holdingVowel = false;
+        bool spanish = false;         // the Latin accent: the "r" after a vowel rolled, "y" -> "j"
+        int yRun = 0;
     };
 
     /** Per stream: the rule's state and the last frames (absolute 20 ms frame numbers). */
@@ -95,6 +101,7 @@ public:
         std::vector<float> holds[2];                  // the "n" / the vowel a hold sings
         uint8_t currentHold = 0;
         float lastPitch = 0.0f;                        // the last voiced pitch decided
+        bool latin = false;                            // the Latin accent's consonants (set by the caller; kept by reset())
     };
 
     /** Edits one chunk of generator features (and its pitch) in place, as SouthernVowels::apply (same arguments;
@@ -117,6 +124,8 @@ public:
         return channels > 0 ? (int) (templates[(size_t) which].size() / (size_t) channels) : 0;
     }
     const std::vector<float>& getSilence() const noexcept { return silence; }
+    /** True when the data has the Latin accent's rolled "rr" and "j". */
+    bool hasLatin() const noexcept { return getTemplateFrames (Rule::roll) == 2 && getTemplateFrames (Rule::jh) == 5; }
 
     /** For tests: loads data in the file format (see load()). */
     static std::unique_ptr<AccentConsonants> fromData (const void* data, size_t size);
@@ -127,7 +136,7 @@ private:
 
     int channels = 0, context = 0, hidden = 0, numClasses = 0;
     std::vector<float> w1, b1, w2, b2;   // the standardisation is folded into w1 / b1
-    int thClass = -1, dhClass = -1, dClass = -1, tClass = -1, nClass = -1, rClass = -1, vowelClass = -1;
+    int thClass = -1, dhClass = -1, dClass = -1, tClass = -1, nClass = -1, rClass = -1, yClass = -1, vowelClass = -1;
     std::array<std::vector<float>, Rule::numTemplates> templates;
     std::vector<float> silence;
 };

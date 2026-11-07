@@ -119,9 +119,9 @@ The model weights are not redistributed with VoxaVersa; only the generated image
   corpus based on public domain audio books*, ICASSP 2015, <https://www.openslr.org/12>, CC BY 4.0) with the
   phone timings of the **LibriSpeech Alignments** (L. Lugosch, M. Ravanelli, P. Ignoto, V. S. Tomar, Y. Bengio,
   <https://zenodo.org/records/2619474>, CC BY 4.0).
-- **Its "t" and "d" frames:** the ContentVec features of short clips spoken by **Kokoro-82M** (hexgrad,
-  <https://huggingface.co/hexgrad/Kokoro-82M>, Apache License 2.0) - "a tih", "a dah", "a deh", "a dih" - and the
-  mean of LibriSpeech's silence frames.
+- **Its "t", "d", rolled "rr" and "j" frames:** the ContentVec features of short clips spoken by **Kokoro-82M**
+  (hexgrad, <https://huggingface.co/hexgrad/Kokoro-82M>, Apache License 2.0) - "a tih", "a dah", "a deh", "a dih",
+  "a June", and its Spanish voice's "perro" - and the mean of LibriSpeech's silence frames.
 
 ## Bundled with the installers (not part of the source code)
 

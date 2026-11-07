@@ -90,7 +90,7 @@ bool AccentConsonants::load (const void* data, size_t size)
     for (int c = 0; c < numClasses; ++c)
     {
         const auto label = readName();
-        for (auto [name, index] : { std::pair<const char*, int*> { "TH", &thClass }, { "DH", &dhClass }, { "D", &dClass }, { "T", &tClass },
+        for (auto [name, index] : { std::pair<const char*, int*> { "TH", &thClass }, { "DH", &dhClass }, { "D", &dClass }, { "T", &tClass }, { "Y", &yClass },
                                     { "N", &nClass }, { "R", &rClass }, { "VOW", &vowelClass } })
             if (label == name)
                 *index = c;
@@ -108,7 +108,7 @@ bool AccentConsonants::load (const void* data, size_t size)
     if (! (readHalves (w1, (size_t) hidden * inputs) && readHalves (b1, (size_t) hidden)
            && readHalves (w2, (size_t) numClasses * (size_t) hidden) && readHalves (b2, (size_t) numClasses)))
         return false;
-    if (thClass < 0 || dhClass < 0 || dClass < 0 || tClass < 0 || nClass < 0 || rClass < 0 || vowelClass < 0)
+    if (thClass < 0 || dhClass < 0 || dClass < 0 || tClass < 0 || nClass < 0 || rClass < 0 || yClass < 0 || vowelClass < 0)
         return false;
 
     const int numTemplates = in.readInt();
@@ -121,15 +121,16 @@ bool AccentConsonants::load (const void* data, size_t size)
         std::vector<float> values;
         if (! readHalves (values, (size_t) frames * (size_t) channels))
             return false;
-        const int which = name == "t" ? Rule::t : name == "d_a" ? Rule::dA : name == "d_e" ? Rule::dE : name == "d_i" ? Rule::dI : -1;
+        const int which = name == "t" ? Rule::t : name == "d_a" ? Rule::dA : name == "d_e" ? Rule::dE : name == "d_i" ? Rule::dI
+                        : name == "roll" ? Rule::roll : name == "jh" ? Rule::jh : -1;
         if (which >= 0)
             templates[(size_t) which] = std::move (values);
         else if (name == "silence")
             silence = std::move (values);
     }
 
-    for (const auto& t : templates)
-        if (t.size() != 4 * (size_t) channels)
+    for (int t = Rule::t; t <= Rule::dI; ++t)
+        if (templates[(size_t) t].size() != 4 * (size_t) channels)
             return false;
     return silence.size() == (size_t) channels;
 }
@@ -181,6 +182,7 @@ AccentConsonants::Frame AccentConsonants::recognise (const float* features, int 
     f.t = logits[tClass] / total;
     f.n = logits[nClass] / total;
     f.r = logits[rClass] / total;
+    f.y = logits[yClass] / total;
     f.vowel = logits[vowelClass] / total;
     return f;
 }
@@ -246,6 +248,17 @@ AccentConsonants::Rule::Decision AccentConsonants::Rule::step (const Frame& f, c
             {
                 d.kind = Decision::holdVowel;
                 d.weight = 1.0f;
+                // Latin: the vowel held, then a rolled "rr" on the r's last two frames (fo-rr)
+                if (spanish && next.r < rNeeded)
+                {
+                    d.kind = Decision::roll;
+                    d.frame = 1;
+                }
+                else if (spanish && afterNext.r < rNeeded)
+                {
+                    d.kind = Decision::roll;
+                    d.frame = 0;
+                }
             }
             else if (rRun == 2 && vowelRun >= vowelBeforeR && next.r >= rNeeded && afterNext.r >= rNeeded)
             {
@@ -259,6 +272,21 @@ AccentConsonants::Rule::Decision AccentConsonants::Rule::step (const Frame& f, c
     {
         rRun = 0;
         holdingVowel = false;
+    }
+
+    // Latin: "you" -> "jou": a "y" sung as Kokoro's "j" and its move into the vowel
+    if (spanish && f.voiced && f.y >= yNeeded)
+    {
+        if (d.kind == Decision::none && yRun < 5)
+        {
+            d.kind = Decision::jh;
+            d.frame = (int8_t) yRun;
+        }
+        ++yRun;
+    }
+    else
+    {
+        yRun = 0;
     }
 
     vowelRun = isVowel (f) && ! r ? vowelRun + 1 : (r ? vowelRun : 0);
@@ -294,6 +322,7 @@ void AccentConsonants::apply (const float* features, int numEncoderFrames, int c
     const int64_t first = firstFrame >= 0 ? firstFrame / 2 : (firstFrame - 1) / 2;   // the chunk's first encoder frame
     if (state.recognised >= 0 && (state.recognised < first - 1 || state.recognised >= first + numEncoderFrames))
         state.reset();                                                                // a jump (transport, reset)
+    state.rule.spanish = state.latin && hasLatin();
 
     auto slot = [] (int64_t a) { return (size_t) (a % State::history + State::history) % State::history; };
     auto pitchAt = [&] (int e)   // the encoder frame's pitch (0: unvoiced)
@@ -371,6 +400,22 @@ void AccentConsonants::apply (const float* features, int numEncoderFrames, int c
             // what the hold sings: the "n" before the "d"; the vowel's last 2 frames before the "r" (the hold
             // starts on the r's 2nd frame)
             int64_t from = d - 3, to = d - 1;
+            std::array<int64_t, 2> clean { -1, -1 };
+            if (decision.kind == D::holdVowel)
+            {
+                // the vowel turns r-coloured before the "r" is heard: its 2 frames nearest the "r" with almost none
+                // (round 25 A held the vowel's clean start; the frames just before the "r" sang one in male voices)
+                int found = 0;
+                for (int64_t b = d - 2; b >= d - 8 && b >= first && found < 2; --b)
+                    if (const auto t = slot (b); state.frameOf[t] == b && state.frames[t].r < Rule::cleanVowelR
+                                                  && state.frames[t].vowel >= Rule::vowelNeeded)
+                        clean[(size_t) found++] = b;
+                if (found == 2)
+                {
+                    from = clean[1];
+                    to = clean[0] + 1;
+                }
+            }
             if (decision.kind == D::holdN)
             {
                 // the most "n"-like of the 3 frames before
@@ -394,10 +439,12 @@ void AccentConsonants::apply (const float* features, int numEncoderFrames, int c
                 state.currentHold ^= 1;
                 auto& hold = state.holds[state.currentHold];
                 hold.assign ((size_t) channels, 0.0f);
-                const int count = (int) (to - from);
+                const bool pair = clean[1] >= 0;   // the two clean vowel frames (not always next to each other)
+                const int count = pair ? 2 : (int) (to - from);
                 for (int64_t b = from; b < to; ++b)
-                    for (int c = 0; c < channels; ++c)
-                        hold[(size_t) c] += featuresOf (b)[c] / (float) count;
+                    if (! pair || b == clean[0] || b == clean[1])
+                        for (int c = 0; c < channels; ++c)
+                            hold[(size_t) c] += featuresOf (b)[c] / (float) count;
             }
         }
         state.holdIndex[sd] = state.currentHold;
@@ -476,6 +523,14 @@ void AccentConsonants::apply (const float* features, int numEncoderFrames, int c
                     dest[c] += dec.weight * (hold[(size_t) c] - dest[c]);
                 if (dec.kind == D::holdN && f0Frames[i] <= 0.0f)
                     f0Frames[i] = state.lastPitch;   // the "n" runs on into the next word
+                break;
+            }
+            case D::roll:
+            case D::jh:
+            {
+                const auto which = dec.kind == D::roll ? Rule::roll : Rule::jh;
+                if (dec.frame < getTemplateFrames (which))
+                    std::copy_n (templates[(size_t) which].data() + (size_t) dec.frame * (size_t) channels, channels, dest);
                 break;
             }
             case D::none:

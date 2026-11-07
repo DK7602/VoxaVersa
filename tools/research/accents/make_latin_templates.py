@@ -1,12 +1,12 @@
 """The Latin accent's new sounds, spoken by Kokoro-82M (Apache 2.0): the Spanish tapped and trilled r (its Spanish voice saying
-"para", "pero", "perro") and the "j" of a Spanish speaker's "you" (its American voice saying "a June"). Writes each clip and,
+"para", "pero", "perro"), its light Spanish "l" ("ala") and the "j" of a Spanish speaker's "you" (its American voice saying "a June"). Writes each clip and,
 in sounds.json, where the sound is (seconds; from Kokoro's own phoneme durations).
 usage: make_latin_templates.py out_dir"""
 import os, sys, json, numpy as np, soundfile as sf
 os.environ.setdefault("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
 from kokoro import KPipeline
 out = sys.argv[1]; os.makedirs(out, exist_ok=True); info = {}
-CLIPS = [("e", "em_alex", "para", "ɾ", "tap_para"), ("e", "em_alex", "pero", "ɾ", "tap_pero"), ("e", "em_alex", "perro", "r", "trill_perro"),
+CLIPS = [("e", "em_alex", "para", "ɾ", "tap_para"), ("e", "em_alex", "pero", "ɾ", "tap_pero"), ("e", "em_alex", "perro", "r", "trill_perro"), ("e", "em_alex", "ala", "l", "l_ala"),
          ("e", "ef_dora", "para", "ɾ", "tap_para_f"), ("a", "am_michael", "a June", "ʤ", "jh_june")]
 pipes = {}
 for lang, voice, text, ph, name in CLIPS:

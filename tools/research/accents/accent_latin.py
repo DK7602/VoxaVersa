@@ -8,7 +8,9 @@ Spanish speaker keeps the "r" and taps (or rolls) it, and says "you" as "jou". O
 Times are this take's (the consonant recognizer's read-out of it).
 usage: accent_latin.py model.onnx contentvec.onnx take.wav words.json cmudict.gz recognizer.pt means_libri.npz
                        means2.npz latin transpose out_prefix feats.npz bursts.json latin_feats.npz
-       (latin_feats.npz: k_tap_para, k_trill_perro, k_jh_june - make_latin_templates.py's clips' features)"""
+       (latin_feats.npz: k_tap_para, k_trill_perro, k_jh_june, k_l_ala - make_latin_templates.py's clips' features)
+       [--round32]: the "girl" variants of round 32 instead (G1 e + rolled r + light l, G2 the singer's "er" + rolled r +
+       light l, G3 e + light l)"""
 import sys, math, json, gzip, re
 import numpy as np, soundfile as sf, onnxruntime as ort, torch, torch.nn as nn
 sys.path.insert(0, "/home/user/VoxaVersa/tools/training")
@@ -213,8 +215,30 @@ def latin(G, log, r, girl):
     log.append("for%s: %d-frame r; you: jou" % (" / girl" if girl else "", len(r)))
     return G
 
+LIGHT_L = LF["k_l_ala"][15:19]         # Spanish light "l": 4 frames (English "girl" ends in a dark one)
+
+def girl(G, log, vowel_kept, roll, light):
+    """Round 32 (Male Latin's "girl" did not sound Latin): the r before the "l" (8.22), the "l" 8.22 - 8.30."""
+    fr = lambda t: int(round(t * 50))
+    if vowel_kept:      # the singer's own "er" vowel, not "e"
+        G[fr(7.88):fr(8.22)] = G_plain[fr(7.88):fr(8.22)]
+    if roll:
+        G[fr(8.22) - len(ROLL):fr(8.22)] = ROLL
+    if light:
+        for j, k in enumerate(range(fr(8.22), fr(8.32))):
+            G[k] = LIGHT_L[min(j, len(LIGHT_L) - 1)]
+    log.append("girl: %s, %s, %s" % ("er kept" if vowel_kept else "e", "rolled r" if roll else "no r", "light l" if light else "dark l"))
+    return G
+
 log = []
 G0 = cons(strong(F.copy(), log), log)
-render(latin(G0.copy(), log, TAP, False), prefix + "-r31tap.wav", f0_acc)
-render(latin(G0.copy(), log, ROLL, True), prefix + "-r31roll.wav", f0_acc)
+if "--round32" not in sys.argv:
+    render(latin(G0.copy(), log, TAP, False), prefix + "-r31tap.wav", f0_acc)
+    render(latin(G0.copy(), log, ROLL, True), prefix + "-r31roll.wav", f0_acc)
+else:
+    ACC.pop("v_girl"); G_plain = cons(strong(F.copy(), []), [])      # the same accent with the singer's own "girl" vowel
+    B = latin(G0.copy(), log, ROLL, False)                           # round 31 B without its "girl" r
+    render(girl(B.copy(), log, False, True, True), prefix + "-r32g1.wav", f0_acc)
+    render(girl(B.copy(), log, True, True, True), prefix + "-r32g2.wav", f0_acc)
+    render(girl(B.copy(), log, False, False, True), prefix + "-r32g3.wav", f0_acc)
 print("\n".join(log))

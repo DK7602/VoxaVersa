@@ -7,8 +7,9 @@ templates: their number (uint32), each its name (uint8 length + text), its frame
   t            Kokoro's "t" (its "a tih", encoded alone): closure, closure, burst, aspiration
   d_a d_e d_i  Kokoro's "d" before "ah" / "eh" / "ih": voice bar x3, burst
   silence      the mean of LibriSpeech's silence frames
+  roll, jh     (with latin_feats.npz, make_latin_templates.py) the Latin accent's rolled "rr" (2 frames) and "j" (5)
 Kokoro-82M is Apache 2.0 (docs/THIRD_PARTY.md); the clips come from make_stops_full.py.
-usage: export_consonants.py model.pt out.gz kokoro_feats.npz bursts.json libri_cons.npz
+usage: export_consonants.py model.pt out.gz kokoro_feats.npz bursts.json libri_cons.npz [latin_feats.npz]
        (kokoro_feats.npz: k_d_a, k_d_e, k_d_i, k_t_i - the clips' ContentVec features, 50 Hz)"""
 import sys, gzip, json, struct, numpy as np, torch
 model, out_path, kpath, bpath, lpath = sys.argv[1:6]
@@ -25,6 +26,9 @@ templates = [("t", K["k_t_i"][burst("t_i") - 2:burst("t_i") + 2])]
 for v in ("a", "e", "i"):
     n = "d_" + v; templates.append((n, K["k_" + n][burst(n) - 3:burst(n) + 1]))
 L = np.load(lpath); templates.append(("silence", L["X"][L["Y"] == "SIL"].astype(np.float64).mean(0, keepdims=True)))
+if len(sys.argv) > 6:      # the Latin accent's: Kokoro's Spanish rolled "rr" ("perro") and the "j" of "a June"
+    LT = np.load(sys.argv[6])
+    templates += [("roll", LT["k_trill_perro"][19:21]), ("jh", LT["k_jh_june"][28:33])]
 
 out = bytearray(b"VXVC") + struct.pack("<5I", 1, ch, ctx, W1.shape[0], len(classes))
 for c in classes: out += struct.pack("<B", len(c)) + c.encode()

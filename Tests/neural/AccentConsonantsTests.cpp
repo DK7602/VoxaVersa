@@ -33,11 +33,12 @@ namespace
 
     /** The rule's decisions over the frames, as the plug-in makes them (2 frames of lookahead; two silent frames
         follow). */
-    std::vector<D> run (std::vector<Frame> frames)
+    std::vector<D> run (std::vector<Frame> frames, bool spanish = false)
     {
         frames.push_back (silence());
         frames.push_back (silence());
         Rule rule;
+        rule.spanish = spanish;
         std::vector<D> out;
         for (size_t i = 0; i + 2 < frames.size(); ++i)
             out.push_back (rule.step (frames[i], frames[i + 1], frames[i + 2]));
@@ -116,6 +117,22 @@ public:
             expect (allNone (run ({ vowel(), r(), r(), r(), r(), silence() })), "a vowel too short to hold");
         }
 
+        beginTest ("Latin: the \"r\" after a vowel rolled at its end (fo-rr), \"you\" -> \"jou\"");
+        {
+            auto forr = run ({ vowel(), vowel(), vowel(), vowel(), r(), r(), r(), r(), r(), silence() }, true);
+            expect (forr[5].kind == D::holdVowel, "the vowel held");
+            expect (forr[7].kind == D::roll && forr[7].frame == 0 && forr[8].kind == D::roll && forr[8].frame == 1,
+                    "the rolled rr on the r's last two frames");
+            expect (run ({ vowel(), vowel(), vowel(), vowel(), r(), r(), r(), r(), r(), silence() })[8].kind == D::holdVowel,
+                    "Jamaican / Nigerian: fo, no roll");
+            Frame y = sound (0.1f);
+            y.y = 0.8f;
+            auto you = run ({ n(), y, y, y, y, y, y, y, vowel() }, true);
+            expect (you[1].kind == D::jh && you[1].frame == 0 && you[5].kind == D::jh && you[5].frame == 4, "jou: the j and into the vowel");
+            expect (you[6].kind == D::none, "the rest of the y is the singer's");
+            expect (allNone (run ({ n(), y, y, vowel() })), "only the Latin accent");
+        }
+
         beginTest ("The consonant recognizer embedded in the plug-in");
         {
             const auto* consonants = AccentConsonants::get();
@@ -124,9 +141,10 @@ public:
                 return;
             const int channels = consonants->getChannels();
             expectEquals (channels, 768, "ContentVec features");
-            for (int t = 0; t < Rule::numTemplates; ++t)
-                expectEquals (consonants->getTemplateFrames (t), 4, "templates of 4 frames");
+            for (int t = Rule::t; t <= Rule::dI; ++t)
+                expectEquals (consonants->getTemplateFrames (t), 4, "the t / d templates: 4 frames");
             expectEquals ((int) consonants->getSilence().size(), channels, "the silence frame");
+            expect (consonants->hasLatin(), "the Latin accent's rolled rr and j");
 
             constexpr int encoderFrames = 60, frames = 2 * encoderFrames, skip = 8;
             std::mt19937 random (11);
