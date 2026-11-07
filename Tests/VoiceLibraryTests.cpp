@@ -322,6 +322,12 @@ public:
             library.setSoundChoice ("male-blues", "Medium");
             expectWithinAbsoluteError (library.findById ("male-blues")->traits.aiGrowl, 0.35f * 0.85f * 0.45f, 1.0e-6f);
 
+            // Female Gospel: darker and fuller (listening audit 43)
+            const auto& gospel = library.findById ("female-gospel")->traits;
+            expectWithinAbsoluteError (gospel.tiltDb, -0.5f, 1.0e-6f);
+            expectWithinAbsoluteError (gospel.bodyDb, 4.0f, 1.0e-6f);
+            expectWithinAbsoluteError (gospel.warmthDb, 3.5f, 1.0e-6f);
+
             expectEquals (library.findById ("male-deep-bass")->soundName, juce::String ("Natural"));
             expectEquals (library.findById ("neutral-whisper")->soundName, juce::String ("Natural"));
             for (const auto& v : library.getVoices())

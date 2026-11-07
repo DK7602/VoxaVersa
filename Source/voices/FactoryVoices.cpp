@@ -278,6 +278,12 @@ namespace
         t.singLegato = g.legato;
         t.singRhythmBusy = g.busy;
 
+        // Female Gospel, darker and fuller with more chest (listening audit 43; round 15: "more depth / richness to
+        // voice needed"): the tone of Female Country's Mature, on the same singer.
+        if (! male && juce::String (g.idPart) == "gospel")
+        {
+            t.tiltDb = -0.5f; t.warmthDb = 3.5f; t.bodyHz = 280.0f; t.bodyDb = 4.0f; t.airDb = -0.5f; t.presenceDb = 1.5f;
+        }
         // Female Country's sounds, picked by ear (listening audit 9: "a little high pitched, needs maturity"):
         // darker and fuller by default; or an octave lower, in the low end of her singer's range.
         if (! male && juce::String (g.idPart) == "country")
