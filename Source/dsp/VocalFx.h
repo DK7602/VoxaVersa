@@ -275,8 +275,11 @@ public:
     void prepare (double sampleRate);
     void reset();
     /** `hz`: the voice's pitch per sample (0 where unvoiced: nothing changes there). `amount`: the deepest
-        modulation, where he digs in hardest. */
-    void process (float* voice, const float* hz, int numSamples, float amount) noexcept;
+        modulation, where he digs in hardest. `spread` (0..1) loosens the dig-in rule (Jazz, listening audit 45: "loosen
+        the boundaries of the digging in"): at 1 every word start counts (after 30 ms without voice, not 80), it fades
+        over 0.35 s (not 0.18), singing around the phrase's level counts (from 1.5 dB under it, full at 2.5 dB over;
+        not 2.1 - 4.5 dB over), and everything sung keeps 35 % of the growl. */
+    void process (float* voice, const float* hz, int numSamples, float amount, float spread = 0.0f) noexcept;
 
     /** How hard he digs in now (0..1). */
     float getDigIn() const noexcept { return digIn; }

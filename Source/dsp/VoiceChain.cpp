@@ -237,7 +237,7 @@ void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, con
     if (traits.aiGrit > 0.0f)   // an AI singer's rasp (Male Rap, Deep Bass)
         grit.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * (1.0f + s.style)));
     if (traits.aiGrowl > 0.0f)  // a growl where he digs in (Male Blues)
-        growl.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrowl * (1.0f + s.style)));
+        growl.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrowl * (1.0f + s.style)), traits.aiGrowlSpread);
 }
 
 void VoiceChain::fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept

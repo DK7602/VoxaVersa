@@ -1274,8 +1274,12 @@ void Growl::reset()
     voicedRun = 0;
 }
 
-void Growl::process (float* x, const float* hz, int n, float amount) noexcept
+void Growl::process (float* x, const float* hz, int n, float amount, float spread) noexcept
 {
+    spread = juce::jlimit (0.0f, 1.0f, spread);
+    const int gap = (int) ((0.08 - 0.05 * spread) * sr);
+    const float fall = spread > 0.0f ? (float) (1.0 - std::exp (-1.0 / ((0.18 + 0.17 * spread) * sr))) : onsetFall;
+    const float loudFrom = 2.1f - 3.6f * spread, loudTo = 4.5f - 2.0f * spread, floor = 0.35f * spread;
     for (int i = 0; i < n; ++i)
     {
         const bool voiced = hz[i] > 40.0f;
@@ -1288,26 +1292,26 @@ void Growl::process (float* x, const float* hz, int n, float amount) noexcept
         float target = 0.0f;
         if (voiced)
         {
-            if (unvoiced > (int) (0.08 * sr))
+            if (unvoiced > gap)
                 onset = 1.0f;
             unvoiced = 0;
             ++voicedRun;
-            float loud = 0.0f;
+            float loud = 0.0f;   // how far above the phrase's level: 0 at loudFrom dB, 1 at loudTo dB
             if (phraseDb < -150.0f && voicedRun > (int) (0.05 * sr))   // the first level once the envelope has risen
                 phraseDb = db;
             if (phraseDb > -150.0f)
             {
                 phraseDb += (db - phraseDb) * slow;
-                loud = juce::jlimit (0.0f, 1.0f, (db - phraseDb + 1.5f) / 6.0f);
+                loud = juce::jlimit (0.0f, 1.0f, (db - phraseDb - loudFrom) / (loudTo - loudFrom));
             }
-            target = juce::jlimit (0.0f, 1.0f, juce::jmax (1.2f * onset, (loud - 0.6f) / 0.4f));
+            target = juce::jlimit (0.0f, 1.0f, juce::jmax (juce::jmax (1.2f * onset, loud), floor));
         }
         else
         {
             ++unvoiced;
             voicedRun = 0;
         }
-        onset -= onset * onsetFall;
+        onset -= onset * fall;
         digIn += (target - digIn) * smooth;
 
         fade = juce::jlimit (0.0f, 1.0f, fade + (voiced ? fadeStep : -fadeStep));

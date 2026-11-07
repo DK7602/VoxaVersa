@@ -1054,6 +1054,17 @@ public:
             expectLessThan (top, loudPush - 10.0);   // the top of the voice is left (nearly) alone
             // no voice: nothing changes
             expectWithinAbsoluteError (rms (x, 0, start), rms (before, 0, start), 1.0e-9);
+
+            // the looser rule (Jazz): a note held at the phrase's level keeps growling
+            auto loose = before;
+            dsp::Growl jazz;
+            jazz.prepare (sr);
+            for (int pos = 0; pos < total; pos += 480)
+                jazz.process (loose.data() + pos, hz.data() + pos, juce::jmin (480, total - pos), 0.35f, 1.0f);
+            const double looseHeld = tone (loose, push - 500 * ms, push, 300.0, sr) - tone (loose, push - 500 * ms, push, 200.0, sr);
+            logMessage ("looser rule: held note " + juce::String (looseHeld, 1) + " dB");
+            expectGreaterThan (looseHeld, -30.0);
+            expectWithinAbsoluteError (rms (loose, 0, start), rms (before, 0, start), 1.0e-9);
         }
 
         beginTest ("Laid back: the voice lands later by exactly the delay, and a change of delay doesn't click");

@@ -521,7 +521,7 @@ int main (int argc, char* argv[])
                 const auto name = args[k + 1].upToFirstOccurrenceOf ("=", false, false);
                 const auto value = args[k + 1].fromFirstOccurrenceOf ("=", false, false).getFloatValue();
                 auto& t = voice->traits;
-                std::map<juce::String, float*> traits { { "aiGrit", &t.aiGrit }, { "aiGrowl", &t.aiGrowl }, { "laidBackMs", &t.laidBackMs }, { "tiltDb", &t.tiltDb }, { "warmthDb", &t.warmthDb },
+                std::map<juce::String, float*> traits { { "aiGrit", &t.aiGrit }, { "aiGrowl", &t.aiGrowl }, { "aiGrowlSpread", &t.aiGrowlSpread }, { "laidBackMs", &t.laidBackMs }, { "tiltDb", &t.tiltDb }, { "warmthDb", &t.warmthDb },
                                                         { "presenceDb", &t.presenceDb }, { "airDb", &t.airDb }, { "ringHz", &t.ringHz },
                                                         { "ringDb", &t.ringDb }, { "bodyHz", &t.bodyHz }, { "bodyDb", &t.bodyDb },
                                                         { "breathiness", &t.breathiness }, { "vibeSaturation", &t.vibeSaturation },
