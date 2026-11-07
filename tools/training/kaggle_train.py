@@ -16,6 +16,9 @@ VOXAVERSA_KAGGLE (the push tool writes it at the top of the kernel source):
    "resume": "/kaggle/input/<previous run>", optional: an earlier run's output, to continue from its checkpoints
                                              (and its separated band vocals)
    "reset": ["military_female_3"],           optional: voices to train again from scratch
+   "vocalset": ["male8"],                    optional: VocalSet singers to download and clean first (fetch_vocalset.py
+                                             + prepare_dataset.py, as for the CPU queue); "only" then names them
+                                             (vocalset_male8)
    "hours": 11}                              stop (with checkpoints) before Kaggle's 12-hour limit
 
 Output (/kaggle/working/queue): queue_state.json and QUEUE_STATUS.md (evaluations: validation mel, singer
@@ -90,6 +93,9 @@ def main():
     py, q = cs.PY, tools + "/colab_queue.py"
     only = " ".join(CFG.get("only", []))
     cs.run("%s %s data --work %s --kit '%s' --python %s --rvc %s --no-military" % (py, q, WORK, kit, py, cs.RVC))
+    if CFG.get("vocalset"):     # in the foreground: the queue below trains them
+        cs.run("%s %s vocalset --work %s --python %s --scratch %s --singers %s"
+               % (py, q, WORK, py, TMP + "/scratch", " ".join(CFG["vocalset"])))
     if CFG.get("military"):
         likes = []
         for spec in CFG["military"].get("like", []):
@@ -97,8 +103,8 @@ def main():
             likes += ["--like", head + "=" + ",".join(find(f) for f in files.split(","))]
         cs.run(" ".join(shlex.quote(a) for a in [py, tools + "/military_test.py", "run", "--work", WORK, "--rvc", cs.RVC,
                                                    "--scratch", TMP + "/scratch", "--ecapa", TMP + "/ecapa_military"] + likes))
-    cs.run("%s %s queue --work %s --rvc %s --python %s --precision mixed --batch 8 %s"
-           % (py, q, WORK, cs.RVC, py, ("--only " + only) if only else ""))
+    cs.run("%s %s queue --work %s --rvc %s --python %s --precision mixed --batch 8 %s %s"
+           % (py, q, WORK, cs.RVC, py, ("--only " + only) if only else "", "--vocalset" if CFG.get("vocalset") else ""))
 
     queue_path = os.path.join(WORK, "queue.json")
     queue = json.load(open(queue_path))
