@@ -350,12 +350,13 @@ std::vector<VoiceProfile> createFactoryVoices()
     }));
     {
         // picked by ear (listening audit 5): a touch of roughness, a little less boom and more presence, so it
-        // sounds human; or the warmer, rounder bass
+        // sounds human; or the warmer, rounder bass. Audit 36 ("some words get muddy"): with its singer retrained
+        // for words, less boom again (body 3.5 -> 2.5 dB) and more presence (2.5 -> 4.5 dB)
         auto bass = [] (float grit, float body, float warmth, float presence)
         {
             return [=] (VoiceTraits& t) { t.aiGrit = grit; t.bodyDb = body; t.warmthDb = warmth; t.presenceDb = presence; };
         };
-        voices.back().sounds = { { "Natural", "A touch of roughness, clear words", bass (0.12f, 3.5f, 3.0f, 2.5f) },
+        voices.back().sounds = { { "Natural", "A touch of roughness, clear words", bass (0.12f, 2.5f, 3.0f, 4.5f) },
                                  { "Warm", "Rounder and deeper", bass (0.12f, 5.0f, 3.5f, 1.5f) },
                                  { "Gritty", "Rounder, with more grit", bass (0.2f, 5.0f, 3.5f, 1.5f) } };
     }
