@@ -254,6 +254,32 @@ public:
             expect (q.getState().getRawParameterValue (ParamID::harmonyOn)->load() > 0.5f);
         }
 
+        beginTest ("Reopening a project keeps the voice and settings when the host sends the program back");
+        {
+            juce::MemoryBlock state;
+            int program = 0;
+            {
+                VoxaVersaProcessor p;
+                p.setCurrentProgram (2);   // a preset from the host's menu loads
+                program = p.getCurrentProgram();
+                expectEquals (program, 2);
+                p.selectVoice ("female-rnb");   // then the user picks a voice and changes a setting
+                setParam (p, ParamID::pitch, 5.0f);
+                p.getStateInformation (state);
+            }
+            VoxaVersaProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            q.setCurrentProgram (program);   // the host restores its program parameter, before the async update
+            test::waitFor ([] { return false; }, 50);
+            q.setCurrentProgram (q.getCurrentProgram());   // and again afterwards
+            expectEquals (q.getSelectedVoiceId(), juce::String ("female-rnb"));
+            expectWithinAbsoluteError (q.getState().getRawParameterValue (ParamID::pitch)->load(), 5.0f, 0.01f);
+
+            q.setCurrentProgram (0);   // a different preset still loads
+            test::waitFor ([] { return false; }, 50);
+            expectEquals (q.getCurrentProgram(), 0);
+        }
+
         beginTest ("Every factory preset loads and processes");
         {
             VoxaVersaProcessor p;

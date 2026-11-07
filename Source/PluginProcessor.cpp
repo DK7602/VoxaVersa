@@ -837,8 +837,15 @@ int VoxaVersaProcessor::getCurrentProgram()
 
 void VoxaVersaProcessor::setCurrentProgram (int index)
 {
-    if (juce::MessageManager::existsAndIsCurrentThread())
-        presetManager.loadPreset (index);
+    if (! juce::MessageManager::existsAndIsCurrentThread())
+        return;
+    // Hosts send the session's program back after restoring its state (VST3's program parameter, on reopening a
+    // project), often before the preset list has caught up with that state. It is the preset already in the
+    // state: loading it again reset the voice and every setting changed since (a user's Female R&B came back
+    // as Female Pop). A different preset from the host's menu still loads.
+    if (getProgramName (index) == apvts.state.getProperty (StateID::presetName).toString())
+        return;
+    presetManager.loadPreset (index);
 }
 
 const juce::String VoxaVersaProcessor::getProgramName (int index)
