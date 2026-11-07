@@ -58,7 +58,8 @@ file(GLOB VOXA_ASSETS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Resources/fonts/*.ttf
     ${CMAKE_CURRENT_SOURCE_DIR}/Resources/fonts/*.otf
     ${CMAKE_CURRENT_SOURCE_DIR}/Resources/sing/*.gz
-    ${CMAKE_CURRENT_SOURCE_DIR}/Resources/neural/*.gz)
+    ${CMAKE_CURRENT_SOURCE_DIR}/Resources/neural/*.gz
+    ${CMAKE_CURRENT_SOURCE_DIR}/Resources/manual/*.html)
 
 juce_add_binary_data(VoxaVersaAssets
     NAMESPACE VoxaAssets

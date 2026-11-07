@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoxaVersa User Manual</title>
+<style>
+  :root {
+    --bg: #f7f8fc; --panel: #ffffff; --text: #1b1f2e; --muted: #5a6178; --line: #e1e4ee;
+    --accent: #4b5bdc; --accent-soft: #e9ebfd; --code: #f0f2f8; --note: #fff7e0; --note-line: #f0c45a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1120; --panel: #161a2e; --text: #e6e8f2; --muted: #9aa1bd; --line: #2a3050;
+      --accent: #8c98ff; --accent-soft: #232a52; --code: #1f2440; --note: #2c2716; --note-line: #a8862e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.6 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 28px 18px 28px 24px;
+        border-right: 1px solid var(--line); }
+  nav .brand { font-weight: 700; font-size: 20px; letter-spacing: 0.5px; margin-bottom: 2px; }
+  nav .ver { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  nav ol { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+  nav li { margin: 2px 0; }
+  nav a { display: block; padding: 5px 10px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 14.5px; }
+  nav a:hover { background: var(--accent-soft); color: var(--accent); }
+  main { padding: 36px 44px 80px; min-width: 0; }
+  h1 { font-size: 34px; margin: 0 0 6px; }
+  .lead { color: var(--muted); font-size: 18px; margin: 0 0 28px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 26px 30px; margin: 0 0 22px; }
+  h2 { font-size: 24px; margin: 0 0 14px; }
+  h3 { font-size: 18px; margin: 22px 0 8px; }
+  p { margin: 0 0 12px; }
+  ul, ol.steps { margin: 0 0 12px; padding-left: 24px; }
+  li { margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .tablewrap { overflow-x: auto; }
+  code, kbd { font-family: ui-monospace, Consolas, Menlo, monospace; font-size: 0.92em; background: var(--code);
+              padding: 1px 6px; border-radius: 5px; }
+  b.ui { color: var(--accent); font-weight: 600; }
+  .note { background: var(--note); border-left: 4px solid var(--note-line); border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .tip { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .faq dt { font-weight: 600; margin-top: 14px; }
+  .faq dd { margin: 4px 0 0 0; color: var(--text); }
+  footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 30px; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 18px 16px; }
+    main { padding: 22px 16px 60px; }
+    section { padding: 20px 18px; }
+  }
+  @media print { nav { display: none; } .layout { display: block; } section { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <div class="brand">VoxaVersa</div>
+  <div class="ver">User Manual · version {{VERSION}}</div>
+  <ol>
+    <li><a href="#welcome">Welcome</a></li>
+    <li><a href="#install">Install and update</a></li>
+    <li><a href="#quickstart">Quick start</a></li>
+    <li><a href="#window">The window</a></li>
+    <li><a href="#voices">Voices</a></li>
+    <li><a href="#styles">Voice styles (right-click)</a></li>
+    <li><a href="#ai">The AI voice engine</a></li>
+    <li><a href="#tts">Text to Sing</a></li>
+    <li><a href="#singer">VoxaVersa Singer and MIDI</a></li>
+    <li><a href="#presets">Presets</a></li>
+    <li><a href="#export">Exporting your vocal</a></li>
+    <li><a href="#tips">Tips for natural results</a></li>
+    <li><a href="#faq">Troubleshooting and FAQ</a></li>
+    <li><a href="#files">Files and folders</a></li>
+    <li><a href="#disclosure">AI disclosure</a></li>
+  </ol>
+</nav>
+<main>
+<h1>VoxaVersa User Manual</h1>
+<p class="lead">Turn your own vocal into another singer, or have a voice sing lyrics you type.</p>
+
+<section id="welcome">
+  <h2>Welcome</h2>
+  <p>VoxaVersa is a vocal plug-in and standalone app. It does two things:</p>
+  <ul>
+    <li><b>Voice Transform</b>: you sing (live or on a recorded track) and VoxaVersa re-sings it as the voice you choose:
+      46 built-in voices (a male and a female voice in each of 20 genres, plus six specialty voices such as Deep Bass, Whisper and
+      Choir Ensemble).</li>
+    <li><b>Text to Sing</b>: type lyrics, choose or play a melody, and the selected voice sings them.</li>
+  </ul>
+  <p>It comes in two plug-in versions and an app:</p>
+  <div class="tablewrap"><table>
+    <tr><th></th><th>VoxaVersa (effect)</th><th>VoxaVersa Singer (instrument)</th></tr>
+    <tr><td>Put it on</td><td>a vocal audio track, as an insert</td><td>an instrument / MIDI track</td></tr>
+    <tr><td>Voice Transform</td><td>yes: your track is the input</td><td>yes: through its sidechain input</td></tr>
+    <tr><td>Text to Sing</td><td>yes: generate takes; MIDI routed to it sings live</td><td>yes: the MIDI notes on the track sing your lyrics</td></tr>
+    <tr><td>In your DAW's list</td><td>under <b>Vocals</b></td><td>under <b>Instrument</b></td></tr>
+  </table></div>
+  <p>The <b>standalone app</b> is the effect version with its own audio settings (Options → Audio/MIDI Settings): plug in a mic, pick a
+    voice and sing.</p>
+</section>
+
+<section id="install">
+  <h2>Install and update</h2>
+  <ol class="steps">
+    <li>Close your DAW.</li>
+    <li>Run the VoxaVersa <b>Setup</b> installer. It installs both plug-ins into <code>C:\Program Files\Common Files\VST3</code>,
+      the standalone app, and the runtime the AI engine needs. It also removes old copies of VoxaVersa from your VST3 folders, so
+      your DAW can't load an outdated one.</li>
+    <li>Open your DAW and let it rescan plug-ins. VoxaVersa appears under <b>Vocals</b>, VoxaVersa Singer under <b>Instrument</b>.</li>
+  </ol>
+  <h3>Adding AI singers</h3>
+  <p>The AI voices are sung by trained AI singers that come as voice packs (<code>.vxpack</code> files, or a zip of them). Open
+    VoxaVersa, click the <b class="ui">menu</b> (top right) → <b class="ui">Import Voices…</b> and pick the file. A pack with the same
+    name replaces the older one. Your voices, presets and settings are kept when you update VoxaVersa.</p>
+  <div class="note">If your DAW still lists VoxaVersa in an old category or shows an old version after updating, rescan its plug-ins.
+    In Cubase: Studio → VST Plug-in Manager, rescan (or restart Cubase).</div>
+</section>
+
+<section id="quickstart">
+  <h2>Quick start: transform a vocal track</h2>
+  <ol class="steps">
+    <li>Insert <b>VoxaVersa</b> on your vocal track (from the Vocals category).</li>
+    <li>Pick a voice in the <b class="ui">Voice Library</b>: click a card. Use Male / Female, Styles, Genres, ★ favourites or search to find one.</li>
+    <li>Press play. The <b class="ui">Input</b> panel shows your vocal, the <b class="ui">Output</b> panel the new voice.</li>
+    <li>Adjust <b class="ui">Voice Character</b> if you like (Pitch, Gender, Age, Tone, Style), and <b class="ui">Mix</b> to blend in your own voice.</li>
+    <li>For the finished vocal, export or bounce in your DAW (Export Audio Mixdown, Render in Place or Freeze).</li>
+  </ol>
+  <div class="tip">You don't need to press VoxaVersa's own <b>Render</b> button for a track: VoxaVersa works as the track plays.
+    Render is only for audio files you drop onto VoxaVersa itself (see <a href="#export">Exporting</a>).</div>
+  <p>VoxaVersa remembers the voice, its style and every setting with your project, per track.</p>
+</section>
+
+<section id="window">
+  <h2>The window</h2>
+  <h3>Header (top)</h3>
+  <ul>
+    <li><b class="ui">Power</b>: VoxaVersa on/off. It is the same switch as your DAW's bypass. When off, your voice passes through, still in time.</li>
+    <li><b class="ui">Preset</b> name and arrows: browse presets by category, save your own (see <a href="#presets">Presets</a>).</li>
+    <li><b class="ui">A / B</b>: two settings slots to compare. Right-click to copy one to the other.</li>
+    <li><b class="ui">Undo / Redo</b> (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z).</li>
+    <li><b class="ui">Menu</b> (top right): UI size, Quality, Source Voice, the AI Voice Engine (on/off, CPU or GPU, its status),
+      Import Voices, Open / Rescan the voices folder, preset files, and this manual.</li>
+  </ul>
+  <h3>Voice Library</h3>
+  <p>Every voice is a card with a portrait. Click to select; double-click to select and close the expanded library. Filter with
+    <b class="ui">Male</b>, <b class="ui">Female</b>, <b class="ui">Styles</b>, <b class="ui">Genres</b>, ★ favourites, or search by name,
+    genre, style or description. <b>Right-click a card</b> for more:</p>
+  <ul>
+    <li><b class="ui">Add to Favorites</b>.</li>
+    <li><b class="ui">Set as Blend Voice</b>: morph between the selected voice and this one with the Voice Blend control.</li>
+    <li><b class="ui">AI Singer</b> (built-in voices): choose which trained AI singer sings this voice. <i>Automatic</i> uses the standard one.
+      Your choice is kept, even when you import new voices.</li>
+    <li><b class="ui">Style</b> (some voices): the voice's other sounds, see <a href="#styles">Voice styles</a>.</li>
+  </ul>
+  <h3>Input and Output</h3>
+  <p>The <b class="ui">Input</b> panel shows what comes in: live input or a <b>voice sample</b> (drag an audio file onto it).
+    The <b class="ui">Output</b> panel shows the transformed voice and holds Render, Record and the exports folder.</p>
+  <h3>Voice Character</h3>
+  <ul>
+    <li><b class="ui">Pitch</b>: higher or deeper in semitones (±24), <b class="ui">Fine</b> in cents.</li>
+    <li><b class="ui">Gender</b>: moves the vocal-tract size from male to female.</li>
+    <li><b class="ui">Age</b>: young (smaller, brighter, breathier) to mature (darker, wider vibrato, a little grit).</li>
+    <li><b class="ui">Tone</b>: bright to dark.</li>
+    <li><b class="ui">Style</b>: natural to creative (more vibrato, scoops, grit and saturation; also scales the growl of
+      voices that have one).</li>
+    <li><b class="ui">Intensity</b>: how strongly the voice's character is applied. 60 - 80 % sounds most natural.</li>
+    <li><b class="ui">Mix</b>: your original voice vs. the new one. <b class="ui">Output</b>: level.</li>
+  </ul>
+  <h3>Advanced tabs</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Tab</th><th>What it does</th></tr>
+    <tr><td>Advanced</td><td><b>Pitch Preserve</b> off (default) moves your performance into the voice's natural register, e.g. a man's
+      vocal goes up an octave into a female voice. On keeps your exact pitch. <b>Formant Shift</b>, <b>Expression</b> (the genre's
+      scoops and vibrato), <b>Vibe</b> (the genre's production: compression, de-essing, saturation, space, doubling).</td></tr>
+    <tr><td>Expression</td><td>Vibrato depth and rate, breathiness, grit.</td></tr>
+    <tr><td>Tune</td><td>Pitch correction to a key and scale (or Auto key; Chromatic snaps to any semitone). Retune speed from hard
+      "robot" (0 ms) to natural, humanize, and <b>MIDI Pitch Control</b> (the notes you play set the pitch).</td></tr>
+    <tr><td>Harmony</td><td>Up to three harmony voices in your key (3rds, 4ths, 5ths, 6ths, octaves) with level and pan.</td></tr>
+    <tr><td>FX</td><td>Low cut, de-esser, compressor, presence, air, saturation.</td></tr>
+    <tr><td>Space</td><td>Tempo-synced delay (ducked under the vocal), reverb, and the <b>Doubler</b> (natural double-tracking;
+      with an AI voice the doubles are copies of the AI singer).</td></tr>
+  </table></div>
+</section>
+
+<section id="voices">
+  <h2>Voices</h2>
+  <p>20 genres, each with a male and a female voice, plus six specialty voices. With the AI engine on, each is sung by a trained AI
+    singer chosen for that style; the DSP engine reshapes your own voice instead.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Genre</th><th>Male</th><th>Female</th></tr>
+    <tr><td>Pop</td><td>Bright, polished radio-pop tenor</td><td>Sparkling, airy chart-topping pop</td></tr>
+    <tr><td>Rap</td><td>Punchy, confident hip-hop flow</td><td>Sharp, rhythmic rap delivery</td></tr>
+    <tr><td>R&amp;B</td><td>Silky neo-soul tenor with falsetto</td><td>Velvet R&amp;B with lush runs</td></tr>
+    <tr><td>Country</td><td>Warm Nashville baritone with twang</td><td>Heartfelt country with bright twang</td></tr>
+    <tr><td>Gospel</td><td>Powerful church baritone</td><td>Soaring gospel powerhouse, full and rich</td></tr>
+    <tr><td>Soul</td><td>Gritty vintage soul crooner</td><td>Warm, smoky classic soul</td></tr>
+    <tr><td>Rock</td><td>Raspy arena-rock frontman</td><td>Fierce rock vocalist with edge</td></tr>
+    <tr><td>Jazz</td><td>Velvet lounge crooner, smoky with a rasp</td><td>Smoky late-night jazz singer</td></tr>
+    <tr><td>Opera</td><td>Classical operatic tenor</td><td>Classical coloratura soprano</td></tr>
+    <tr><td>EDM</td><td>Anthemic festival topline</td><td>Euphoric dance-floor diva</td></tr>
+    <tr><td>Indie Folk</td><td>Breathy, intimate indie storyteller</td><td>Delicate, breathy folk voice</td></tr>
+    <tr><td>Latin</td><td>Passionate Latin pop tenor</td><td>Fiery reggaeton &amp; Latin pop</td></tr>
+    <tr><td>K-Pop</td><td>Clean, bright idol vocal</td><td>Crisp, airy idol vocal</td></tr>
+    <tr><td>Metal</td><td>Aggressive metal vocalist</td><td>Powerful symphonic metal voice</td></tr>
+    <tr><td>Blues</td><td>Raspy, weathered blues voice that growls where you dig in</td><td>Smoky, soulful blues belter</td></tr>
+    <tr><td>Reggae</td><td>Laid-back roots reggae voice</td><td>Sunny, soulful reggae vocal</td></tr>
+    <tr><td>Afrobeats</td><td>Smooth Afro-fusion melodic flow</td><td>Silky Afrobeats &amp; Afro-pop vocal</td></tr>
+    <tr><td>Trap</td><td>Melodic trap with hard auto-tune</td><td>Moody melodic trap vocal, with a light auto-tune of its own</td></tr>
+    <tr><td>Musical Theatre</td><td>Bold Broadway leading man</td><td>Brilliant Broadway belter</td></tr>
+    <tr><td>Lo-Fi</td><td>Mellow bedroom-pop murmur</td><td>Dreamy lo-fi bedroom vocal</td></tr>
+  </table></div>
+  <h3>Specialty voices</h3>
+  <ul>
+    <li><b>Deep Bass</b>: a cavernous low bass, an octave below you when the song allows.</li>
+    <li><b>Angelic Soprano</b>: pure, ethereal head voice.</li>
+    <li><b>Smoky Alto</b>: low, husky contralto.</li>
+    <li><b>Whisper</b>: your own voice turned into a breathy whisper (pitch gone, words kept). It is an effect, not an AI singer.</li>
+    <li><b>Hard Tune Robot</b>: snaps every note at once, the classic hard-tune sound, even with Tune off.</li>
+    <li><b>Choir Ensemble</b>: a whole section: the lead singer, a singer of the other gender an octave away, and six copies of the two,
+      spread across the stereo field. It uses about twice the AI engine's work. The Doubler's amount and width scale the section.</li>
+  </ul>
+  <h3>Accents</h3>
+  <p>With their AI singer on, these voices sing in their style's accent, live, in whatever you sing:</p>
+  <ul>
+    <li><b>Country</b> (male and female): the Southern "ah" in <i>I, my, time, like</i>, and a drawl.</li>
+    <li><b>Reggae</b>: Jamaican vowels and consonants (<i>tink, dat, de, an' you, fo</i>).</li>
+    <li><b>Latin</b>: Spanish-accented: a rolled r, <i>jou</i>, <i>gurrl</i>, <i>en</i> for "and".</li>
+    <li><b>Afrobeats</b>: Nigerian-accented vowels and consonants.</li>
+  </ul>
+  <h3>Singer cards</h3>
+  <p>An imported AI singer that doesn't sing any built-in voice appears as a voice of its own, with a portrait and a style title
+    (for example <i>Lyric Tenor</i> or <i>Velvet Mezzo</i>).</p>
+</section>
+
+<section id="styles">
+  <h2>Voice styles (right-click → Style)</h2>
+  <p>Some voices have more than one sound, all chosen by ear. Right-click the voice's card → <b class="ui">Style</b>. The first one is
+    the default. Your choice is remembered.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Voice</th><th>Styles</th></tr>
+    <tr><td>Male Rap</td><td><b>Street</b> (a light growl, more drive and compression) · <b>Hard</b> (clean and punchy) · <b>Growl</b></td></tr>
+    <tr><td>Male Blues</td><td><b>Strong</b> (a growl where you dig in: the start of a phrase, your loudest notes) · <b>Medium</b> · <b>Light</b></td></tr>
+    <tr><td>Male and Female Jazz</td><td><b>Smoky</b> (dark, warm and breathy, with a rasp where you dig in) · <b>Velvet</b> (smoky, without the
+      breath) · <b>Raspy</b> (the rasp alone)</td></tr>
+    <tr><td>Male and Female Reggae</td><td><b>On the beat</b> · <b>Laid back</b> (the whole vocal 30 ms behind the beat)</td></tr>
+    <tr><td>Deep Bass</td><td><b>Natural</b> (a touch of roughness, clear words) · <b>Warm</b> · <b>Gritty</b></td></tr>
+    <tr><td>Female Country</td><td><b>Mature</b> (darker and fuller) · <b>Low</b> (an octave lower)</td></tr>
+    <tr><td>Whisper</td><td><b>Natural</b> · <b>Soft</b> (less low end, a softer top)</td></tr>
+  </table></div>
+  <div class="note"><b>Laid back</b> is a real delay your DAW does not compensate, so the vocal lands behind the beat. With Mix below 100 %,
+    your own dry voice stays on the beat while the AI voice sits behind it.</div>
+</section>
+
+<section id="ai">
+  <h2>The AI voice engine</h2>
+  <p>VoxaVersa has two engines. The <b>DSP engine</b> reshapes your own voice instantly (pitch, formants, tone): great for pitch and gender
+    changes, tuning and harmonies. The <b>AI engine</b> re-sings your performance with a trained singer's voice: this is what makes it sound
+    like a different, real person. Turn it on or off in the <b class="ui">menu</b> → <b class="ui">Use AI Voice Engine</b>.</p>
+  <h3>Delay and monitoring</h3>
+  <p>The AI voice is about <b>0.9 seconds</b> late. VoxaVersa tells your DAW, which lines it up automatically, so playback and exports are in
+    time. But if you monitor yourself live through an AI voice, you hear yourself 0.9 s late. Record with the AI engine off (or Quality
+    <i>Low Latency</i>), then switch it on for playback.</p>
+  <h3>Playback vs. export</h3>
+  <p>The AI engine converts in short chunks as the track plays. If your computer can't keep up for a moment, VoxaVersa fills that moment
+    with the DSP voice, so playback never drops out (you'll see a message). Exports, Render in Place and Freeze always wait for every chunk
+    and use the AI engine's best quality.</p>
+  <h3>CPU or GPU, and the status line</h3>
+  <p>The <b class="ui">menu</b> shows the engine's status: whether it runs on the CPU or the graphics card, and its <b>real-time load</b>.
+    Under 80 % plays live without gaps. <b class="ui">AI Device</b> lets you choose: <i>CPU (recommended)</i> or <i>Graphics card (GPU)</i>
+    (experimental).</p>
+  <h3>Quality</h3>
+  <p><b class="ui">Quality</b> in the menu: <i>Low Latency</i> (about 35 ms, for live monitoring with the DSP engine), <i>Balanced</i>
+    (default) or <i>High Quality</i> (for mixing). Some DAWs (Cubase) only pick up a change of delay, e.g. switching between an AI voice
+    and a DSP-only voice, after you stop and restart playback or switch the plug-in off and on.</p>
+</section>
+
+<section id="tts">
+  <h2>Text to Sing</h2>
+  <ol class="steps">
+    <li>Switch to <b class="ui">Text to Sing</b> and type your lyrics.
+      <ul>
+        <li>A new line is a new phrase (with a breath).</li>
+        <li><code>beau-ti-ful</code> splits syllables by hand. <code>_</code> holds the previous syllable over the next note.</li>
+        <li><code>[br]</code> inserts a breath or rest.</li>
+      </ul></li>
+    <li>Choose the <b class="ui">Melody Source</b>:
+      <ul>
+        <li><b>Use MIDI</b>: play notes into VoxaVersa; each note sings the next syllable live. Turn on <b class="ui">Capture</b> to record what
+          you play, then Generate a polished take from it.</li>
+        <li><b>Auto Melody</b>: VoxaVersa writes a melody in your <b class="ui">Key</b>, <b class="ui">Scale</b> and <b class="ui">Tempo</b>,
+          shaped by the voice's genre.</li>
+        <li><b>MIDI File</b>: load a <code>.mid</code> melody.</li>
+        <li><b>Hum Melody</b>: hum or sing the tune into your mic and VoxaVersa transcribes it.</li>
+      </ul></li>
+    <li>Press <b class="ui">Generate</b>. Preview it, then <b class="ui">Render &amp; Drag</b> the WAV into your DAW, or
+      <b class="ui">Export MIDI</b> (with the lyrics as MIDI lyric events). In a DAW the take also plays in sync from bar 1.</li>
+  </ol>
+  <p>The voice's register, breathiness, vibrato and phrasing come from the selected voice, and every Voice Character and FX control still
+    applies. Country, Reggae, Latin and Afrobeats voices sing in their style's English.</p>
+</section>
+
+<section id="singer">
+  <h2>VoxaVersa Singer and MIDI</h2>
+  <p><b>VoxaVersa Singer</b> is the instrument version: put it on an instrument track and the MIDI notes on that track sing your lyrics. It is
+    the easiest way to drive Text to Sing with MIDI. To transform a vocal with it, send audio to its sidechain input.</p>
+  <h3>Sending MIDI to the effect version</h3>
+  <div class="tablewrap"><table>
+    <tr><th>DAW</th><th>How</th></tr>
+    <tr><td>Cubase / Nuendo</td><td>MIDI track output → <i>VoxaVersa</i> (it appears as a MIDI destination)</td></tr>
+    <tr><td>Ableton Live</td><td>Create a MIDI track, set <i>MIDI To</i> → the vocal track → <i>VoxaVersa</i></td></tr>
+    <tr><td>Logic Pro</td><td>Load VoxaVersa as a MIDI-controlled effect and pick its side-chain MIDI</td></tr>
+    <tr><td>FL Studio</td><td>Use VoxaVersa Singer on a channel, or route MIDI Out → VoxaVersa's MIDI input port</td></tr>
+    <tr><td>Reaper</td><td>Send MIDI from a track to the track hosting VoxaVersa (routing window → MIDI send)</td></tr>
+    <tr><td>Studio One</td><td>Add VoxaVersa Singer as an instrument, or set the MIDI track's output to VoxaVersa</td></tr>
+  </table></div>
+  <p>When in doubt, use VoxaVersa Singer on an instrument track: MIDI just works there.</p>
+</section>
+
+<section id="presets">
+  <h2>Presets</h2>
+  <ul>
+    <li>Browse factory presets by category from the preset name in the header; step with the arrows.</li>
+    <li><b class="ui">Save Preset…</b> stores your own; <b class="ui">Import Preset…</b> adds a <code>.vxpreset</code> file.</li>
+    <li>A factory preset keeps your session's mode, input/output level, key and scale, MIDI Pitch Control and Text to Sing tempo.</li>
+    <li>Choosing a voice after loading a preset changes only the voice. Reopening the project brings back exactly what you left.</li>
+  </ul>
+</section>
+
+<section id="export">
+  <h2>Exporting your vocal</h2>
+  <h3>From a track (VoxaVersa as an insert)</h3>
+  <p>Use your DAW: <b>Export Audio Mixdown</b>, <b>Render in Place</b>, <b>Bounce</b> or <b>Freeze</b>. These give the AI voice its best
+    quality. You don't need VoxaVersa's Render button.</p>
+  <h3>From an audio file (voice sample)</h3>
+  <p>Drag an audio file onto the <b class="ui">Input</b> panel. Press ▶ to hear it through the current voice, then <b class="ui">Render</b> to
+    make a WAV and drag it into your DAW. Renders are also saved in <code>Documents\VoxaVersa\Exports</code>.</p>
+  <h3>Text to Sing takes</h3>
+  <p><b class="ui">Render &amp; Drag</b> the take, or <b class="ui">Export MIDI</b>.</p>
+  <h3>Recording (standalone app)</h3>
+  <p>Record the transformed output to a WAV with the record button; files go to <code>Documents\VoxaVersa\Recordings</code>.</p>
+</section>
+
+<section id="tips">
+  <h2>Tips for natural results</h2>
+  <ul>
+    <li>Record dry, close and clean. Reverb or background noise on the input confuses pitch tracking.</li>
+    <li>Sing in a comfortable range and leave <b>Pitch Preserve</b> off, so VoxaVersa moves you into the voice's register.</li>
+    <li>Keep <b>Intensity</b> around 60 - 80 %. Push it for character effects.</li>
+    <li>For gender changes, combine the register shift with <b>Gender</b> ±30 - 60 rather than maxing one control.</li>
+    <li>Use <i>High Quality</i> when mixing and <i>Low Latency</i> only when you need to monitor live.</li>
+    <li>Voices with a growl or rasp (Male Blues, Jazz, Male Rap) respond to how you sing: dig in at the start of a phrase or sing out to
+      bring it in. The <b>Style</b> knob scales it.</li>
+  </ul>
+</section>
+
+<section id="faq">
+  <h2>Troubleshooting and FAQ</h2>
+  <dl class="faq">
+    <dt>Do I need to render when I put VoxaVersa on a track?</dt>
+    <dd>No. It works as the track plays. For the finished vocal, export or bounce in your DAW.</dd>
+    <dt>I hear myself late while recording.</dt>
+    <dd>The AI voice is about 0.9 s late. Record with the AI engine off (menu → Use AI Voice Engine) or Quality <i>Low Latency</i>, then turn
+      it back on for playback.</dd>
+    <dt>Sometimes the voice sounds less realistic for a moment during playback.</dt>
+    <dd>Your computer didn't finish an AI chunk in time, so VoxaVersa filled in with the DSP voice. Exports are always complete. Check the
+      real-time load in the menu; close other heavy plug-ins, or freeze tracks.</dd>
+    <dt>VoxaVersa is in the wrong category, or my DAW loads an old version.</dt>
+    <dd>Rescan plug-ins in your DAW (Cubase: Studio → VST Plug-in Manager). The installer removes old copies from your VST3 folders.</dd>
+    <dt>The delay is wrong after switching between an AI voice and a non-AI voice (Cubase).</dt>
+    <dd>Stop and restart playback, or switch the plug-in off and on in its slot.</dd>
+    <dt>A voice's AI singer isn't the one I want.</dt>
+    <dd>Right-click the voice → <b class="ui">AI Singer</b> and pick another, or <i>Automatic</i> to go back.</dd>
+    <dt>An AI voice sounds like the DSP voice, or the status says no model.</dt>
+    <dd>Check the menu: <b>Use AI Voice Engine</b> must be on, and its singer pack imported (Import Voices…). Use Rescan Voices after copying
+      packs into the voices folder by hand.</dd>
+    <dt>Where is my export?</dt>
+    <dd>VoxaVersa's own renders are in <code>Documents\VoxaVersa\Exports</code> (Output panel → exports folder).</dd>
+  </dl>
+</section>
+
+<section id="files">
+  <h2>Files and folders</h2>
+  <div class="tablewrap"><table>
+    <tr><th>What</th><th>Where (Windows)</th></tr>
+    <tr><td>Voice packs (AI singers)</td><td><code>%APPDATA%\VoxaVersa\Voices</code> (menu → Open Voices Folder)</td></tr>
+    <tr><td>Your AI Singer and Style choices</td><td><code>%APPDATA%\VoxaVersa\Voices\singer_choices.json</code>, <code>voice_sounds.json</code></td></tr>
+    <tr><td>User presets</td><td><code>%APPDATA%\VoxaVersa\Presets</code> (menu → Open Presets Folder)</td></tr>
+    <tr><td>Renders and MIDI exports</td><td><code>Documents\VoxaVersa\Exports</code></td></tr>
+    <tr><td>Recordings (standalone)</td><td><code>Documents\VoxaVersa\Recordings</code></td></tr>
+    <tr><td>This manual</td><td><code>%APPDATA%\VoxaVersa\Manual</code></td></tr>
+  </table></div>
+  <p>On macOS <code>%APPDATA%</code> is <code>~/Library/Application Support</code>; on Linux <code>~/.config</code>.</p>
+</section>
+
+<section id="disclosure">
+  <h2>AI disclosure</h2>
+  <p>Every WAV VoxaVersa renders or records carries a short note in its metadata saying it is an AI-generated or digitally transformed
+    vocal. AI-voice and Text to Sing output also carries an inaudible watermark, live and in exports, as the EU AI Act (Article 50) asks of
+    synthetic audio. Please keep these notes intact and disclose AI vocals where your distributor or platform requires it. A plain DSP
+    transform of your own voice is not watermarked.</p>
+</section>
+
+<footer>VoxaVersa {{VERSION}}</footer>
+</main>
+</div>
+</body>
+</html>

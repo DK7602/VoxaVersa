@@ -1,5 +1,9 @@
 # VoxaVersa user guide
 
+The manual users read is built into the plug-in and app: menu (top right) → **User Manual** opens
+`Resources/manual/VoxaVersa_Manual.html` in the browser (written to `<app data>/VoxaVersa/Manual`, with the build's
+version). Keep it in step with this guide; its tests check that it names every voice's styles.
+
 ## 1. Two ways to use it
 
 | | **VoxaVersa** (effect + standalone) | **VoxaVersa Singer** (instrument) |
@@ -111,8 +115,9 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
 
 The voice's register, formants, breathiness, vibrato and phrasing come from the selected voice, and all
 Voice Character / FX controls still apply. Country, Reggae, Latin and Afrobeats voices sing in their style's
-English (Southern, Jamaican, Spanish-accented, Nigerian); in Voice Transform the accent is the one you sing with,
-except that Male and Female Country sing *I, my, time, like* with the Southern "ah" when their AI singer is on. When an AI singer sings the take, the melody is written in the range
+English (Southern, Jamaican, Spanish-accented, Nigerian). In Voice Transform, with their AI singer on, they put that
+accent on what you sing, live: the Country voices' Southern "ah" (*I, my, time, like*) and drawl, and the Reggae,
+Latin and Afrobeats voices' vowels and consonants (*tink, dat, an' you*; Latin's rolled r, *jou*, *gurrl*, *en*). When an AI singer sings the take, the melody is written in the range
 that singer actually sang (from the voice assignment), where the model sounds natural.
 
 ## 4. Routing MIDI to the effect version

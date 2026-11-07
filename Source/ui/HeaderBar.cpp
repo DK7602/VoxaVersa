@@ -1,4 +1,5 @@
 #include "HeaderBar.h"
+#include "UserManual.h"
 #include "voices/VoiceLibrary.h"
 
 namespace voxa::ui
@@ -458,7 +459,7 @@ void HeaderBar::showSettingsMenu()
     {
         sizeBase = 100, qualityBase = 200, sourceBase = 300,
         aiToggle = 400, importVoices = 401, openVoices = 402, rescanVoices = 403, deviceAuto = 404, deviceCpu = 405,
-        importPresetId = 500, deletePresetId = 501, openPresets = 502, about = 600
+        importPresetId = 500, deletePresetId = 501, openPresets = 502, manual = 599, about = 600
     };
 
     const auto& widths = uiWidths;
@@ -512,6 +513,7 @@ void HeaderBar::showSettingsMenu()
     }
     menu.addItem (openPresets, "Open Presets Folder");
     menu.addSeparator();
+    menu.addItem (manual, "User Manual");
     menu.addItem (about, "About VoxaVersa...");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&gearButton).withMinimumWidth (240), [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
@@ -547,6 +549,11 @@ void HeaderBar::showSettingsMenu()
             auto dir = PresetManager::getUserPresetDirectory();
             dir.createDirectory();
             dir.startAsProcess();
+        }
+        else if (r == manual)
+        {
+            if (! UserManual::open())
+                ctx.toast ("Couldn't open the user manual", ToastKind::Error);
         }
         else if (r == about)                                showAbout();
     });
