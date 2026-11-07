@@ -278,7 +278,7 @@ public:
             using Accent = SouthernVowels::AccentRule;
             using D = Accent::Decision;
             Accent::Classes k;
-            k.AA = 0; k.AE = 1; k.AH = 2; k.AO = 3; k.EH = 4; k.ER = 5; k.EY = 6; k.IH = 7; k.IY = 8; k.OW = 9; k.UH = 10;
+            k.AA = 0; k.AE = 1; k.AH = 2; k.AO = 3; k.EH = 4; k.ER = 5; k.EY = 6; k.IH = 7; k.IY = 8; k.OW = 9; k.UH = 10; k.EH_N = 11;
             auto sung = [&k] (int cls, float share = 0.6f, float er = -1.0f)
             {
                 Frame f;
@@ -366,6 +366,9 @@ public:
             whisper.voiced = false;
             expect (run (SouthernVowels::nigerian, { whisper, whisper })[0].kind == D::none, "only voiced vowels");
             expect (run (SouthernVowels::nigerian, { sung (k.AA), sung (k.AA) })[0].kind == D::none, "other vowels alone");
+            auto en = run (SouthernVowels::spanish, std::vector<Frame> (6, sung (k.EH_N)));
+            expect (en[2].kind == D::swap && en[2].from == k.EH_N && en[2].to == k.EH, "Spanish \"and\": the eh before n -> a pure e (en)");
+            expect (run (SouthernVowels::jamaican, std::vector<Frame> (6, sung (k.EH_N)))[2].kind == D::none, "only Spanish");
         }
     }
 };

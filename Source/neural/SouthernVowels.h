@@ -111,7 +111,8 @@ public:
         - each other vowel moved to the accent's (`target`): the content features shifted by the difference of the
           two vowels' means - the "a" of that / and -> "ah" (all three), "er" (girl, never) -> "ah" (Jamaican gyal)
           or "ah" turning to "eh" on a held note (Nigerian neva / gel; Spanish keeps the singer's "er" and rolls its
-          r: AccentConsonants, audit round 32 "gurrl"), "i" -> "ee" (Spanish and
+          r: AccentConsonants, audit round 32 "gurrl"), the "eh" English sings before "n" / "m" -> a pure "e"
+          (Spanish: the user's "and", sung "in-en", heard as that "eh" -> "en"; round 33), "i" -> "ee" (Spanish and
           Nigerian: dees, ees, eet). The push the audit approved: x1.8, rising to x2.4 on a held note
           (`longVowel` frames on), in over 2 frames and half on the vowel's last frame. */
     struct AccentRule
@@ -135,7 +136,7 @@ public:
         static constexpr float shortPush = 1.8f, longPush = 2.4f, pureNudge = 0.8f;
 
         /** Class indices of the vowels the accents use (-1: missing). */
-        struct Classes { int AA = -1, AE = -1, AH = -1, AO = -1, EH = -1, ER = -1, EY = -1, IH = -1, IY = -1, OW = -1, UH = -1; };
+        struct Classes { int AA = -1, AE = -1, AH = -1, AO = -1, EH = -1, EH_N = -1, ER = -1, EY = -1, IH = -1, IY = -1, OW = -1, UH = -1; };
 
         struct Decision
         {

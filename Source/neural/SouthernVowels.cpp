@@ -98,7 +98,7 @@ bool SouthernVowels::load (const void* data, size_t size)
         auto& k = accentClasses;
         for (auto [name, index] : { std::pair<const char*, int*> { "AA", &k.AA }, { "AE", &k.AE }, { "AH", &k.AH },
                                     { "AO", &k.AO }, { "EH", &k.EH }, { "ER", &k.ER }, { "EY", &k.EY }, { "IH", &k.IH },
-                                    { "IY", &k.IY }, { "OW", &k.OW }, { "UH", &k.UH } })
+                                    { "IY", &k.IY }, { "OW", &k.OW }, { "UH", &k.UH }, { "EH_N", &k.EH_N } })
             if (label == name)
                 *index = c;
         labels.add (label);
@@ -309,6 +309,8 @@ SouthernVowels::AccentRule::Decision SouthernVowels::AccentRule::step (const Fra
     }
     else if (cls >= 0 && cls == k.AE)
         to = k.AA;
+    else if (cls >= 0 && cls == k.EH_N && accent == spanish)
+        to = k.EH;
     else if (cls >= 0 && cls == k.IH && iClear && (accent == spanish || accent == nigerian))
         to = k.IY;
     if (to < 0)
