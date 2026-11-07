@@ -23,7 +23,8 @@ juce::File UserManual::write (const juce::File& directory)
     const auto file = directory.getChildFile ("VoxaVersa User Manual.html");
     if (file.existsAsFile() && file.loadFileAsString() == html)
         return file;
-    return file.replaceWithText (html, false, false, "\n") ? file : juce::File();
+    // byte for byte (replaceWithText converts line endings, and a Windows checkout's are CRLF)
+    return file.replaceWithData (html.toRawUTF8(), html.getNumBytesAsUTF8()) ? file : juce::File();
 }
 
 bool UserManual::open()
