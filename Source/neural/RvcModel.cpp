@@ -773,7 +773,7 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
                 ws.consonantState.latin = ws.accent == SouthernVowels::spanish;
                 consonants->apply (features, (int) numEncoderFrames, (int) channels, ws.f0Edited.data(), numFrames,
                                    generatorSkip, firstFrame, ws.phone.data(), ws.consonantState, ws.southernScratch,
-                                   ws.accentChanged.data(), generatorTail);
+                                   ws.accentChanged.data(), generatorTail, &ws.southernState);
                 f0Frames = ws.f0Edited.data();
             }
         }

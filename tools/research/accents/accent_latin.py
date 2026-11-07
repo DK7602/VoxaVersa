@@ -10,7 +10,7 @@ usage: accent_latin.py model.onnx contentvec.onnx take.wav words.json cmudict.gz
                        means2.npz latin transpose out_prefix feats.npz bursts.json latin_feats.npz
        (latin_feats.npz: k_tap_para, k_trill_perro, k_jh_june, k_l_ala - make_latin_templates.py's clips' features)
        [--round32]: the "girl" variants of round 32 instead (G1 e + rolled r + light l, G2 the singer's "er" + rolled r +
-       light l, G3 e + light l)"""
+       light l, G3 e + light l); [--round33]: "and" on G2 (N1 a pure "an", N2 "en", N3 only its "eh" before the n -> "ah")"""
 import sys, math, json, gzip, re
 import numpy as np, soundfile as sf, onnxruntime as ort, torch, torch.nn as nn
 sys.path.insert(0, "/home/user/VoxaVersa/tools/training")
@@ -232,9 +232,29 @@ def girl(G, log, vowel_kept, roll, light):
 
 log = []
 G0 = cons(strong(F.copy(), log), log)
-if "--round32" not in sys.argv:
+if "--round32" not in sys.argv and "--round33" not in sys.argv:
     render(latin(G0.copy(), log, TAP, False), prefix + "-r31tap.wav", f0_acc)
     render(latin(G0.copy(), log, ROLL, True), prefix + "-r31roll.wav", f0_acc)
+elif "--round33" in sys.argv:
+    # Round 33: "and" (sung "in-en": IH 6.10 - 6.40, then the "eh" before n 6.42 - 6.58, n 6.60). Latin "and" is a pure "an".
+    # On round 32's pick G2 (gurrl: the singer's own "er", rolled r, light l). The accent's "a" -> "ah" swap of "and" is
+    # left out here: these replace its vowel.
+    ACC.pop("v_girl"); ACC.pop("v_and")
+    G_plain = cons(strong(F.copy(), []), [])
+    G2 = girl(latin(G_plain.copy(), log, ROLL, False), log, True, True, True)
+    fr = lambda t: int(round(t * 50))
+    def pure(G, a_, b_, target, lam=1.0):
+        """frames a_..b_ sung as one steady vowel: their mean, moved from the classes they sound like to `target`"""
+        a, b = fr(a_), fr(b_)
+        src = np.mean([VL[max(VOWELS, key=lambda c: P[k, ci[c]])] for k in range(a, b)], 0)
+        hold = F[a:b].mean(0) + lam * (VL[target] - src)
+        for j, k in enumerate(range(a, b)):
+            w_ = min(1.0, (j + 1) / 2); G[k] = (1 - w_) * G[k] + w_ * hold
+        return G
+    render(pure(G2.copy(), 6.10, 6.60, "AA", 1.4), prefix + "-r33n1.wav", f0_acc)
+    render(pure(G2.copy(), 6.10, 6.60, "EH", 1.4), prefix + "-r33n2.wav", f0_acc)
+    render(pure(G2.copy(), 6.42, 6.60, "AA", 1.4), prefix + "-r33n3.wav", f0_acc)
+    log.append("and: n1 an (6.10-6.60 -> AA), n2 en (-> EH), n3 i-an (6.42-6.60 -> AA)")
 else:
     ACC.pop("v_girl"); G_plain = cons(strong(F.copy(), []), [])      # the same accent with the singer's own "girl" vowel
     B = latin(G0.copy(), log, ROLL, False)                           # round 31 B without its "girl" r

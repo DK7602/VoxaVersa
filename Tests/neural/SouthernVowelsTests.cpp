@@ -318,7 +318,9 @@ public:
             expect (run (SouthernVowels::jamaican, { sung (k.IH), sung (k.IH), sung (k.IH) })[1].kind == D::none, "Jamaican keeps \"i\"");
             expect (run (SouthernVowels::spanish, { sung (k.IH), sung (k.IH), sung (k.IH) })[1].to == k.IY, "Spanish: \"i\" -> \"ee\"");
             expect (run (SouthernVowels::jamaican, { sung (k.ER), sung (k.ER) })[0].to == k.AA, "Jamaican gyal");
-            expect (run (SouthernVowels::spanish, { sung (k.ER), sung (k.ER) })[0].to == k.EH, "Spanish \"er\" -> \"eh\"");
+            auto spanishEr = run (SouthernVowels::spanish, { sung (k.ER), sung (k.ER) });
+            expect (spanishEr[0].kind == D::none && spanishEr[0].er, "Spanish keeps the singer's \"er\" (gurrl), marked for its rolled r");
+            expect (run (SouthernVowels::jamaican, { sung (k.ER), sung (k.ER) })[0].er, "every accent marks an \"er\"");
             auto girl = run (SouthernVowels::nigerian, std::vector<Frame> (16, sung (k.ER)));
             expect (girl[2].to == k.AH && girl[2].to2 == k.EH && girl[2].blend == 0.0f, "Nigerian neva: \"ah\"");
             expectEquals (girl[14].blend, 1.0f, "turning to \"eh\" on a held note (gel)");
@@ -347,7 +349,7 @@ public:
             expect (gyal[3].kind == D::swap && gyal[3].from == k.ER && gyal[3].to == k.AA, "gyal: \"er\" -> \"ah\"");
             expect (gyal[4].kind == D::swap && gyal[7].kind == D::swap && gyal[7].from == k.ER, "to the vowel's end");
             expect (gyal[8].kind == D::none, "the consonant ends it");
-            expect (run (SouthernVowels::spanish, userGirl)[5].to == k.EH, "Spanish gel");
+            expect (run (SouthernVowels::spanish, userGirl)[5].er, "Spanish: an \"er\" too");
 
             auto good = run (SouthernVowels::jamaican, std::vector<Frame> (8, sung (k.UH, 0.5f, 0.05f)));
             expect (std::all_of (good.begin(), good.end(), [] (const D& d) { return d.kind == D::none; }),

@@ -109,8 +109,9 @@ public:
           `holdAfter` frames, the generator gets those first frames' features (nudged towards "eh" / "aw") to the
           end of the vowel, fading in over 2 frames.
         - each other vowel moved to the accent's (`target`): the content features shifted by the difference of the
-          two vowels' means - the "a" of that / and -> "ah" (all three), "er" (girl, never) -> "ah" (Jamaican gyal),
-          "eh" (Spanish) or "ah" turning to "eh" on a held note (Nigerian neva / gel), "i" -> "ee" (Spanish and
+          two vowels' means - the "a" of that / and -> "ah" (all three), "er" (girl, never) -> "ah" (Jamaican gyal)
+          or "ah" turning to "eh" on a held note (Nigerian neva / gel; Spanish keeps the singer's "er" and rolls its
+          r: AccentConsonants, audit round 32 "gurrl"), "i" -> "ee" (Spanish and
           Nigerian: dees, ees, eet). The push the audit approved: x1.8, rising to x2.4 on a held note
           (`longVowel` frames on), in over 2 frames and half on the vowel's last frame. */
     struct AccentRule
@@ -142,6 +143,7 @@ public:
             int8_t from = -1, to = -1, to2 = -1;   // swap: from -> (1 - blend) to + blend to2
             float weight = 0.0f, blend = 0.0f;
             bool startsHold = false;               // hold: take the hold from this and the frames before it
+            bool er = false;                       // an "er" vowel (girl), whatever the accent does with it
         };
 
         static bool isVowel (const Frame& f) noexcept { return f.voiced && f.vowel >= vowelNeeded && f.top >= 0; }
@@ -183,6 +185,12 @@ public:
         std::array<int8_t, history> shiftOf {};     // its shift (-1: none)
         std::array<float, history> shiftWeight {};  // and how much of it
         std::array<AccentRule::Decision, history> accentOf {};   // the accent's swap (holds use weight / holdIndex)
+        /** True when absolute frame `frame` was decided as an "er" vowel (AccentConsonants: the Latin "gurrl"). */
+        bool isEr (int64_t frame) const noexcept
+        {
+            const auto s = (size_t) (frame % history + history) % history;
+            return frame >= 0 && frameOf[s] == frame && accentOf[s].er;
+        }
         std::vector<float> holds[2];
         uint8_t currentHold = 0;
     };

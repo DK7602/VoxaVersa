@@ -300,10 +300,11 @@ SouthernVowels::AccentRule::Decision SouthernVowels::AccentRule::step (const Fra
     int to = -1, to2 = -1;
     float blend = 0.0f;
     const bool er = clearEr || erVowel;
+    d.er = er;
     if (er)
     {
         if (accent == jamaican)     to = k.AA;
-        else if (accent == spanish) to = k.EH;
+        else if (accent == spanish) return d;   // the singer's own "er", its r rolled (AccentConsonants; round 32 G2)
         else if (accent == nigerian) { to = k.AH; to2 = k.EH; blend = juce::jlimit (0.0f, 1.0f, (float) (run - 8) / 4.0f); }
     }
     else if (cls >= 0 && cls == k.AE)

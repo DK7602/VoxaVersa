@@ -131,6 +131,22 @@ public:
             expect (you[1].kind == D::jh && you[1].frame == 0 && you[5].kind == D::jh && you[5].frame == 4, "jou: the j and into the vowel");
             expect (you[6].kind == D::none, "the rest of the y is the singer's");
             expect (allNone (run ({ n(), y, y, vowel() })), "only the Latin accent");
+
+            // gurrl: the singer's "er", rolled on its last two frames before the "l", the "l" light
+            Frame er = vowel();
+            er.er = true;
+            Frame l = sound (0.2f);
+            l.l = 0.8f;
+            auto girl = run ({ er, er, er, er, er, l, l, l, silence() }, true);
+            expect (girl[2].kind == D::none, "the er itself is the singer's");
+            expect (girl[3].kind == D::roll && girl[3].frame == 0 && girl[4].kind == D::roll && girl[4].frame == 1, "rr");
+            expect (girl[5].kind == D::lightL && girl[5].frame == 0 && girl[7].kind == D::lightL && girl[7].frame == 2, "light l");
+            expect (allNone (run ({ vowel(), vowel(), vowel(), l, l, silence() }, true)), "the l of \"all\", \"feel\": as sung");
+            Frame erL = l;                 // the vowel rule's "er" runs on into the "l"
+            erL.er = true;
+            auto live = run ({ er, er, er, er, er, erL, erL, erL, silence() }, true);
+            expect (live[4].kind == D::roll && live[4].frame == 1 && live[5].kind == D::lightL && live[6].kind == D::lightL,
+                    "the l is the l, not more r");
         }
 
         beginTest ("The consonant recognizer embedded in the plug-in");

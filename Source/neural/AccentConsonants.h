@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SouthernVowels.h"
+
 #include <juce_core/juce_core.h>
 #include <array>
 #include <vector>
@@ -29,7 +31,8 @@ public:
     struct Frame
     {
         bool voiced = false;
-        float th = 0.0f, dh = 0.0f, d = 0.0f, t = 0.0f, n = 0.0f, r = 0.0f, y = 0.0f, vowel = 0.0f;   // probabilities
+        float th = 0.0f, dh = 0.0f, d = 0.0f, t = 0.0f, n = 0.0f, r = 0.0f, y = 0.0f, l = 0.0f, vowel = 0.0f;   // probabilities
+        bool er = false;   // the vowel rule decided this frame an "er" (SouthernVowels::State::isEr)
     };
 
     /** The decision rule, one frame at a time with two frames of lookahead (separate from the recognizer so it can
@@ -49,13 +52,17 @@ public:
         // an "r" is held from its 2nd frame when the two after that are "r" too (at least 4 frames: not the short
         // one between vowels of "very")
 
-        // Kokoro's "t" / "d"s (4 frames each), and the Latin accent's Spanish rolled "rr" (2) and the "j" of "jou" (5)
-        enum Template : int8_t { t = 0, dA, dE, dI, roll, jh, numTemplates };
+        // Kokoro's "t" / "d"s (4 frames each), and the Latin accent's Spanish rolled "rr" (2), the "j" of "jou" (5)
+        // and the light Spanish "l" (4)
+        enum Template : int8_t { t = 0, dA, dE, dI, roll, jh, lightL, numTemplates };
+        static constexpr float lNeeded = 0.5f;   // P(l) of the "l" after an "er" (girl) that is sung light
+        static constexpr float notYetL = 0.3f;   // P(l) below which a frame of that "er" can take its rolled r
+        static constexpr int erBeforeRoll = 3;   // frames of "er" before its rolled r
         static constexpr float yNeeded = 0.5f;   // P(y) of the "y" that becomes "j"
 
         struct Decision
         {
-            enum Kind : uint8_t { none, closure, voiceBar, stop, holdN, holdVowel, roll, jh } kind = none;
+            enum Kind : uint8_t { none, closure, voiceBar, stop, holdN, holdVowel, roll, jh, lightL } kind = none;
             int8_t frame = 0;          // stop: which of its template's last two frames (2 or 3 of 0..3); roll, jh:
                                        // which of theirs
             bool voicedStop = false;   // a "d" (from "dh"), else a "t"
@@ -78,8 +85,9 @@ public:
         int vowelRun = 0;             // vowel frames just before
         int rRun = 0;
         bool holdingVowel = false;
-        bool spanish = false;         // the Latin accent: the "r" after a vowel rolled, "y" -> "j"
+        bool spanish = false;         // the Latin accent: the "r" after a vowel rolled, "y" -> "j", "gurrl"
         int yRun = 0;
+        int erRun = 0, sinceEr = 99, lRun = 0;   // "er" frames in a row; frames since the last; "l" frames
     };
 
     /** Per stream: the rule's state and the last frames (absolute 20 ms frame numbers). */
@@ -108,10 +116,10 @@ public:
         call it after that). `f0Frames` (per 10 ms frame, 0 where unvoiced) gets a "t"'s silence and a "d"'s
         voicing; `changed` (optional, numFrames - skip values) is raised to 1 where a consonant was changed, so the
         plug-in's consonant, vowel and r keepers let the AI singer's own sound through there. `lookAheadFrames`:
-        as SouthernVowels::apply. */
+        as SouthernVowels::apply. `vowels`: the vowel rule's state for the same chunk (which frames are an "er"). */
     void apply (const float* features, int numEncoderFrames, int channels, float* f0Frames, int numFrames,
                 int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch,
-                float* changed = nullptr, int lookAheadFrames = 0) const;
+                float* changed = nullptr, int lookAheadFrames = 0, const SouthernVowels::State* vowels = nullptr) const;
 
     /** The recognizer's probabilities for one encoder frame (context frames clamped to the chunk). */
     Frame recognise (const float* features, int numEncoderFrames, int frame, std::vector<float>& scratch) const;
@@ -136,7 +144,7 @@ private:
 
     int channels = 0, context = 0, hidden = 0, numClasses = 0;
     std::vector<float> w1, b1, w2, b2;   // the standardisation is folded into w1 / b1
-    int thClass = -1, dhClass = -1, dClass = -1, tClass = -1, nClass = -1, rClass = -1, yClass = -1, vowelClass = -1;
+    int thClass = -1, dhClass = -1, dClass = -1, tClass = -1, nClass = -1, rClass = -1, yClass = -1, lClass = -1, vowelClass = -1;
     std::array<std::vector<float>, Rule::numTemplates> templates;
     std::vector<float> silence;
 };
