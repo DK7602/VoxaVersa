@@ -5,6 +5,10 @@ namespace voxa
 
 namespace
 {
+    /** Male Blues' growl depth (dsp::Growl) for a share of listening audit round 38's A4 (Grit's 0.35 at 85 %, in the
+        body of the voice): the user chose 60 %, 45 % and 35 % by ear. */
+    float bluesGrowl (float share) { return 0.35f * 0.85f * share; }
+
     struct GenreStyle
     {
         const char* genre;
@@ -239,10 +243,10 @@ namespace
             const juce::String id (g.idPart);
             t.singAccent = id == "country" ? 1 : id == "reggae" ? 2 : id == "latin" ? 3 : id == "afrobeats" ? 4 : 0;
         }
-        // An AI singer's blues growl where he digs in (Male Blues, listening audit round 40: round 38's growl in the
-        // body of the voice at 35 %, with round 39's dig-in rule); Male Rap's grit is in its sounds (below).
+        // An AI singer's blues growl where he digs in (Male Blues: round 38's growl in the body of the voice, with
+        // round 39's dig-in rule; its strength in its sounds, below); Male Rap's grit is in its sounds too.
         if (male && juce::String (g.idPart) == "blues")
-            t.aiGrowl = 0.35f * 0.85f * 0.35f;
+            t.aiGrowl = bluesGrowl (0.6f);
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
         if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
         {
@@ -307,6 +311,14 @@ namespace
             p.sounds = { { "Street", "A light growl, more drive and compression", rap (0.2f, 0.35f, 0.8f, body, presence) },
                          { "Hard", "Clean and punchy, up front", rap (0.0f, 0.45f, 0.85f, 4.0f, 5.5f) },
                          { "Growl", "More growl", rap (0.3f, 0.3f, comp, body, presence) } };
+        }
+        // Male Blues' growl strength, chosen by ear (listening audit rounds 40 - 42: 60 % the default, 45 % and 35 %)
+        if (male && juce::String (g.idPart) == "blues")
+        {
+            auto growl = [] (float share) { return [=] (VoiceTraits& v) { v.aiGrowl = bluesGrowl (share); }; };
+            p.sounds = { { "Strong", "A growl where you dig in: the start of a phrase, your loudest notes", growl (0.6f) },
+                         { "Medium", "A little less growl", growl (0.45f) },
+                         { "Light", "A light growl", growl (0.35f) } };
         }
         return p;
     }

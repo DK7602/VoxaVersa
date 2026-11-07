@@ -312,6 +312,16 @@ public:
             expectWithinAbsoluteError (library.findById ("male-rap")->traits.aiGrit, 0.3f, 1.0e-6f);
             expectWithinAbsoluteError (library.findById ("male-rap")->traits.bodyDb, body, 1.0e-6f);
 
+            // Male Blues: its growl strength (listening audit rounds 40 - 42), the strongest by default
+            const auto* blues = library.findById ("male-blues");
+            expect (blues->sounds.size() == 3 && blues->soundName == "Strong", blues->soundName);
+            expectWithinAbsoluteError (blues->traits.aiGrowl, 0.35f * 0.85f * 0.6f, 1.0e-6f);
+            expectWithinAbsoluteError (blues->traits.aiGrit, 0.0f, 1.0e-6f);
+            library.setSoundChoice ("male-blues", "Light");
+            expectWithinAbsoluteError (library.findById ("male-blues")->traits.aiGrowl, 0.35f * 0.85f * 0.35f, 1.0e-6f);
+            library.setSoundChoice ("male-blues", "Medium");
+            expectWithinAbsoluteError (library.findById ("male-blues")->traits.aiGrowl, 0.35f * 0.85f * 0.45f, 1.0e-6f);
+
             expectEquals (library.findById ("male-deep-bass")->soundName, juce::String ("Natural"));
             expectEquals (library.findById ("neutral-whisper")->soundName, juce::String ("Natural"));
             for (const auto& v : library.getVoices())

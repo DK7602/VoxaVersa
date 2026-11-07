@@ -237,14 +237,16 @@ without a little drive) was "not real voice rasp"; a depth steady from cycle to 
 growl in the body of the voice (below 2 kHz, the air on top untouched) was best; stronger alternation ("static
 growl") and every other cycle also a touch late ("gravel") were worse. Locking the modulation to the singer's
 own cycles changed nothing measurable (the AI singer sings exactly the pitch it is given). `Growl` is the
-result the user asked for: that body-only growl at 35 % (`aiGrowl` 0.104, scaled by the Style knob), only where
-the singer digs in - the start of a phrase (after 80 ms without voice, fading over ~0.2 s) and the loudest
+result the user asked for: that body-only growl (`aiGrowl`, scaled by the Style knob) only where the singer digs
+in - the start of a phrase (after 80 ms without voice, fading over ~0.2 s) and the loudest
 moments (from 2 dB above the phrase's level of the last few seconds, full at 4.5 dB) - its depth drifting slowly
 (a new target about every 150 ms). The phrase level is taken once the voice has been in for 50 ms (before, the
 envelope's rise made the first seconds of a take count as loud). On a 200 Hz test tone the half-pitch
 subharmonic is -23 dB at a phrase start and -19 dB on a 10 dB push, gone (-100 dB) on a note held at the phrase's
-level, and 23 dB lower at 4 kHz. On the user's take it comes in at -21 to -27 dB at phrase starts and pushes,
--35 to -48 dB between.
+level, and 23 dB lower at 4 kHz. Its strength was then chosen by ear (rounds 40 - 42, as a share of round 38's
+growl): Male Blues' sounds (right-click > Style) are Strong 60 % (the default, `aiGrowl` 0.179), Medium 45 % and
+Light 35 %. At 35 % on the user's take it comes in at -21 to -27 dB at phrase starts and pushes, -35 to -48 dB
+between; 60 % is about 5 dB more.
 
 ### Whisper (`Whisperizer`)
 
