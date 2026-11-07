@@ -117,3 +117,15 @@ a vowel is sung as the vowel from its 2nd frame. The consonant, vowel and r keep
 sound. On the user's take (recognizer read-back): Render (`VoxaVersaRender --export`, the whole take) finds them
 all; live, the stream hears only ~60 ms after each frame and takes the user's "think" for "f" / "s" for its first
 half and "this" for "t" (sung as it is), the rest as Render.
+
+Round 29 verdict: Render sounds like the prototype on all six (Reggae, Afrobeats good; Latin iffy, as the prototype:
+"more Asian than Latin"); the DAW bounce ("live") iffy on all six, fixed by the stream's offline look-ahead (round 30:
+"as good as Render").
+
+## Latin, again (round 31)
+
+Dropping the "r" after a vowel is Jamaican / Nigerian; with the pure vowels it read as East Asian English. A Spanish
+speaker keeps the "r" and taps or rolls it, and often says "you" as "jou". `make_latin_templates.py` (Kokoro's
+Spanish voice: "para", "pero", "perro"; its American "a June") and `accent_latin.py` (round 28's splice, Latin
+without the dropped "r"): A, the "r" of "for" tapped (its vowel held from before it turns r-coloured); B, rolled in
+"for" and "girl" (a tap right before the "l" of "girl" read back as "d"); both "jou".
