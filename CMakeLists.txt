@@ -113,7 +113,7 @@ juce_add_plugin(VoxaVersa
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD     FALSE
-    VST3_CATEGORIES             Fx Pitch Shift
+    VST3_CATEGORIES             Fx Vocals
     AU_MAIN_TYPE                kAudioUnitType_MusicEffect
     AAX_CATEGORY                AAX_ePlugInCategory_PitchShift
     LV2URI                      https://voxaversa.com/plugins/voxaversa
