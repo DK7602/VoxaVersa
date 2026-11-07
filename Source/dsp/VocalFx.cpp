@@ -1247,6 +1247,85 @@ void Grit::process (float* x, const float* hz, int n, float amount) noexcept
 }
 
 //==============================================================================
+void Growl::prepare (double sampleRate)
+{
+    sr = sampleRate;
+    auto coeff = [&] (double seconds) { return (float) (1.0 - std::exp (-1.0 / (seconds * sr))); };
+    attack = coeff (0.005);
+    release = coeff (0.08);
+    slow = coeff (2.5);          // the phrase's level
+    onsetFall = coeff (0.18);    // a phrase start fades over ~0.2 s
+    smooth = coeff (0.03);
+    driftSmooth = coeff (0.06);
+    fadeStep = (float) (1.0 / (0.02 * sr));
+    newDriftChance = (float) (1.0 / (0.15 * sr));
+    body.c = BiquadCoeffs::lowPass (sr, 2000.0);
+    reset();
+}
+
+void Growl::reset()
+{
+    phase = 0.0;
+    body.reset();
+    envelope = onset = digIn = fade = 0.0f;
+    phraseDb = -200.0f;
+    drift = driftTarget = 1.0f;
+    unvoiced = 1 << 20;
+    voicedRun = 0;
+}
+
+void Growl::process (float* x, const float* hz, int n, float amount) noexcept
+{
+    for (int i = 0; i < n; ++i)
+    {
+        const bool voiced = hz[i] > 40.0f;
+        const float lo = body.process (x[i]);
+
+        // how hard he digs in: the start of a phrase, or well above the phrase's level
+        const float a = std::abs (x[i]);
+        envelope += (a - envelope) * (a > envelope ? attack : release);
+        const float db = 20.0f * std::log10 (envelope + 1.0e-6f);
+        float target = 0.0f;
+        if (voiced)
+        {
+            if (unvoiced > (int) (0.08 * sr))
+                onset = 1.0f;
+            unvoiced = 0;
+            ++voicedRun;
+            float loud = 0.0f;
+            if (phraseDb < -150.0f && voicedRun > (int) (0.05 * sr))   // the first level once the envelope has risen
+                phraseDb = db;
+            if (phraseDb > -150.0f)
+            {
+                phraseDb += (db - phraseDb) * slow;
+                loud = juce::jlimit (0.0f, 1.0f, (db - phraseDb + 1.5f) / 6.0f);
+            }
+            target = juce::jlimit (0.0f, 1.0f, juce::jmax (1.2f * onset, (loud - 0.6f) / 0.4f));
+        }
+        else
+        {
+            ++unvoiced;
+            voicedRun = 0;
+        }
+        onset -= onset * onsetFall;
+        digIn += (target - digIn) * smooth;
+
+        fade = juce::jlimit (0.0f, 1.0f, fade + (voiced ? fadeStep : -fadeStep));
+        if (fade <= 0.0f || amount <= 0.0f)
+            continue;
+        const double f = voiced ? (double) hz[i] : 150.0;
+        phase += f / sr;
+        if (phase >= 2.0)
+            phase -= 2.0;
+        if (random.nextFloat() < newDriftChance)
+            driftTarget = 0.7f + 0.6f * random.nextFloat();
+        drift += (driftTarget - drift) * driftSmooth;
+        const float depth = amount * digIn * drift;
+        x[i] += lo * fade * depth * (float) std::sin (juce::MathConstants<double>::pi * phase);   // half the pitch
+    }
+}
+
+//==============================================================================
 // Whisperizer: CheapTrick and WORLD's aperiodic synthesis, ported from WORLD (https://github.com/mmorise/World,
 // Copyright (c) 2010 M. Morise, modified BSD licence) with every buffer allocated in prepare().
 void Whisperizer::prepare (double sampleRate)

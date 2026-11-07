@@ -239,9 +239,10 @@ namespace
             const juce::String id (g.idPart);
             t.singAccent = id == "country" ? 1 : id == "reggae" ? 2 : id == "latin" ? 3 : id == "afrobeats" ? 4 : 0;
         }
-        // An AI singer's blues rasp (Male Blues); Male Rap's grit is in its sounds (below).
+        // An AI singer's blues growl where he digs in (Male Blues, listening audit round 40: round 38's growl in the
+        // body of the voice at 35 %, with round 39's dig-in rule); Male Rap's grit is in its sounds (below).
         if (male && juce::String (g.idPart) == "blues")
-            t.aiGrit = 0.35f;
+            t.aiGrowl = 0.35f * 0.85f * 0.35f;
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
         if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
         {

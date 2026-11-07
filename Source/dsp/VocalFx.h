@@ -263,6 +263,36 @@ private:
     juce::Random random { 4321 };
 };
 
+/** Male Blues' growl (listening audit rounds 37 - 40): Grit's half-pitch modulation made to sound like a singer
+    digging in rather than static. Only where he digs in - the start of a phrase (after 80 ms without voice), fading
+    over ~0.2 s, and the loudest moments (from 2 dB above the phrase's level of the last few seconds, full at
+    4.5 dB) - and clean in between; only in the body of the voice (below 2 kHz: in the top it was "not real voice
+    rasp"); its depth steady, drifting slowly (a new target about every 150 ms), with no per-cycle randomness (that
+    was "static"). */
+class Growl
+{
+public:
+    void prepare (double sampleRate);
+    void reset();
+    /** `hz`: the voice's pitch per sample (0 where unvoiced: nothing changes there). `amount`: the deepest
+        modulation, where he digs in hardest. */
+    void process (float* voice, const float* hz, int numSamples, float amount) noexcept;
+
+    /** How hard he digs in now (0..1). */
+    float getDigIn() const noexcept { return digIn; }
+
+private:
+    double sr = 48000.0;
+    double phase = 0.0;                 // in cycles of the voice
+    Biquad body;                        // the voice below 2 kHz
+    float envelope = 0.0f, phraseDb = -200.0f, onset = 0.0f, digIn = 0.0f, fade = 0.0f;
+    float drift = 1.0f, driftTarget = 1.0f;
+    int unvoiced = 1 << 20, voicedRun = 0;
+    float attack = 0.0f, release = 0.0f, slow = 0.0f, onsetFall = 0.0f, smooth = 0.0f, driftSmooth = 0.0f;
+    float fadeStep = 0.0f, newDriftChance = 0.0f;
+    juce::Random random { 2468 };
+};
+
 /** A whisper made from the voice itself, as the WORLD vocoder (M. Morise, modified BSD licence; see
     docs/THIRD_PARTY.md) makes one: every 5 ms its CheapTrick analysis takes the voice's spectral envelope with a
     pitch-adaptive window (3 periods long; a fixed 500 Hz "pitch" where it is unvoiced), and every 2 ms a short

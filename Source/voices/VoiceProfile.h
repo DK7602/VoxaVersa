@@ -40,8 +40,10 @@ struct VoiceTraits
     bool noAiSinger = false;
     // The voice whispers: the lead is the input's own spectral envelope on noise (no pitch).
     bool whisper = false;
-    // Grit added to an AI singer (0..1: Male Rap's street edge, Male Blues' rasp).
+    // Grit added to an AI singer (0..1: Male Rap's street edge, Deep Bass's roughness).
     float aiGrit = 0.0f;
+    // A growl where the AI singer digs in (0..1, its deepest modulation: Male Blues; dsp::Growl).
+    float aiGrowl = 0.0f;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift

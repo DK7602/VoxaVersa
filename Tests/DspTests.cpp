@@ -1021,6 +1021,41 @@ public:
             expectWithinAbsoluteError (20.0 * std::log10 (rms (x, n / 2, n) / rms (before, n / 2, n)), 0.0, 1.5);
         }
 
+        beginTest ("Growl: only where he digs in (a phrase start, a loud push), in the body of the voice");
+        {
+            // 0.3 s of silence, a note at 200 Hz for 2 s, then the same note 10 dB louder for 1 s
+            const int start = (int) (0.3 * sr), push = start + (int) (2.0 * sr), total = push + (int) sr;
+            std::vector<float> x ((size_t) total), hz ((size_t) total, 0.0f);
+            for (int i = start; i < total; ++i)
+            {
+                hz[(size_t) i] = 200.0f;
+                const float gain = i < push ? 1.0f : 3.16f;
+                for (int h = 1; h <= 30; ++h)
+                    x[(size_t) i] += gain * 0.03f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
+            }
+            const auto before = x;
+            dsp::Growl growl;
+            growl.prepare (sr);
+            for (int pos = 0; pos < total; pos += 480)
+                growl.process (x.data() + pos, hz.data() + pos, juce::jmin (480, total - pos), 0.35f);
+
+            auto sub = [&] (int a, int b, double at) { return tone (x, a, b, at + 100.0, sr) - tone (x, a, b, at, sr); };
+            const int ms = (int) (sr / 1000.0);
+            const double phraseStart = sub (start + 20 * ms, start + 170 * ms, 200.0);
+            const double held = sub (push - 500 * ms, push, 200.0);
+            const double loudPush = sub (push + 100 * ms, push + 500 * ms, 200.0);
+            const double top = sub (push + 100 * ms, push + 500 * ms, 4000.0);
+            logMessage ("half-pitch subharmonic: phrase start " + juce::String (phraseStart, 1) + " dB, held note "
+                        + juce::String (held, 1) + " dB, loud push " + juce::String (loudPush, 1) + " dB (at 4 kHz "
+                        + juce::String (top, 1) + " dB)");
+            expectGreaterThan (phraseStart, -25.0);
+            expectGreaterThan (loudPush, -25.0);
+            expectLessThan (held, phraseStart - 20.0);
+            expectLessThan (top, loudPush - 10.0);   // the top of the voice is left (nearly) alone
+            // no voice: nothing changes
+            expectWithinAbsoluteError (rms (x, 0, start), rms (before, 0, start), 1.0e-9);
+        }
+
         beginTest ("The whisper keeps the level and the vowel and loses the pitch");
         {
             // a vowel-like voice at 200 Hz: harmonics falling 6 dB an octave, a resonance at 700 Hz

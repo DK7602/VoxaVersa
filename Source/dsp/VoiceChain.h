@@ -136,6 +136,7 @@ private:
     RKeeper rKeeper;
     VowelKeeper vowels;
     Grit grit;
+    Growl growl;
     Whisperizer whisperizer;
     BreathKeeper breaths;
     CharacterProcessor character;

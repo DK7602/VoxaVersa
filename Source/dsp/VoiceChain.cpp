@@ -73,6 +73,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     rKeeper.prepare (sr);
     vowels.prepare (sr);
     grit.prepare (sr);
+    growl.prepare (sr);
     whisperizer.prepare (sr);
     breaths.prepare (sr);
     character.prepare (sr);
@@ -159,6 +160,7 @@ void VoiceChain::reset()
     rKeeper.reset();
     vowels.reset();
     grit.reset();
+    growl.reset();
     whisperizer.reset();
     breaths.reset();
     character.reset();
@@ -230,8 +232,10 @@ void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, con
                       : (source == 2 && traits.gender == VoiceGender::Male ? 1.0f / 1.17f : 1.0f);
     vowels.setTopNote (traits.aiHighMidi > 0 ? (float) traits.aiHighMidi - 1.0f : 0.0f);
     vowels.process (lead, dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract, accent);
-    if (traits.aiGrit > 0.0f)   // an AI singer's rasp (Male Rap, Male Blues)
+    if (traits.aiGrit > 0.0f)   // an AI singer's rasp (Male Rap, Deep Bass)
         grit.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * (1.0f + s.style)));
+    if (traits.aiGrowl > 0.0f)  // a growl where he digs in (Male Blues)
+        growl.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrowl * (1.0f + s.style)));
 }
 
 void VoiceChain::fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept

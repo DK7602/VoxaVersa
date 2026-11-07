@@ -226,7 +226,25 @@ of voiced sound. On a male vocal at 0.5 (scaled by the Style knob) the harmonics
 14.0 to 11.7 dB while the noise between the harmonics barely rose (1.5 - 5 kHz flatness -11.0 to -10.1 dB; the
 noise version: -6.4 dB). 0.5 was "not natural" on Male Rap: its sounds (right-click > Style, chosen by ear in
 listening audit 5) are Street 0.2 with more saturation and compression, Hard 0 and Growl 0.3; Deep Bass 0.12 -
-0.2; Male Blues 0.35. It runs on the AI lead after the vowel keeper, live and in Text to Sing takes.
+0.2. It runs on the AI lead after the vowel keeper, live and in Text to Sing takes.
+
+### Growl (`Growl`)
+
+Male Blues had Grit at 0.35 on every sung sound: "the growl sounds unnatural" (listening audit 15). Rounds 37 - 40
+narrowed it down by ear. The same half-pitch modulation only where the singer pushes was the right direction, but
+"less like static"; the rasp in the top of the voice only (above 900 Hz, uneven from cycle to cycle, with or
+without a little drive) was "not real voice rasp"; a depth steady from cycle to cycle helped, and keeping the
+growl in the body of the voice (below 2 kHz, the air on top untouched) was best; stronger alternation ("static
+growl") and every other cycle also a touch late ("gravel") were worse. Locking the modulation to the singer's
+own cycles changed nothing measurable (the AI singer sings exactly the pitch it is given). `Growl` is the
+result the user asked for: that body-only growl at 35 % (`aiGrowl` 0.104, scaled by the Style knob), only where
+the singer digs in - the start of a phrase (after 80 ms without voice, fading over ~0.2 s) and the loudest
+moments (from 2 dB above the phrase's level of the last few seconds, full at 4.5 dB) - its depth drifting slowly
+(a new target about every 150 ms). The phrase level is taken once the voice has been in for 50 ms (before, the
+envelope's rise made the first seconds of a take count as loud). On a 200 Hz test tone the half-pitch
+subharmonic is -23 dB at a phrase start and -19 dB on a 10 dB push, gone (-100 dB) on a note held at the phrase's
+level, and 23 dB lower at 4 kHz. On the user's take it comes in at -21 to -27 dB at phrase starts and pushes,
+-35 to -48 dB between.
 
 ### Whisper (`Whisperizer`)
 

@@ -58,8 +58,9 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
   gender (the pop singers and the gospel singers), following *Source Voice* or the detected gender.
   *Hard Tune Robot* snaps every note at once by itself (the hard-tune sound, with Tune off too; the AI singer
   gets the exact note, and sings through the fast slides the pitch detector loses). *Female Trap* has a light
-  auto-tune of its own. *Male Rap* and *Male Blues* add grit to their AI singer (a growl: the voice's cycles alternate
-  in strength, as in a raspy voice). *Whisper* turns your voice itself into a whisper: a breath through your
+  auto-tune of its own. *Male Rap* adds grit to its AI singer (a growl: the voice's cycles alternate
+  in strength, as in a raspy voice); *Male Blues* growls only where you dig in (the start of a phrase, your
+  loudest moments), lightly and in the body of the voice. *Whisper* turns your voice itself into a whisper: a breath through your
   own vocal tract, its pitch gone and its words kept. *Choir Ensemble* is a section: the lead singer, a gospel
   singer of the other gender an octave away (a second AI model, so about twice the AI engine's work), and six
   copies of the two, each a little late, slowly detuned and coloured differently, spread across the stereo
