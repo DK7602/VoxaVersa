@@ -1,6 +1,7 @@
 #include "SouthernVowels.h"
 #include "VoxaAssets.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -57,10 +58,11 @@ const SouthernVowels* SouthernVowels::get()
     return instance;
 }
 
-/** "VXVW", version (1 or 2), channels, context, hidden, classes (uint32 each), the class names (uint8 length +
+/** "VXVW", version (1, 2 or 3), channels, context, hidden, classes (uint32 each), the class names (uint8 length +
     text), then float16: w1 [hidden][context * channels], b1 [hidden], w2 [classes][hidden], b2 [classes].
     Version 2 goes on with the shifts (ShiftRule): their number (uint32), then each its name (uint8 length + text:
-    raise, lower, drawl) and float16 [channels]. */
+    raise, lower, drawl) and float16 [channels]. Version 3 has the shifts (maybe none) and then every class's mean
+    features (AccentRule): their number (uint32), then each its class name and float16 [channels]. */
 bool SouthernVowels::load (const void* data, size_t size)
 {
     juce::MemoryInputStream in (data, size, false);
@@ -68,10 +70,11 @@ bool SouthernVowels::load (const void* data, size_t size)
     if (in.read (magic, 4) != 4 || std::memcmp (magic, "VXVW", 4) != 0)
         return false;
     const int version = in.readInt();
-    if (version != 1 && version != 2)
+    if (version < 1 || version > 3)
         return false;
 
     channels = in.readInt(); context = in.readInt(); hidden = in.readInt(); numClasses = in.readInt();
+    juce::StringArray labels;
     if (channels <= 0 || context <= 0 || context % 2 == 0 || hidden <= 0 || numClasses <= 0 || channels > 4096 || hidden > 4096)
         return false;
 
@@ -90,6 +93,15 @@ bool SouthernVowels::load (const void* data, size_t size)
             glideClasses.push_back (c);
         if (label != "C" && label != "SIL")
             vowelClasses.push_back (c);
+        if (label != "C" && label != "SIL" && label != "AY_g" && label != "OY_g")
+            plainVowelClasses.push_back (c);
+        auto& k = accentClasses;
+        for (auto [name, index] : { std::pair<const char*, int*> { "AA", &k.AA }, { "AE", &k.AE }, { "AH", &k.AH },
+                                    { "AO", &k.AO }, { "EH", &k.EH }, { "ER", &k.ER }, { "EY", &k.EY }, { "IH", &k.IH },
+                                    { "IY", &k.IY }, { "OW", &k.OW }, { "UH", &k.UH } })
+            if (label == name)
+                *index = c;
+        labels.add (label);
         if (label == "EH_N") shiftClasses[ShiftRule::raise] = c;
         if (label == "EY")   shiftClasses[ShiftRule::lower] = c;
         if (label == "AE")   shiftClasses[ShiftRule::drawl] = c;
@@ -116,7 +128,7 @@ bool SouthernVowels::load (const void* data, size_t size)
            && ! iyClasses.empty() && ! glideClasses.empty()))
         return false;
 
-    if (version == 2)
+    if (version >= 2)
     {
         const int numShifts = in.readInt();
         for (int k = 0; k < numShifts; ++k)
@@ -128,6 +140,21 @@ bool SouthernVowels::load (const void* data, size_t size)
             const int which = name == "raise" ? ShiftRule::raise : name == "lower" ? ShiftRule::lower : name == "drawl" ? ShiftRule::drawl : -1;
             if (which >= 0 && shiftClasses[(size_t) which] >= 0)
                 deltas[(size_t) which] = std::move (delta);
+        }
+    }
+
+    if (version == 3)
+    {
+        const int numMeans = in.readInt();
+        if (numMeans != numClasses)
+            return false;
+        means.assign ((size_t) numClasses, {});
+        for (int k = 0; k < numMeans; ++k)
+        {
+            const auto name = readName();
+            const auto c = (size_t) std::distance (labels.begin(), std::find (labels.begin(), labels.end(), name));
+            if (c >= labels.size() || ! readHalves (means[c], (size_t) channels))
+                return false;
         }
     }
 
@@ -223,10 +250,95 @@ SouthernVowels::ShiftRule::Decision SouthernVowels::ShiftRule::step (const Frame
     return d;
 }
 
+SouthernVowels::AccentRule::Decision SouthernVowels::AccentRule::step (const Frame& f, const Frame& next) noexcept
+{
+    Decision d;
+    if (! isVowel (f))
+    {
+        reset();
+        return d;
+    }
+
+    ++run;
+    const int cls = f.topShare >= classNeeded ? (int) f.top : -1;
+    sameRun = cls >= 0 && cls == last ? sameRun + 1 : (cls >= 0 ? 1 : 0);
+    if (cls >= 0)
+        last = cls;
+
+    const auto& k = classes;
+    if (cls == k.IH && f.topShare >= iClearNeeded && sameRun <= iClearWithin)
+        iClear = true;
+
+    erSum += f.er;
+    const bool clearEr = cls >= 0 && cls == k.ER && f.topShare >= erNeeded;
+    const bool heardAsU = f.top >= 0 && f.top == k.UH && f.er >= erHeard && run >= 3
+                          && erSum / (float) run >= erMeanNeeded;
+    erFrames = clearEr || heardAsU ? erFrames + 1 : 0;
+    if (erFrames >= erLatch)
+        erVowel = true;
+    if (holding)
+    {
+        d.kind = Decision::hold;
+        d.weight = run - holdAt == 0 ? 0.5f : 1.0f;
+        return d;
+    }
+
+    // "ay" / "oh" sung pure: held from its `holdAfter`-th frame
+    if (cls >= 0 && (cls == k.EY || cls == k.OW) && sameRun >= holdAfter)
+    {
+        holding = true;
+        holdAt = run;
+        d.kind = Decision::hold;
+        d.from = (int8_t) cls;
+        d.to = (int8_t) (cls == k.EY ? k.EH : k.AO);
+        d.weight = 0.5f;
+        d.startsHold = true;
+        return d;
+    }
+
+    // the accent's vowel for this one
+    int to = -1, to2 = -1;
+    float blend = 0.0f;
+    const bool er = clearEr || erVowel;
+    if (er)
+    {
+        if (accent == jamaican)     to = k.AA;
+        else if (accent == spanish) to = k.EH;
+        else if (accent == nigerian) { to = k.AH; to2 = k.EH; blend = juce::jlimit (0.0f, 1.0f, (float) (run - 8) / 4.0f); }
+    }
+    else if (cls >= 0 && cls == k.AE)
+        to = k.AA;
+    else if (cls >= 0 && cls == k.IH && iClear && (accent == spanish || accent == nigerian))
+        to = k.IY;
+    if (to < 0)
+        return d;
+
+    const float push = shortPush + (longPush - shortPush) * juce::jlimit (0.0f, 1.0f, (float) (run - longVowel) / 4.0f);
+    d.kind = Decision::swap;
+    d.from = (int8_t) (er ? k.ER : cls);
+    d.to = (int8_t) to;
+    d.to2 = (int8_t) to2;
+    d.blend = blend;
+    d.weight = push * juce::jmin (1.0f, (float) run / 2.0f) * (isVowel (next) ? 1.0f : 0.5f);
+    return d;
+}
+
+void SouthernVowels::setAccent (State& state, int accent) const noexcept
+{
+    if (state.accentRule.accent != accent)
+    {
+        state.reset();
+        state.accentRule.accent = accent;
+    }
+    state.accentRule.classes = accentClasses;
+}
+
 void SouthernVowels::State::reset() noexcept
 {
     rule.reset();
     shiftRule.reset();
+    accentRule.reset();
+    accentOf.fill ({});
     shiftOf.fill (-1);
     shiftWeight.fill (0.0f);
     recognised = -1;
@@ -285,12 +397,25 @@ SouthernVowels::Frame SouthernVowels::recognise (const float* features, int numE
     for (size_t k = 0; k < ShiftRule::numShifts; ++k)
         if (shiftClasses[k] >= 0)
             f.shift[k] = logits[shiftClasses[k]] / total;
+    float best = -1.0f;
+    for (auto c : plainVowelClasses)
+        if (logits[c] > best)
+        {
+            best = logits[c];
+            f.top = (int8_t) c;
+        }
+    f.topShare = f.vowel > 0.0f ? best / total / f.vowel : 0.0f;
+    if (accentClasses.ER >= 0 && f.vowel > 0.0f)
+        f.er = logits[accentClasses.ER] / total / f.vowel;
     return f;
 }
 
 void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch, const float* f0Frames, int numFrames,
-                            int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch) const
+                            int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch,
+                            float* changed) const
 {
+    if (changed != nullptr && numFrames > skip)
+        std::fill_n (changed, numFrames - skip, 0.0f);
     if (ch != channels || numEncoderFrames < context || numFrames <= skip)
         return;
 
@@ -319,12 +444,55 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
         state.weight[s] = 0.0f;
         state.shiftOf[s] = -1;
         state.shiftWeight[s] = 0.0f;
+        state.accentOf[s] = {};
         state.recognised = a;
 
         const int64_t d = a - Rule::lookahead;
         const auto sd = slot (d);
         if (state.frameOf[sd] != d)
             continue;   // just after a reset
+
+        if (state.accentRule.accent != southern)
+        {
+            if (! hasMeans())
+                continue;
+            auto decision = state.accentRule.step (state.frames[sd], state.frames[slot (d + 1)]);
+            if (decision.kind == AccentRule::Decision::hold)
+            {
+                if (decision.startsHold)
+                {
+                    // the vowel's first frames (those in this chunk), nudged towards the pure vowel
+                    state.currentHold ^= 1;
+                    auto& hold = state.holds[state.currentHold];
+                    hold.assign ((size_t) channels, 0.0f);
+                    int n = 0;
+                    for (int64_t b = d - AccentRule::holdAfter + 1; b <= d; ++b)
+                        if (b >= first)
+                        {
+                            for (int c = 0; c < channels; ++c)
+                                hold[(size_t) c] += features[(size_t) (b - first) * (size_t) channels + (size_t) c];
+                            ++n;
+                        }
+                    if (n == 0)
+                    {
+                        state.accentRule.holding = false;   // none of it in this chunk: leave the vowel alone
+                        hold.clear();
+                        continue;
+                    }
+                    const auto& from = means[(size_t) decision.from];
+                    const auto& to = means[(size_t) decision.to];
+                    for (int c = 0; c < channels; ++c)
+                        hold[(size_t) c] = hold[(size_t) c] / (float) n + AccentRule::pureNudge * (to[(size_t) c] - from[(size_t) c]);
+                }
+                state.weight[sd] = decision.weight;
+                state.holdIndex[sd] = state.currentHold;
+            }
+            else
+            {
+                state.accentOf[sd] = decision;
+            }
+            continue;
+        }
 
         const auto event = state.rule.step (state.frames[sd], state.frames[slot (d + 1)], f);
 
@@ -417,6 +585,7 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
         float w = 0.0f, shiftWeight = 0.0f;
         uint8_t which = state.currentHold;
         int shift = -1;
+        AccentRule::Decision swap;
 
         if (a <= decided)
         {
@@ -427,19 +596,28 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
                 which = state.holdIndex[s];
                 shift = state.shiftOf[s];
                 shiftWeight = state.shiftWeight[s];
+                swap = state.accentOf[s];
             }
         }
         else if (voicedAt (e))
         {
-            w = state.rule.held ? 1.0f : 0.0f;
+            const bool held = state.accentRule.accent == southern ? state.rule.held : state.accentRule.holding;
+            w = held ? 1.0f : 0.0f;
             if (lastKnown)
             {
                 shift = state.shiftOf[lastDecided];
                 shiftWeight = state.shiftWeight[lastDecided];
+                swap = state.accentOf[lastDecided];
             }
         }
 
         float* dest = phone + (size_t) (i - skip) * (size_t) channels;
+
+        if (changed != nullptr && state.accentRule.accent != southern)
+        {
+            const bool swapped = swap.kind == AccentRule::Decision::swap && hasMeans();
+            changed[i - skip] = juce::jlimit (0.0f, 1.0f, juce::jmax (w, swapped ? swap.weight : 0.0f));
+        }
 
         if (const auto& hold = state.holds[which]; w > 0.0f && hold.size() == (size_t) channels)
             for (int c = 0; c < channels; ++c)
@@ -450,6 +628,20 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
             const auto& delta = deltas[(size_t) shift];
             for (int c = 0; c < channels; ++c)
                 dest[c] += shiftWeight * delta[(size_t) c];
+        }
+
+        // the accent's vowel: the features moved by the difference of the two vowels' means
+        if (swap.kind == AccentRule::Decision::swap && swap.weight > 0.0f && hasMeans())
+        {
+            const auto& from = means[(size_t) swap.from];
+            const auto& to = means[(size_t) swap.to];
+            const bool blended = swap.to2 >= 0 && swap.blend > 0.0f;
+            const auto& to2 = means[(size_t) (blended ? swap.to2 : swap.to)];
+            for (int c = 0; c < channels; ++c)
+            {
+                const float target = blended ? to[(size_t) c] + swap.blend * (to2[(size_t) c] - to[(size_t) c]) : to[(size_t) c];
+                dest[c] += swap.weight * (target - from[(size_t) c]);
+            }
         }
     }
 }

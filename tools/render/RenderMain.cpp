@@ -15,11 +15,13 @@
 //                                             sings a given guide audio on the same notes (experiments).
 //   VoxaVersaRender --rkeeper|--breaths <dry.wav> <ai.wav> <out.wav> [ai-lag-seconds] [f3.csv]
 //                                             developer check of the R keeper / breath keeper on its own
-//   VoxaVersaRender --southern <features.f32> <f0.f32> [contextMs]
+//   VoxaVersaRender --southern <features.f32> <f0.f32> [contextMs] [accent]
 //                                             developer check of the Southern "ah" (SouthernVowels) on a
 //                                             vocal's content features (float32 [frames][768], 20 ms) and
 //                                             pitch (float32 per 10 ms, 0 unvoiced), in chunks as the live
-//                                             stream: prints what it holds (tools/research/vowelnet)
+//                                             stream: prints what it changes (tools/research/vowelnet); with
+//                                             an accent (2 Jamaican, 3 Spanish, 4 Nigerian) the reggae / Latin /
+//                                             afrobeats vowels instead
 //
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // --realtime feeds the blocks at the pace of live playback (what a DAW does while playing);
@@ -326,7 +328,7 @@ static int rKeeperTool (const juce::StringArray& args)
     return 0;
 }
 
-/** Developer check of the Southern "ah": --southern features.f32 f0.f32 [contextMs]. */
+/** Developer check of the Southern "ah" (or an accent's vowels): --southern features.f32 f0.f32 [contextMs] [accent]. */
 static int southernTool (const juce::StringArray& args)
 {
     using namespace voxa::neural;
@@ -356,6 +358,7 @@ static int southernTool (const juce::StringArray& args)
     const int skip = juce::jmax (0, chunkFrames - (streaming::blockFrames + streaming::tailFrames + streaming::generatorContextFrames));
     std::vector<char> held ((size_t) numFrames, 0);
     SouthernVowels::State state;
+    vowels->setAccent (state, args.size() > 4 ? args[4].getIntValue() : SouthernVowels::southern);
     std::vector<float> chunkFeatures, chunkF0, phone, original, scratch;
 
     for (int end = streaming::blockFrames; end - streaming::blockFrames - streaming::tailFrames < numFrames; end += streaming::blockFrames)
@@ -393,7 +396,7 @@ static int southernTool (const juce::StringArray& args)
             int b = a;
             while (b < numFrames && held[(size_t) b])
                 ++b;
-            std::printf ("held %.2f - %.2f s\n", a / 100.0, b / 100.0);
+            std::printf ("changed %.2f - %.2f s\n", a / 100.0, b / 100.0);
         }
     return 0;
 }

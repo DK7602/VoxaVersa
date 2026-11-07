@@ -56,13 +56,16 @@ public:
         With `pitchShiftSemis` (same frame rate; NaN where `f0Hz` must be used as it is) and the neural pitch
         tracker installed, the voice sings the input's own pitch as that tracker hears it, shifted by these
         semitones (see NeuralPitchTracker); `f0Hz` is then only the fallback.
-        `southernVowels`: the country voices' Southern "ah" (SouthernVowels), as setSouthernVowels() live.
+        `accent`: the voice's accent (SouthernVowels::Accent; 0 none), as setAccent() live; `accentFrames`
+        (optional) then receives, per 10 ms frame from the input's start, how much that frame was given the
+        accent's vowel (0..1), for the vowel keeper (see process()).
         The result is written to `output` at `inputSampleRate`. */
     bool convert (const juce::AudioBuffer<float>& monoInput, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
                   juce::AudioBuffer<float>& output,
                   const std::atomic<bool>* cancel, juce::String& error,
-                  const std::vector<float>* pitchShiftSemis = nullptr, bool southernVowels = false) const;
+                  const std::vector<float>* pitchShiftSemis = nullptr, int accent = 0,
+                  std::vector<float>* accentFrames = nullptr) const;
 
     /** True when the neural pitch tracker (<Encoders>/fcpe.onnx) was installed when this model loaded. */
     bool hasNeuralPitch() const noexcept;
@@ -107,13 +110,15 @@ public:
         (warming up, after a reset, a chunk that was not converted in time), in between during its crossfades.
         Mixing another rendering of the same voice in with gain 1 - coverage fills those gaps seamlessly.
         `pitchShiftSemis` (optional, per input sample, NaN = use `targetF0Hz`): with the neural pitch tracker
-        installed, the voice sings the input's pitch as that tracker hears it, shifted by these semitones. */
+        installed, the voice sings the input's pitch as that tracker hears it, shifted by these semitones.
+        `accentOut` (optional) receives, on the output's timeline, how much each sample was given the accent's
+        vowel (0..1, see setAccent()): there the caller's vowel keeper must not pull the vowel back to the input's. */
     void process (const float* input, const float* targetF0Hz, float* output, int numSamples,
-                  float* coverage = nullptr, const float* pitchShiftSemis = nullptr) noexcept;
+                  float* coverage = nullptr, const float* pitchShiftSemis = nullptr, float* accentOut = nullptr) noexcept;
 
-    /** Any thread. The Southern "ah" of the country voices (SouthernVowels): an "I" that glides to "ee" keeps its
-        open vowel. Off by default. */
-    void setSouthernVowels (bool shouldBeOn) noexcept;
+    /** Any thread. The voice's accent (SouthernVowels::Accent): the country voices' Southern "ah" (an "I" that
+        glides to "ee" keeps its open vowel), the reggae / Latin / afrobeats vowels. 0 (none) by default. */
+    void setAccent (int accent) noexcept;
 
     /** Audio thread. Clears all buffered audio (e.g. on transport jumps). */
     void reset() noexcept;

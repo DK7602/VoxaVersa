@@ -202,9 +202,12 @@ public:
     void reset();
     /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice on the same timeline. `inputHz`
         and `leadHz` are both voices' pitches per sample (0 where unvoiced). `tractRatio`: the AI singer's
-        formants over the input's (1 for the same gender, ~1.17 for a man's input into a woman's voice). */
+        formants over the input's (1 for the same gender, ~1.17 for a man's input into a woman's voice).
+        `release` (optional, 0..1 per sample on the lead's timeline): where the AI singer was given an accent's
+        vowel on purpose (NeuralVoiceStream's accent output); the keeper's pull to the input's vowel is that much
+        weaker there, so a reggae "gyal" is not turned back into the input's "girl". */
     void process (float* lead, const float* input, const float* inputHz, const float* leadHz, int numSamples,
-                  float tractRatio) noexcept;
+                  float tractRatio, const float* release = nullptr) noexcept;
     /** The AI singer's top note (MIDI, 0 = unknown). Above it a model turns thin and "chipmunk": the keeper then
         also lowers the AI voice's resonances, 0.4 semitone per semitone above, at most 2.5. */
     void setTopNote (float midi) noexcept { topMidi = midi; }
@@ -217,14 +220,14 @@ public:
     float getBandHz (int band) const noexcept { return centreHz[band]; }
 
 private:
-    void analyse (float inputHz, float leadHz, float tractRatio) noexcept;
+    void analyse (float inputHz, float leadHz, float tractRatio, float release) noexcept;
     void envelope (const std::vector<float>& ring, float f0, float scale, float* out) noexcept;
     void updateFilters (float fraction) noexcept;
 
     static constexpr int fftOrder = 10, fftSize = 1 << fftOrder, hop = 256;
     double sr = 48000.0;
     std::unique_ptr<juce::dsp::FFT> fft;
-    std::vector<float> dryRing, leadRing, dryHzRing, leadHzRing, window, fftData;
+    std::vector<float> dryRing, leadRing, dryHzRing, leadHzRing, releaseRing, window, fftData;
     int write = 0, sinceHop = 0, filled = 0;
     float centreHz[numBands] {}, bandWeight[numBands] {}, cosW[numBands] {}, alpha[numBands] {};
     std::vector<float> inverse;   // numBands x numBands: band gains that give the wanted response at the centres

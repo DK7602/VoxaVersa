@@ -76,10 +76,13 @@ struct NeuralVoiceModel::Impl
         NeuralPitchTracker::Workspace tracker;
         std::vector<float> tracked;
 
-        // The Southern "ah" of the country voices (SouthernVowels): on for this caller's chunks when set
-        bool southern = false;
+        // The voice's accent (SouthernVowels::Accent: the country voices' Southern "ah", the reggae / Latin /
+        // afrobeats vowels) on this caller's chunks; 0: none
+        int accent = 0;
         SouthernVowels::State southernState;
         std::vector<float> southernScratch, timeMajor;
+        // after runFrames: per generator frame, how much it was given an accent's vowel (0..1, SouthernVowels::apply)
+        std::vector<float> accentChanged;
     };
 
     /** `cancel` (optional) is checked between the loading steps and the timing runs. */
@@ -97,7 +100,8 @@ struct NeuralVoiceModel::Impl
     bool convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
                   juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel, juce::String& error,
-                  const std::vector<float>* pitchShiftSemis = nullptr, bool southernVowels = false) const;
+                  const std::vector<float>* pitchShiftSemis = nullptr, int accent = 0,
+                  std::vector<float>* accentFrames = nullptr) const;
 
     /** With the neural pitch tracker: the target pitch of frames [firstFrame, numFrames) becomes the pitch the
         tracker hears in `audio16k` (numFrames * 160 samples), shifted by `shiftSemis` (one per frame; NaN keeps

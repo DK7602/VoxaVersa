@@ -734,11 +734,13 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
         }
     }
 
-    // The country voices' Southern "ah": an "I" that glides to "ee" keeps its open vowel (SouthernVowels)
-    if (ws.southern)
+    // The voice's accent (SouthernVowels): the country voices' Southern "ah", the reggae / Latin / afrobeats vowels
+    ws.accentChanged.assign (frames, 0.0f);
+    if (ws.accent != 0)
     {
         if (const auto* southern = SouthernVowels::get())
         {
+            southern->setAccent (ws.southernState, ws.accent);
             const float* features = ws.encoderOut.data.data();
             if (channelMajor)
             {
@@ -750,7 +752,7 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
             }
             if (f0Frames != nullptr)
                 southern->apply (features, (int) numEncoderFrames, (int) channels, f0Frames, numFrames, generatorSkip,
-                                 firstFrame, ws.phone.data(), ws.southernState, ws.southernScratch);
+                                 firstFrame, ws.phone.data(), ws.southernState, ws.southernScratch, ws.accentChanged.data());
         }
     }
 
@@ -823,8 +825,11 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
                                       const std::vector<float>& f0Hz, double f0FrameRate,
                                       juce::AudioBuffer<float>& output, const std::atomic<bool>* cancel,
                                       juce::String& error, const std::vector<float>* pitchShiftSemis,
-                                      bool southernVowels) const
+                                      int accent, std::vector<float>* accentFrames) const
 {
+    if (accentFrames != nullptr)
+        accentFrames->clear();
+
     const int inputRate = juce::roundToInt (inputSampleRate);
     const int numInputSamples = input.getNumSamples();
 
@@ -871,6 +876,8 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
     std::copy (signal16k.begin(), signal16k.end(), padded.begin() + edgePadFrames * dsp::samplesPerFrame16k);
 
     std::vector<float> f0Frames ((size_t) totalFrames, 0.0f);
+    if (accentFrames != nullptr)
+        accentFrames->assign ((size_t) clipFrames, 0.0f);
     if (usesF0)
         dsp::resampleF0 (f0Hz, f0FrameRate, f0Frames.data() + edgePadFrames, clipFrames);
 
@@ -958,12 +965,17 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
         const bool first = s == 0, last = s + 2 == cuts.size();
 
         // each run on its own (its 1 s of context on both sides covers any vowel at its edges)
-        ws.southern = southernVowels;
+        ws.accent = accent;
         ws.southernState.reset();
 
         if (! runFrames (padded.data() + (size_t) runStart * dsp::samplesPerFrame16k, runEnd - runStart,
                          f0Frames.data() + runStart, runStart, ws, true, error))
             return false;
+
+        if (accentFrames != nullptr)
+            for (int f = a; f < b; ++f)
+                if (f - runStart < (int) ws.accentChanged.size())
+                    (*accentFrames)[(size_t) (f - edgePadFrames)] = ws.accentChanged[(size_t) (f - runStart)];
 
         const auto* segment = ws.audio.data();
         const auto segmentStart = (int64_t) runStart * hop;

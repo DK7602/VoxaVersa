@@ -3,11 +3,17 @@
 w1 [hidden][context*channels] (the standardisation folded in), b1, w2 [classes][hidden], b2. With --shifts (vowel
 means, as tools/research/accent_phone_means.py makes them: the approved prototype's), version 2 adds step 2's
 shifts: their number, then each its name and float16 [channels]: raise = IH - EH_N, lower = EH - EY, drawl = IH - AE.
+With --class-means (every class's mean features, keys v_<class>: as the accent prototype's means_libri.npz, the
+LibriSpeech frames of libri_feats.py averaged per class), version 3: the shifts (none without --shifts), then the
+means' number and each its class name and float16 [channels] - the reggae / Latin / afrobeats accents' vowels
+(SouthernVowels::AccentRule).
 With features (features.py), checks that the packed float16 network decides as the trained one.
-usage: export.py model.pt out.gz [features.npz] [--shifts means.npz]"""
+usage: export.py model.pt out.gz [features.npz] [--shifts means.npz] [--class-means means.npz]"""
 import sys, gzip, struct, numpy as np, torch
 args = sys.argv[1:]
-means = None
+means = None; class_means = None
+if "--class-means" in args:
+    k = args.index("--class-means"); class_means = dict(np.load(args[k + 1])); del args[k:k + 2]
 if "--shifts" in args:
     k = args.index("--shifts"); means = dict(np.load(args[k + 1])); del args[k:k + 2]
 sys.argv = [sys.argv[0]] + args
@@ -17,15 +23,23 @@ W2, B2 = st["3.weight"].numpy().astype(np.float64), st["3.bias"].numpy().astype(
 mu, sd = m["mu"].astype(np.float64), m["sd"].astype(np.float64)
 w1 = W1 / sd[None, :]; b1 = B1 - w1 @ mu
 classes = m["classes"]; ctx = 5; ch = W1.shape[1] // ctx
-out = bytearray(b"VXVW") + struct.pack("<5I", 2 if means else 1, ch, ctx, W1.shape[0], len(classes))
+version = 3 if class_means else 2 if means else 1
+out = bytearray(b"VXVW") + struct.pack("<5I", version, ch, ctx, W1.shape[0], len(classes))
 for c in classes: out += struct.pack("<B", len(c)) + c.encode()
 for a in (w1, b1, W2, B2): out += a.astype("<f2").tobytes()
-if means:
-    shifts = [("raise", means["IH"] - means["EH_N"]), ("lower", means["EH"] - means["EY"]), ("drawl", means["IH"] - means["AE"])]
+if means or class_means:
+    shifts = [("raise", means["IH"] - means["EH_N"]), ("lower", means["EH"] - means["EY"]), ("drawl", means["IH"] - means["AE"])] if means else []
     out += struct.pack("<I", len(shifts))
     for name, delta in shifts:
         out += struct.pack("<B", len(name)) + name.encode() + np.asarray(delta, np.float64).astype("<f2").tobytes()
         print("shift %s: |delta| %.2f" % (name, np.linalg.norm(delta)))
+if class_means:
+    out += struct.pack("<I", len(classes))
+    for c in classes:
+        v = np.asarray(class_means["v_" + str(c)], np.float64)
+        out += struct.pack("<B", len(c)) + str(c).encode() + v.astype("<f2").tobytes()
+    print("class means: %d, |AA - AE| %.2f, |IY - IH| %.2f" % (len(classes), np.linalg.norm(class_means["v_AA"] - class_means["v_AE"]),
+          np.linalg.norm(class_means["v_IY"] - class_means["v_IH"])))
 with open(sys.argv[2], "wb") as raw, gzip.GzipFile(filename="", mode="wb", compresslevel=9, fileobj=raw, mtime=0) as f: f.write(bytes(out))   # reproducible
 print("classes", classes, "| max |w1| %.1f | %d bytes, %d gzipped" % (np.abs(w1).max(), len(out), len(open(sys.argv[2], "rb").read())))
 if len(sys.argv) > 3:   # the packed (fp16) recognizer against the original on some frames

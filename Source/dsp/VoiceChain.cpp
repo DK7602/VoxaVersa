@@ -82,7 +82,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     delay.prepare (sr);
     reverb.prepare (sr);
 
-    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &busL, &busR, &dryHzBuf, &leadHzBuf, &whisperIn, &whisperHz })
+    for (auto* b : { &leadBuf, &voiceBuf, &dryBuf, &aheadBuf, &voicedBuf, &voicedNowBuf, &f0Buf, &shiftBuf, &neuralIn, &neuralOut, &neuralCoverage, &neuralAccent, &busL, &busR, &dryHzBuf, &leadHzBuf, &whisperIn, &whisperHz })
         b->assign ((size_t) maxBlock, 0.0f);
 
     const int maxAlign = (int) (sr * 3.0);
@@ -91,6 +91,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     alignNeural.prepare (maxAlign);
     alignLead.prepare (maxAlign);
     alignCoverage.prepare (maxAlign);
+    alignAccent.prepare (maxAlign);
     alignDry.prepare (maxAlign);
     alignAhead.prepare (maxAlign);
     for (auto& d : aiDoubler)
@@ -123,12 +124,13 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     neuralLatency = newNeural;
     totalLatency = newTotal;
     alignL.delay = alignR.delay = alignLead.delay = alignDry.delay = alignAhead.delay = totalLatency - dspLatency;
-    alignNeural.delay = alignCoverage.delay = alignPartner.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
+    alignNeural.delay = alignCoverage.delay = alignAccent.delay = alignPartner.delay = neuralLatency > 0 ? totalLatency - neuralLatency : 0;
     alignL.clear();
     alignR.clear();
     alignNeural.clear();
     alignLead.clear();
     alignCoverage.clear();
+    alignAccent.clear();
     alignDry.clear();
     alignAhead.clear();
     alignPartner.clear();
@@ -170,6 +172,7 @@ void VoiceChain::reset()
     alignNeural.clear();
     alignLead.clear();
     alignCoverage.clear();
+    alignAccent.clear();
     alignDry.clear();
     alignAhead.clear();
     for (auto& d : aiDoubler)
@@ -209,7 +212,7 @@ float VoiceChain::neuralPitchShift (const PitchFrame& pf, const PitchMapper::Set
     return pf.globalOffset + moves;
 }
 
-void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, const ChainSettings& s) noexcept
+void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, const ChainSettings& s, const float* accent) noexcept
 {
     // both voices' pitches on the lead's timeline (`from`: the input time of its first sample)
     for (int i = 0; i < n; ++i)
@@ -226,7 +229,7 @@ void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, con
     const float tract = source == 1 && traits.gender == VoiceGender::Female ? 1.17f
                       : (source == 2 && traits.gender == VoiceGender::Male ? 1.0f / 1.17f : 1.0f);
     vowels.setTopNote (traits.aiHighMidi > 0 ? (float) traits.aiHighMidi - 1.0f : 0.0f);
-    vowels.process (lead, dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract);
+    vowels.process (lead, dryBuf.data(), dryHzBuf.data(), leadHzBuf.data(), n, tract, accent);
     if (traits.aiGrit > 0.0f)   // an AI singer's rasp (Male Rap, Male Blues)
         grit.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * (1.0f + s.style)));
 }
@@ -250,7 +253,7 @@ float VoiceChain::computeFormantSemis (const ChainSettings& s) const noexcept
 }
 
 void VoiceChain::process (const float* in, float* outL, float* outR, int numSamples,
-                          const ChainSettings& s, const float* leadOverride) noexcept
+                          const ChainSettings& s, const float* leadOverride, const float* accentOverride) noexcept
 {
     // Split oversized host blocks.
     if (numSamples > maxBlock)
@@ -259,7 +262,8 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         {
             const int n = juce::jmin (maxBlock, numSamples - offset);
             process (in + offset, outL + offset, outR + offset, n, s,
-                     leadOverride != nullptr ? leadOverride + offset : nullptr);
+                     leadOverride != nullptr ? leadOverride + offset : nullptr,
+                     accentOverride != nullptr ? accentOverride + offset : nullptr);
         }
         return;
     }
@@ -381,7 +385,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             consonants.process (leadBuf.data(), dryBuf.data(), n);
             fillInputVoicing (aheadStart, n, voicedBuf);
             rKeeper.process (leadBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
-            keepVowelsAndAddGrit (leadBuf.data(), tStart, n, s);
+            keepVowelsAndAddGrit (leadBuf.data(), tStart, n, s, accentOverride);
         }
     }
 
@@ -505,7 +509,8 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             f0Buf[(size_t) i] = pf.voiced ? music::midiToHz (pf.srcMidi + pf.mainShift) : 0.0f;
             shiftBuf[(size_t) i] = neuralPitchShift (pf, pitchSettings);
         }
-        neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n, neuralCoverage.data(), shiftBuf.data());
+        neural->process (neuralIn.data(), f0Buf.data(), neuralOut.data(), n, neuralCoverage.data(), shiftBuf.data(),
+                         neuralAccent.data());
 
         // A choir's second singer sings the same input an octave away (silent until its stream has audio).
         const bool partnerOn = neuralActive && traits.choir && s.choirPartnerOctave != 0 && partner != nullptr && partner->hasModel();
@@ -535,6 +540,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         {
             const float v = alignNeural.process (neuralOut[(size_t) i]);
             const float c = alignCoverage.process (neuralCoverage[(size_t) i]);
+            neuralAccent[(size_t) i] = alignAccent.process (neuralAccent[(size_t) i]);
             const float fill = alignLead.process (leadBuf[(size_t) i]);
             dryBuf[(size_t) i] = alignDry.process (dryBuf[(size_t) i]);   // now aligned with the neural lead
             aheadBuf[(size_t) i] = alignAhead.process (aheadBuf[(size_t) i]);
@@ -546,7 +552,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
             consonants.process (voiceBuf.data(), dryBuf.data(), n);
             fillInputVoicing (aheadStart - alignAhead.delay, n, voicedBuf);
             rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
-            keepVowelsAndAddGrit (voiceBuf.data(), tStart - alignDry.delay, n, s);   // dryBuf's input time
+            keepVowelsAndAddGrit (voiceBuf.data(), tStart - alignDry.delay, n, s, neuralAccent.data());   // dryBuf's input time
             for (int i = 0; i < n; ++i)
             {
                 busL[(size_t) i] += voiceBuf[(size_t) i];

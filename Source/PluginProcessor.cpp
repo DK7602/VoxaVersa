@@ -560,8 +560,9 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         ? VoiceTraits::blend (d.audioTraitsA, d.audioTraitsB, ParamCache::v (p.voiceBlend) * 0.01f)
         : d.audioTraitsA;
     d.liveSinger.setVoice (traits);
-    // The country voices' Southern "ah" in Voice Transform (Text to Sing sings its accents in its pronunciation)
-    d.neuralStream.setSouthernVowels (! singMode && traits.singAccent == 1);   // 1: sing::Accent::Southern
+    // The voice's accent in Voice Transform (SouthernVowels::Accent: the country voices' Southern "ah", the reggae /
+    // Latin / afrobeats vowels); Text to Sing sings its accents in its own pronunciation
+    d.neuralStream.setAccent (singMode ? 0 : traits.singAccent);
 
     const bool powerOn = ! ParamCache::on (p.bypass);   // the Power button and the host's bypass
     d.powerFade.setTarget (powerOn ? 1.0f : 0.0f);
@@ -1321,7 +1322,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     if (settings.pitch.sourceGender == 0)
         settings.pitch.sourceGender = sourceGender;   // whole-file analysis beats the live estimate
     const auto model = (! sourceIsNeural && settings.useNeural) ? impl->currentModel : nullptr;
-    const bool southernVowels = ! sourceIsSynth && traits.singAccent == 1;   // as live (processBlock)
+    const int accent = sourceIsSynth ? 0 : traits.singAccent;   // as live (processBlock)
     settings.useNeural = false;
     settings.aiLead = model != nullptr;   // the AI lead keeps the singer's own vibrato, breath and register
 
@@ -1344,7 +1345,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     offlineRendering.store (true);
 
     auto* self = this;
-    impl->pool.addJob ([self, source, settings, model, southernVowels, mix, outGainLin, sr, quality, outFile, metadata, mark]
+    impl->pool.addJob ([self, source, settings, model, accent, mix, outGainLin, sr, quality, outFile, metadata, mark]
     {
         auto& cancel = self->impl->cancelRender;
         juce::String error;
@@ -1361,6 +1362,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
 
         // Optional neural lead: pass 1 captures the target pitch contour, then the model converts offline.
         juce::AudioBuffer<float> neuralLead;
+        std::vector<float> neuralAccent;   // per sample of neuralLead: how much it was given the accent's vowel
         if (model != nullptr)
         {
             std::vector<float> f0, shift;
@@ -1377,7 +1379,9 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
             chain.setF0Capture (nullptr, 100.0);
 
             juce::AudioBuffer<float> converted;
-            if (! cancel.load() && model->convert (source, sr, f0, 100.0, converted, &cancel, error, &shift, southernVowels))
+            std::vector<float> accentFrames;
+            if (! cancel.load() && model->convert (source, sr, f0, 100.0, converted, &cancel, error, &shift, accent,
+                                                   accent != 0 ? &accentFrames : nullptr))
             {
                 // Align to the chain's output timeline (DSP latency).
                 neuralLead.setSize (1, total);
@@ -1385,6 +1389,13 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
                 const int copyLen = juce::jmin (converted.getNumSamples(), total - latency);
                 if (copyLen > 0)
                     neuralLead.copyFrom (0, latency, converted, 0, 0, copyLen);
+                if (! accentFrames.empty())
+                {
+                    neuralAccent.assign ((size_t) total, 0.0f);
+                    for (int i = 0; i < copyLen; ++i)
+                        neuralAccent[(size_t) (latency + i)] = accentFrames[(size_t) juce::jmin ((int) accentFrames.size() - 1,
+                                                                                                 (int) ((double) i * 100.0 / sr))];
+                }
             }
             chain.reset();
         }
@@ -1396,7 +1407,8 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
         {
             const int n = juce::jmin (1024, total - pos);
             chain.process (padded.getReadPointer (0, pos), wet.getWritePointer (0, pos), wet.getWritePointer (1, pos), n, renderSettings,
-                           renderSettings.aiLead ? neuralLead.getReadPointer (0, pos) : nullptr);
+                           renderSettings.aiLead ? neuralLead.getReadPointer (0, pos) : nullptr,
+                           renderSettings.aiLead && ! neuralAccent.empty() ? neuralAccent.data() + pos : nullptr);
             self->offlineProgress.store ((model != nullptr ? 0.5f : 0.0f) + (model != nullptr ? 0.45f : 0.95f) * (float) pos / (float) total);
         }
 

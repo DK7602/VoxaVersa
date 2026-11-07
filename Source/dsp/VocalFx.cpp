@@ -965,6 +965,7 @@ void VowelKeeper::prepare (double sampleRate)
     leadRing.assign ((size_t) fftSize, 0.0f);
     dryHzRing.assign ((size_t) fftSize, 0.0f);
     leadHzRing.assign ((size_t) fftSize, 0.0f);
+    releaseRing.assign ((size_t) fftSize, 0.0f);
     fftData.assign ((size_t) fftSize * 2, 0.0f);
     window.resize ((size_t) fftSize);
     for (int i = 0; i < fftSize; ++i)
@@ -1047,6 +1048,7 @@ void VowelKeeper::reset()
     std::fill (leadRing.begin(), leadRing.end(), 0.0f);
     std::fill (dryHzRing.begin(), dryHzRing.end(), 0.0f);
     std::fill (leadHzRing.begin(), leadHzRing.end(), 0.0f);
+    std::fill (releaseRing.begin(), releaseRing.end(), 0.0f);
     write = sinceHop = filled = 0;
     haveBase = false;
     for (int j = 0; j < numBands; ++j)
@@ -1078,7 +1080,7 @@ void VowelKeeper::envelope (const std::vector<float>& ring, float f0, float scal
     }
 }
 
-void VowelKeeper::analyse (float inputHz, float leadHz, float tractRatio) noexcept
+void VowelKeeper::analyse (float inputHz, float leadHz, float tractRatio, float release) noexcept
 {
     bool sung = filled >= fftSize && inputHz > 0.0f && leadHz > 0.0f;
     if (sung)
@@ -1121,8 +1123,9 @@ void VowelKeeper::analyse (float inputHz, float leadHz, float tractRatio) noexce
             mean += wanted[j] * bandWeight[j];
             weights += bandWeight[j];
         }
+        const float keep = strength * (1.0f - juce::jlimit (0.0f, 1.0f, release));
         for (int j = 0; j < numBands; ++j)   // the shape only: the level is the AI singer's own
-            wanted[j] = juce::jlimit (-maxDb, maxDb, strength * (wanted[j] - mean / weights)) * bandWeight[j];
+            wanted[j] = juce::jlimit (-maxDb, maxDb, keep * (wanted[j] - mean / weights)) * bandWeight[j];
     }
     else
     {
@@ -1160,7 +1163,7 @@ void VowelKeeper::updateFilters (float fraction) noexcept
 }
 
 void VowelKeeper::process (float* lead, const float* input, const float* inputHz, const float* leadHz, int n,
-                           float tractRatio) noexcept
+                           float tractRatio, const float* release) noexcept
 {
     for (int i = 0; i < n; ++i)
     {
@@ -1168,14 +1171,21 @@ void VowelKeeper::process (float* lead, const float* input, const float* inputHz
         leadRing[(size_t) write] = lead[i];
         dryHzRing[(size_t) write] = inputHz[i];
         leadHzRing[(size_t) write] = leadHz[i];
+        releaseRing[(size_t) write] = release != nullptr ? release[i] : 0.0f;
         write = (write + 1) % fftSize;
         filled = juce::jmin (filled + 1, fftSize);
 
         if (++sinceHop >= hop)
         {
             sinceHop = 0;
-            const auto centre = (size_t) ((write + fftSize / 2) % fftSize);   // the pitch in the window's middle
-            analyse (dryHzRing[centre], leadHzRing[centre], tractRatio);
+            const int middle = (write + fftSize / 2) % fftSize;
+            const auto centre = (size_t) middle;   // the pitch in the window's middle
+            // the accent's vowel anywhere within a hop of the middle: the keeper lets go before it starts
+            float accent = 0.0f;
+            if (release != nullptr)
+                for (int k = -hop; k <= hop; k += 16)
+                    accent = juce::jmax (accent, releaseRing[(size_t) ((middle + k + fftSize) % fftSize)]);
+            analyse (dryHzRing[centre], leadHzRing[centre], tractRatio, accent);
         }
         if ((sinceHop & 31) == 0)
             updateFilters ((float) sinceHop / (float) hop);

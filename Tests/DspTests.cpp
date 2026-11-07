@@ -954,6 +954,22 @@ public:
                 ref += juce::square ((double) lead[(size_t) i]);
             }
             expectLessThan (10.0 * std::log10 (diff / ref), -30.0, "the same vowel passes untouched");
+
+            // where the AI singer was given an accent's vowel on purpose (release 1), the keeper lets it be
+            std::vector<float> release ((size_t) total, 0.0f);
+            std::fill (release.begin() + settle, release.end(), 1.0f);
+            auto kept = lead;
+            dsp::VowelKeeper accentKeeper;
+            accentKeeper.prepare (sr);
+            for (int pos = 0; pos < total; pos += 480)
+            {
+                const int n = juce::jmin (480, total - pos);
+                accentKeeper.process (kept.data() + pos, input.data() + pos, hz.data() + pos, hz.data() + pos, n, 1.0f,
+                                      release.data() + pos);
+            }
+            const double released = level (kept, 1800.0) - level (kept, 2200.0);
+            logMessage ("with the accent's release: " + juce::String (before, 1) + " dB -> " + juce::String (released, 1) + " dB");
+            expectWithinAbsoluteError (released, before, 1.5, "the accent's vowel stays");
         }
     }
 };

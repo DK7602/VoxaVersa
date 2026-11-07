@@ -77,10 +77,11 @@ bool NeuralVoiceModel::convert (const juce::AudioBuffer<float>& monoInput, doubl
                                 const std::vector<float>& f0Hz, double f0FrameRate,
                                 juce::AudioBuffer<float>& output,
                                 const std::atomic<bool>* cancel, juce::String& error,
-                                const std::vector<float>* pitchShiftSemis, bool southernVowels) const
+                                const std::vector<float>* pitchShiftSemis, int accent, std::vector<float>* accentFrames) const
 {
     error.clear();
-    return impl->convert (monoInput, inputSampleRate, f0Hz, f0FrameRate, output, cancel, error, pitchShiftSemis, southernVowels);
+    return impl->convert (monoInput, inputSampleRate, f0Hz, f0FrameRate, output, cancel, error, pitchShiftSemis, accent,
+                          accentFrames);
 }
 
 //==============================================================================
@@ -168,6 +169,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
         shiftRing.assign (inputSize, std::numeric_limits<float>::quiet_NaN());
         outputRing.assign (outputSize, 0.0f);
         coverageRing.assign (outputSize, 0.0f);
+        accentRing.assign (outputSize, 0.0f);
         coverageScratch.assign ((size_t) maxBlock, 0.0f);
         inputMask = (int64_t) inputSize - 1;
         outputMask = (int64_t) outputSize - 1;
@@ -201,6 +203,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
         solaBuffer.assign ((size_t) crossfadeLength, 0.0f);
         chunkOutput.assign ((size_t) (blockLength + 1 + crossfadeLength + searchLength), 0.0f);
         chunkCoverage.assign ((size_t) blockLength + 1, 0.0f);
+        chunkAccent.assign ((size_t) blockLength + 1, 0.0f);
 
         prepared.store (true, std::memory_order_release);
         startThread (juce::Thread::Priority::high);
@@ -226,19 +229,21 @@ struct NeuralVoiceStream::Impl : private juce::Thread
     bool isRunningInRealTime() const noexcept    { return modelSet.load() && realTime.load(); }
     uint32_t getNumMissedChunks() const noexcept { return missedChunks.load (std::memory_order_relaxed); }
     void setNonRealtime (bool b) noexcept        { hostOffline.store (b, std::memory_order_relaxed); }
-    void setSouthernVowels (bool b) noexcept     { southern.store (b, std::memory_order_relaxed); }
+    void setAccent (int a) noexcept              { accent.store (a, std::memory_order_relaxed); }
 
     //==============================================================================
     // Audio thread
 
     void process (const float* input, const float* targetF0, float* output, int numSamples, float* coverage,
-                  const float* shiftSemis) noexcept
+                  const float* shiftSemis, float* accentOut) noexcept
     {
         if (! prepared.load (std::memory_order_acquire))
         {
             juce::FloatVectorOperations::clear (output, numSamples);
             if (coverage != nullptr)
                 juce::FloatVectorOperations::clear (coverage, numSamples);
+            if (accentOut != nullptr)
+                juce::FloatVectorOperations::clear (accentOut, numSamples);
             return;
         }
 
@@ -248,7 +253,8 @@ struct NeuralVoiceStream::Impl : private juce::Thread
             processBlock (input != nullptr ? input + done : nullptr,
                           targetF0 != nullptr ? targetF0 + done : nullptr,
                           shiftSemis != nullptr ? shiftSemis + done : nullptr,
-                          output + done, coverage != nullptr ? coverage + done : coverageScratch.data(), n);
+                          output + done, coverage != nullptr ? coverage + done : coverageScratch.data(),
+                          accentOut != nullptr ? accentOut + done : nullptr, n);
             done += n;
         }
     }
@@ -266,7 +272,7 @@ struct NeuralVoiceStream::Impl : private juce::Thread
 private:
     //==============================================================================
     void processBlock (const float* input, const float* targetF0, const float* shiftSemis, float* output, float* coverage,
-                       int n) noexcept
+                       float* accentOut, int n) noexcept
     {
         const auto position = audioPosition;
 
@@ -287,11 +293,15 @@ private:
 
         juce::FloatVectorOperations::clear (output, n);
         juce::FloatVectorOperations::clear (coverage, n);
+        if (accentOut != nullptr)
+            juce::FloatVectorOperations::clear (accentOut, n);
 
         if (to > from)
         {
             readRing (outputRing, outputMask, from, output + (from - position), (int) (to - from));
             readRing (coverageRing, outputMask, from, coverage + (from - position), (int) (to - from));
+            if (accentOut != nullptr)
+                readRing (accentRing, outputMask, from, accentOut + (from - position), (int) (to - from));
         }
 
         smoothCoverage (output, coverage, n);
@@ -526,6 +536,19 @@ private:
             for (int i = 0; i < crossfadeLength; ++i)
                 chunkCoverage[(size_t) i] = 1.0f - dsp::crossfadeGain (produced ? crossfadeLength - 1 - i : i, crossfadeLength);
 
+        // where the generator sang an accent's vowel (its 10 ms frames on the host timeline, as `emitted`)
+        std::fill_n (chunkAccent.begin(), emitLength, 0.0f);
+        if (produced && workspace.accent != 0)
+        {
+            const auto& changed = workspace.accentChanged;
+            for (int j = 0; j < emitLength; ++j)
+            {
+                const auto frame = floorDiv ((regionStart + offset + j) * dsp::framesPerSecond, (int64_t) hostRate) - generatedFrom;
+                if (frame >= 0 && frame < (int64_t) changed.size())
+                    chunkAccent[(size_t) j] = changed[(size_t) frame];
+            }
+        }
+
         if (produced)
             std::copy_n (emitted + emitLength, crossfadeLength, solaBuffer.data());
         else
@@ -535,6 +558,7 @@ private:
 
         writeRing (outputRing, outputMask, ringStart, emitted, emitLength);
         writeRing (coverageRing, outputMask, ringStart, chunkCoverage.data(), emitLength);
+        writeRing (accentRing, outputMask, ringStart, chunkAccent.data(), emitLength);
         outputWritten.store (ringStart + emitLength, std::memory_order_release);
 
         const bool missedDeadline = late || audioReadPosition.load (std::memory_order_acquire) > ringStart;
@@ -630,9 +654,9 @@ private:
             }
         }
 
-        if (const bool on = southern.load (std::memory_order_relaxed); on != workspace.southern)
+        if (const int a = accent.load (std::memory_order_relaxed); a != workspace.accent)
         {
-            workspace.southern = on;
+            workspace.accent = a;
             workspace.southernState.reset();
         }
 
@@ -646,6 +670,8 @@ private:
 
             return false;
         }
+
+        generatedFrom = segmentStart + generatorSkip;
 
         if (! toHost.isPrepared() || toHost.getInputRate() != m.sampleRate)
             toHost.prepare (m.sampleRate, hostRate);
@@ -664,11 +690,12 @@ private:
     dsp::Resampler toEncoder;
 
     // Lock-free timeline rings (audio thread -> worker: input & f0, worker -> audio thread: output)
-    std::vector<float> inputRing, f0Ring, shiftRing, outputRing, coverageRing;
+    std::vector<float> inputRing, f0Ring, shiftRing, outputRing, coverageRing, accentRing;
     int64_t inputMask = 0, outputMask = 0;
     std::atomic<int64_t> inputWritten { 0 }, audioReadPosition { 0 }, outputWritten { 0 }, resetPosition { 0 };
     std::atomic<uint32_t> resetGeneration { 0 }, underruns { 0 }, missedChunks { 0 };
-    std::atomic<bool> realTime { false }, modelSet { false }, hostOffline { false }, offlineMode { false }, southern { false };
+    std::atomic<bool> realTime { false }, modelSet { false }, hostOffline { false }, offlineMode { false };
+    std::atomic<int> accent { 0 };
 
     // Audio thread only
     struct Pace
@@ -692,14 +719,14 @@ private:
 
     // Worker only
     std::shared_ptr<NeuralVoiceModel> model;
-    int64_t nextChunk = 0, historyValidFrom = 0;
+    int64_t nextChunk = 0, historyValidFrom = 0, generatedFrom = 0;   // generatedFrom: the last run's first sung frame
     uint32_t seenGeneration = 0, seenUnderruns = 0, missHistory = 0;
     int onTimeStreak = 0;
     size_t liveLevel = 0;
     bool hasSola = false, reportedError = false;
     dsp::Resampler toHost;
     NeuralVoiceModel::Impl::Workspace workspace;
-    std::vector<float> solaBuffer, chunkOutput, chunkCoverage, hostScratch, f0Scratch, audio16k, f0Frames, shiftFrames;
+    std::vector<float> solaBuffer, chunkOutput, chunkCoverage, chunkAccent, hostScratch, f0Scratch, audio16k, f0Frames, shiftFrames;
 
     JUCE_DECLARE_NON_COPYABLE (Impl)
 };
@@ -716,12 +743,12 @@ bool NeuralVoiceStream::isRunningInRealTime() const noexcept                    
 uint32_t NeuralVoiceStream::getNumMissedChunks() const noexcept                   { return impl->getNumMissedChunks(); }
 void NeuralVoiceStream::setNonRealtime (bool isNonRealtime) noexcept              { impl->setNonRealtime (isNonRealtime); }
 void NeuralVoiceStream::reset() noexcept                                          { impl->reset(); }
-void NeuralVoiceStream::setSouthernVowels (bool shouldBeOn) noexcept             { impl->setSouthernVowels (shouldBeOn); }
+void NeuralVoiceStream::setAccent (int accent) noexcept                          { impl->setAccent (accent); }
 
 void NeuralVoiceStream::process (const float* input, const float* targetF0Hz, float* output, int numSamples,
-                                 float* coverage, const float* pitchShiftSemis) noexcept
+                                 float* coverage, const float* pitchShiftSemis, float* accentOut) noexcept
 {
-    impl->process (input, targetF0Hz, output, numSamples, coverage, pitchShiftSemis);
+    impl->process (input, targetF0Hz, output, numSamples, coverage, pitchShiftSemis, accentOut);
 }
 
 } // namespace voxa::neural

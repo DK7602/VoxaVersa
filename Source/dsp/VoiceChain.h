@@ -86,9 +86,12 @@ public:
     bool isNeuralLeadActive() const noexcept { return neuralLeadActive; }
 
     /** Processes one block. `leadOverride` (optional) replaces the lead voice with externally rendered
-        audio already aligned to the chain's output timeline (used for offline neural rendering). */
+        audio already aligned to the chain's output timeline (used for offline neural rendering);
+        `accentOverride` (optional, on the same timeline) is how much each of its samples was given the voice's
+        accent vowel (NeuralVoiceModel::convert's accentFrames), where the vowel keeper lets it through. */
     void process (const float* monoInput, float* outLeft, float* outRight, int numSamples,
-                  const ChainSettings& settings, const float* leadOverride = nullptr) noexcept;
+                  const ChainSettings& settings, const float* leadOverride = nullptr,
+                  const float* accentOverride = nullptr) noexcept;
 
     /** Records the lead target pitch contour (Hz, 0 = unvoiced) at `frameRate`, aligned to input time, and
         optionally the pitch shift an AI voice applies to the input's own pitch (see neuralPitchShift()). */
@@ -108,7 +111,8 @@ private:
     float computeFormantSemis (const ChainSettings&) const noexcept;
     /** dest[i] = 1 where the pitch detector heard the input voiced at input time `from + i`. */
     /** The vowel keeper and grit on an AI lead (`from`: the input time of its first sample, as in dryBuf). */
-    void keepVowelsAndAddGrit (float* lead, juce::int64 from, int numSamples, const ChainSettings&) noexcept;
+    void keepVowelsAndAddGrit (float* lead, juce::int64 from, int numSamples, const ChainSettings&,
+                               const float* accent = nullptr) noexcept;
     void fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept;
 
     double sr = 48000.0;
@@ -141,7 +145,7 @@ private:
     StereoDelay delay;
     FdnReverb reverb;
 
-    std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, voicedNowBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, busL, busR;
+    std::vector<float> leadBuf, voiceBuf, dryBuf, aheadBuf, voicedBuf, voicedNowBuf, f0Buf, shiftBuf, neuralIn, neuralOut, neuralCoverage, neuralAccent, busL, busR;
     std::vector<float> dryHzBuf, leadHzBuf;   // both voices' pitches on the bus timeline (vowel keeper)
     std::vector<float> whisperIn;             // the input, early by the whisperizer's latency
     std::vector<float> whisperHz;             // ... and its pitch
@@ -166,7 +170,7 @@ private:
             return buffer[(size_t) r];
         }
     };
-    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignDry, alignAhead, alignPartner;
+    DelayLine alignL, alignR, alignNeural, alignLead, alignCoverage, alignAccent, alignDry, alignAhead, alignPartner;
     int rLookAhead = 0;   // samples: the dry voice for the R keeper, RKeeper::lookAheadSeconds early
 
     // Doubler voices of an AI lead: copies of the AI singer itself, slightly late and slowly drifting in pitch

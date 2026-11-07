@@ -64,6 +64,27 @@ warped least. Round 25, the last on the d: A = round 24's d with those vowels at
 
 Round 25: A (the d with gentler vowels) for all six voices - the accent to build into the plug-in.
 
+## In the plug-in: the vowels (step 1)
+
+The prototype knew the lyric; the plug-in decides live, from the vowel recognizer (`SouthernVowels`, now with
+every class's mean features: `export.py --class-means`, means from LibriSpeech frames), with 2 frames of lookahead:
+`SouthernVowels::AccentRule` (the reggae, Latin and afrobeats voices' `singAccent` 2 - 4). "ay" / "oh" sung pure
+(tek, slo), the "a" of that / and -> "ah", "er" -> "ah" / "eh" / "ah" turning to "eh", "i" -> "ee" (Latin,
+afrobeats), at round 25 A's pushes (x1.8, x2.4 on held notes). Two things undid them in the full plug-in
+(`VoxaVersaRender`, recognizer read-back of the output on the user's take):
+- the vowel keeper (VoiceChain), which pulls the AI singer's vowels toward the input's, pulled them back. The
+  stream now reports per sample how much the accent changed the vowel (NeuralVoiceStream::process `accentOut`,
+  NeuralVoiceModel::convert `accentFrames` for exports) and the keeper lets go there (VowelKeeper `release`):
+  reggae "slow": P(oh) 0.35 -> 0.04; Latin "it": P(ee) 0.07 -> 0.30.
+- live, the stream's encoder hears ~60 ms after each frame, and the user's "girl" came out as the "u" of "book"
+  with "er" second (~0.15) - never a clear "er". A vowel is now also an "er" when "u" is on top with P(er | vowel)
+  >= 0.10 and its mean so far >= 0.12, two frames in a row, and stays one to its end
+  (`vowelnet/stream_er_uh.py`: on the AI singers' takes 3 of 80 "u" vowels, 1 before): reggae "girl" P(er)
+  0.42 -> 0.01, P(ah) 0.44 (the prototype: 0.47); Latin P(er) 0.01, P(eh) 0.16 (0.19); afrobeats P(er) 0.12.
+
+Step 2, the consonants (th -> t / d, fo, an' you), needs a consonant recognizer and edits to the input before the
+encoder and the consonant keeper.
+
 ## Rhythm prototype (round 26)
 
 `groove_render.py`: the accent A take re-timed toward each genre's groove on the take's own grid (93.3 BPM, eighths
