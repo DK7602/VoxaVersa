@@ -129,3 +129,13 @@ speaker keeps the "r" and taps or rolls it, and often says "you" as "jou". `make
 Spanish voice: "para", "pero", "perro"; its American "a June") and `accent_latin.py` (round 28's splice, Latin
 without the dropped "r"): A, the "r" of "for" tapped (its vowel held from before it turns r-coloured); B, rolled in
 "for" and "girl" (a tap right before the "l" of "girl" read back as "d"); both "jou".
+
+Round 31 verdict: B (rolled r) for both Latin voices; Male Latin's "girl" "doesn't sound Latin". Round 32 ("girl" on
+B): G2 "gurrl" (the singer's own "er", rolled r, light Spanish "l") for both; "and doesn't sound Latin" - the user
+sings it "in-en". Round 33: N2 "en" (one pure "e") for both. Round 34 (the whole Latin accent through the plug-in):
+Render good, the DAW export "quality seems less" - its "j" covered the whole "you" (a hard "dju") and its roll was
+short; round 35 (a 60 % "j" on the "y"'s first 2 frames, the roll from the r's 3rd held frame to its end): good.
+
+In the plug-in the Latin accent (singAccent 3) now differs from the Jamaican / Nigerian ones: the r after a vowel
+held and rolled (AccentConsonants: Kokoro's Spanish "perro" trill), "y" -> a soft "j", "er" kept with its r rolled
+before a light Spanish "l" ("ala"), and the "eh" English sings before "n" / "m" -> a pure "e" (SouthernVowels).
