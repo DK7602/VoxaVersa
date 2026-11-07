@@ -52,13 +52,18 @@ public:
         // an "r" is held from its 2nd frame when the two after that are "r" too (at least 4 frames: not the short
         // one between vowels of "very")
 
-        // Kokoro's "t" / "d"s (4 frames each), and the Latin accent's Spanish rolled "rr" (2), the "j" of "jou" (5)
+        // Kokoro's "t" / "d"s (4 frames each), and the Latin accent's Spanish rolled "rr" (3), the "j" of "jou" (5)
         // and the light Spanish "l" (4)
         enum Template : int8_t { t = 0, dA, dE, dI, roll, jh, lightL, numTemplates };
         static constexpr float lNeeded = 0.5f;   // P(l) of the "l" after an "er" (girl) that is sung light
         static constexpr float notYetL = 0.3f;   // P(l) below which a frame of that "er" can take its rolled r
         static constexpr int erBeforeRoll = 3;   // frames of "er" before its rolled r
         static constexpr float yNeeded = 0.5f;   // P(y) of the "y" that becomes "j"
+        // the "j" on the first frames of the "y" only, blended in: the rest of the "y" stays (round 34: a "j" over the
+        // whole "y" was a hard "dju" in DAW exports, the prototype's "j-you" was not)
+        static constexpr int jhFrames = 2;
+        static constexpr float jhWeight = 0.6f;
+        static constexpr int rollAfter = 3;      // held frames of the "r" before the Latin roll takes over
 
         struct Decision
         {
@@ -66,7 +71,7 @@ public:
             int8_t frame = 0;          // stop: which of its template's last two frames (2 or 3 of 0..3); roll, jh:
                                        // which of theirs
             bool voicedStop = false;   // a "d" (from "dh"), else a "t"
-            float weight = 1.0f;       // holdN / holdVowel: fading in
+            float weight = 1.0f;       // holdN / holdVowel: fading in; jh: how much of the "j"
         };
 
         void reset() noexcept { *this = {}; }
@@ -83,7 +88,7 @@ public:
         int sinceN = 99;              // frames since the last "n" (the frame between "n" and "d" is often neither)
         int droppedD = 0;             // frames of the "d" after "n" sung as "n"
         int vowelRun = 0;             // vowel frames just before
-        int rRun = 0;
+        int rRun = 0, heldR = 0, rolled = 0;
         bool holdingVowel = false;
         bool spanish = false;         // the Latin accent: the "r" after a vowel rolled, "y" -> "j", "gurrl"
         int yRun = 0;
@@ -133,7 +138,7 @@ public:
     }
     const std::vector<float>& getSilence() const noexcept { return silence; }
     /** True when the data has the Latin accent's rolled "rr" and "j". */
-    bool hasLatin() const noexcept { return getTemplateFrames (Rule::roll) == 2 && getTemplateFrames (Rule::jh) == 5; }
+    bool hasLatin() const noexcept { return getTemplateFrames (Rule::roll) == 3 && getTemplateFrames (Rule::jh) == 5; }
 
     /** For tests: loads data in the file format (see load()). */
     static std::unique_ptr<AccentConsonants> fromData (const void* data, size_t size);

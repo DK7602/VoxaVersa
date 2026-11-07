@@ -120,16 +120,23 @@ public:
         beginTest ("Latin: the \"r\" after a vowel rolled at its end (fo-rr), \"you\" -> \"jou\"");
         {
             auto forr = run ({ vowel(), vowel(), vowel(), vowel(), r(), r(), r(), r(), r(), silence() }, true);
-            expect (forr[5].kind == D::holdVowel, "the vowel held");
+            expect (forr[5].kind == D::holdVowel && forr[6].kind == D::holdVowel, "the vowel held");
             expect (forr[7].kind == D::roll && forr[7].frame == 0 && forr[8].kind == D::roll && forr[8].frame == 1,
-                    "the rolled rr on the r's last two frames");
+                    "then the rolled rr to the r's end");
+            std::vector<Frame> longR { vowel(), vowel(), vowel(), vowel() };
+            longR.insert (longR.end(), 10, r());
+            longR.push_back (silence());
+            auto rrr = run (longR, true);
+            expect (rrr[7].kind == D::roll && rrr[7].frame == 0 && rrr[8].frame == 1 && rrr[9].frame == 2 && rrr[10].frame == 1
+                    && rrr[13].kind == D::roll, "a long r rolls on, cycling the trill");
             expect (run ({ vowel(), vowel(), vowel(), vowel(), r(), r(), r(), r(), r(), silence() })[8].kind == D::holdVowel,
                     "Jamaican / Nigerian: fo, no roll");
             Frame y = sound (0.1f);
             y.y = 0.8f;
             auto you = run ({ n(), y, y, y, y, y, y, y, vowel() }, true);
-            expect (you[1].kind == D::jh && you[1].frame == 0 && you[5].kind == D::jh && you[5].frame == 4, "jou: the j and into the vowel");
-            expect (you[6].kind == D::none, "the rest of the y is the singer's");
+            expect (you[1].kind == D::jh && you[1].frame == 0 && you[2].kind == D::jh && you[2].frame == 1 && you[1].weight < 1.0f,
+                    "jou: a soft j on the y's first frames");
+            expect (you[3].kind == D::none, "the rest of the y is the singer's (j-you)");
             expect (allNone (run ({ n(), y, y, vowel() })), "only the Latin accent");
 
             // gurrl: the singer's "er", rolled on its last two frames before the "l", the "l" light

@@ -249,21 +249,21 @@ AccentConsonants::Rule::Decision AccentConsonants::Rule::step (const Frame& f, c
             {
                 d.kind = Decision::holdVowel;
                 d.weight = 1.0f;
-                // Latin: the vowel held, then a rolled "rr" on the r's last two frames (fo-rr)
-                if (spanish && next.r < rNeeded)
+                ++heldR;
+                // Latin: the vowel held, then the rolled "rr" from the r's 3rd held frame (and always on its last
+                // two) to its end, cycling the trill's frames (fo-rrr, as round 31 B)
+                if (spanish && (heldR >= rollAfter || next.r < rNeeded || afterNext.r < rNeeded))
                 {
                     d.kind = Decision::roll;
-                    d.frame = 1;
-                }
-                else if (spanish && afterNext.r < rNeeded)
-                {
-                    d.kind = Decision::roll;
-                    d.frame = 0;
+                    d.frame = (int8_t) (rolled == 0 ? 0 : 1 + (rolled - 1) % 2);
+                    ++rolled;
                 }
             }
             else if (rRun == 2 && vowelRun >= vowelBeforeR && next.r >= rNeeded && afterNext.r >= rNeeded)
             {
                 holdingVowel = true;
+                heldR = 1;
+                rolled = 0;
                 d.kind = Decision::holdVowel;
                 d.weight = 0.5f;
             }
@@ -303,10 +303,11 @@ AccentConsonants::Rule::Decision AccentConsonants::Rule::step (const Frame& f, c
     // Latin: "you" -> "jou": a "y" sung as Kokoro's "j" and its move into the vowel
     if (spanish && f.voiced && f.y >= yNeeded)
     {
-        if (d.kind == Decision::none && yRun < 5)
+        if (d.kind == Decision::none && yRun < jhFrames)
         {
             d.kind = Decision::jh;
             d.frame = (int8_t) yRun;
+            d.weight = jhWeight;
         }
         ++yRun;
     }
@@ -559,7 +560,11 @@ void AccentConsonants::apply (const float* features, int numEncoderFrames, int c
             {
                 const auto which = dec.kind == D::roll ? Rule::roll : dec.kind == D::jh ? Rule::jh : Rule::lightL;
                 if (dec.frame < getTemplateFrames (which))
-                    std::copy_n (templates[(size_t) which].data() + (size_t) dec.frame * (size_t) channels, channels, dest);
+                {
+                    const float* t = templates[(size_t) which].data() + (size_t) dec.frame * (size_t) channels;
+                    for (int c = 0; c < channels; ++c)
+                        dest[c] += dec.weight * (t[c] - dest[c]);
+                }
                 break;
             }
             case D::none:
