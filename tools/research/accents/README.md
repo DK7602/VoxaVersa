@@ -93,3 +93,15 @@ generator (so the voice and pitch stay natural): each syllable's vowel onset mov
 shifts rigidly with it, the vowel stretches or shrinks. Reggae: 60 % to the nearest sixteenth, 50 ms laid back,
 connected notes cut at 85 % (clipped endings). Afrobeats: off-beat eighths half a sixteenth late (swung), 75 %,
 cut at 70 % (bounce). Latin: the first off-beat eighth of each half bar a sixteenth late (dembow 3+3+2), 85 %, legato.
+
+Round 27 (listening): the plug-in's live vowels (VoxaVersaRender on the take) against round 25 A.
+
+## The consonants (step 2)
+
+Round 25 A made tink / dat / dees / de and an' you by editing the recording at known times; live, the plug-in hears
+each sound only ~40 ms ahead and cannot re-pitch and splice audio before the encoder in time. `accent_splice.py`
+(round 28, C) makes the same sounds inside the AI singer: the "th" frames get Kokoro's own "t" / "d" content
+frames, the "d" of "and" the sound before it. Read back against A (ContentVec cosine, A = 1): the "d"s 0.84 - 0.91
+for "the" (B, no "d" change: 0.70 - 0.79), "think" 0.90 - 0.95; "and you" differs (A turned the "d" into a vowel
+glide, C holds the "n"). Finding the sounds live needs a consonant recognizer: `consonant_feats.py` (LibriSpeech,
+every phone labelled).
