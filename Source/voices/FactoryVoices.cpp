@@ -5,9 +5,9 @@ namespace voxa
 
 namespace
 {
-    /** Male Blues' growl depth (dsp::Growl) for a share of listening audit round 38's A4 (Grit's 0.35 at 85 %, in the
-        body of the voice): the user chose 60 %, 45 % and 35 % by ear. */
-    float bluesGrowl (float share) { return 0.35f * 0.85f * share; }
+    /** A growl depth (dsp::Growl) for a share of listening audit round 38's A4 (Grit's 0.35 at 85 %, in the body of
+        the voice): the user chose 60 %, 45 % and 35 % for Male Blues by ear, and 40 %, 50 % and 65 % for Jazz. */
+    float growlDepth (float share) { return 0.35f * 0.85f * share; }
 
     struct GenreStyle
     {
@@ -246,7 +246,10 @@ namespace
         // An AI singer's blues growl where he digs in (Male Blues: round 38's growl in the body of the voice, with
         // round 39's dig-in rule; its strength in its sounds, below); Male Rap's grit is in its sounds too.
         if (male && juce::String (g.idPart) == "blues")
-            t.aiGrowl = bluesGrowl (0.6f);
+            t.aiGrowl = growlDepth (0.6f);
+        // Jazz rasp (round 15, Female Jazz: "needs natural sounding jazzy rasp"): the same dig-in growl, both genders
+        if (juce::String (g.idPart) == "jazz")
+            t.aiGrowl = growlDepth (0.5f);
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
         if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
         {
@@ -321,10 +324,25 @@ namespace
         // Male Blues' growl strength, chosen by ear (listening audit rounds 40 - 42: 60 % the default, 45 % and 35 %)
         if (male && juce::String (g.idPart) == "blues")
         {
-            auto growl = [] (float share) { return [=] (VoiceTraits& v) { v.aiGrowl = bluesGrowl (share); }; };
+            auto growl = [] (float share) { return [=] (VoiceTraits& v) { v.aiGrowl = growlDepth (share); }; };
             p.sounds = { { "Strong", "A growl where you dig in: the start of a phrase, your loudest notes", growl (0.6f) },
                          { "Medium", "A little less growl", growl (0.45f) },
                          { "Light", "A light growl", growl (0.35f) } };
+        }
+        // Jazz's rasp strength (the user's 40 %, 50 % and 65 %; the default to be chosen by ear)
+        if (juce::String (g.idPart) == "jazz")
+        {
+            auto rasp = [] (float share) { return [=] (VoiceTraits& v) { v.aiGrowl = growlDepth (share); }; };
+            p.sounds = { { "Medium", "A jazzy rasp where you dig in: the start of a phrase, your loudest notes", rasp (0.5f) },
+                         { "Light", "A lighter rasp", rasp (0.4f) },
+                         { "Strong", "More rasp", rasp (0.65f) } };
+        }
+        // Reggae: on the beat, or laid back (the whole voice 30 ms behind it)
+        if (juce::String (g.idPart) == "reggae")
+        {
+            auto feel = [] (float ms) { return [=] (VoiceTraits& v) { v.laidBackMs = ms; }; };
+            p.sounds = { { "On the beat", "Your own timing", feel (0.0f) },
+                         { "Laid back", "The whole vocal a little behind the beat (30 ms)", feel (30.0f) } };
         }
         return p;
     }

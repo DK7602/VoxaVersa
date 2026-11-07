@@ -42,8 +42,10 @@ struct VoiceTraits
     bool whisper = false;
     // Grit added to an AI singer (0..1: Male Rap's street edge, Deep Bass's roughness).
     float aiGrit = 0.0f;
-    // A growl where the AI singer digs in (0..1, its deepest modulation: Male Blues; dsp::Growl).
+    // A growl where the AI singer digs in (0..1, its deepest modulation: Male Blues, Jazz; dsp::Growl).
     float aiGrowl = 0.0f;
+    // The whole voice this many milliseconds behind the beat (Reggae's "Laid back"; dsp::LaidBack, max 100).
+    float laidBackMs = 0.0f;
 
     // Timbre
     float formantSemis = 0.0f;   // spectral envelope shift

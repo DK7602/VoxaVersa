@@ -1056,6 +1056,34 @@ public:
             expectWithinAbsoluteError (rms (x, 0, start), rms (before, 0, start), 1.0e-9);
         }
 
+        beginTest ("Laid back: the voice lands later by exactly the delay, and a change of delay doesn't click");
+        {
+            dsp::LaidBack laid;
+            laid.prepare (sr, 100.0);
+            std::vector<float> l ((size_t) n, 0.0f), r ((size_t) n, 0.0f);
+            l[1000] = r[1000] = 1.0f;
+            for (int pos = 0; pos < n; pos += 512)
+                laid.process (l.data() + pos, r.data() + pos, juce::jmin (512, n - pos), 30.0f);
+            const int at = (int) (std::max_element (l.begin(), l.end()) - l.begin());
+            expectEquals (at, 1000 + (int) std::lround (0.03 * sr));
+            expectWithinAbsoluteError (l[(size_t) at], 1.0f, 1.0e-6f);
+            expectWithinAbsoluteError (r[(size_t) at], 1.0f, 1.0e-6f);
+
+            // a 200 Hz tone, the delay switched from 0 to 30 ms mid-way: no sample jumps more than the tone itself does
+            laid.reset();
+            std::vector<float> t ((size_t) n), u;
+            for (int i = 0; i < n; ++i)
+                t[(size_t) i] = 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * i / sr);
+            u = t;
+            for (int pos = 0; pos < n; pos += 480)
+                laid.process (t.data() + pos, u.data() + pos, juce::jmin (480, n - pos), pos < n / 2 ? 0.0f : 30.0f);
+            float maxStep = 0.0f;
+            for (int i = 1; i < n; ++i)
+                maxStep = juce::jmax (maxStep, std::abs (t[(size_t) i] - t[(size_t) i - 1]));
+            const float toneStep = 0.5f * (float) (juce::MathConstants<double>::twoPi * 200.0 / sr);
+            expectLessThan (maxStep, toneStep * 1.5f);
+        }
+
         beginTest ("The whisper keeps the level and the vowel and loses the pitch");
         {
             // a vowel-like voice at 200 Hz: harmonics falling 6 dB an octave, a resonance at 700 Hz

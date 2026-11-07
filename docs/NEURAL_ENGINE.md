@@ -245,7 +245,8 @@ envelope's rise made the first seconds of a take count as loud). On a 200 Hz tes
 subharmonic is -23 dB at a phrase start and -19 dB on a 10 dB push, gone (-100 dB) on a note held at the phrase's
 level, and 23 dB lower at 4 kHz. Its strength was then chosen by ear (rounds 40 - 42, as a share of round 38's
 growl): Male Blues' sounds (right-click > Style) are Strong 60 % (the default, `aiGrowl` 0.179), Medium 45 % and
-Light 35 %. At 35 % on the user's take it comes in at -21 to -27 dB at phrase starts and pushes, -35 to -48 dB
+Light 35 %. The Jazz voices (both genders, round 15: "needs natural sounding jazzy rasp") use the same growl as a
+rasp: Medium 50 % (the default), Light 40 % and Strong 65 % (round 44). At 35 % on the user's take it comes in at -21 to -27 dB at phrase starts and pushes, -35 to -48 dB
 between; 60 % is about 5 dB more.
 
 ### Whisper (`Whisperizer`)

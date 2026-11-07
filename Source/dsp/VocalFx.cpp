@@ -1326,6 +1326,65 @@ void Growl::process (float* x, const float* hz, int n, float amount) noexcept
 }
 
 //==============================================================================
+void LaidBack::prepare (double sampleRate, double maxMs)
+{
+    sr = sampleRate;
+    const auto size = (size_t) std::ceil (maxMs * 0.001 * sr) + 2;
+    ringL.assign (size, 0.0f);
+    ringR.assign (size, 0.0f);
+    fadeLength = juce::jmax (1, juce::roundToInt (0.01 * sr));
+    reset();
+}
+
+void LaidBack::reset()
+{
+    std::fill (ringL.begin(), ringL.end(), 0.0f);
+    std::fill (ringR.begin(), ringR.end(), 0.0f);
+    pos = from = to = fadeLeft = 0;
+}
+
+void LaidBack::process (float* left, float* right, int n, float ms) noexcept
+{
+    const int size = (int) ringL.size();
+    if (size < 2)
+        return;
+    const int wanted = juce::jlimit (0, size - 2, juce::roundToInt (ms * 0.001 * sr));
+    if (wanted == to && fadeLeft == 0 && wanted == 0)
+    {
+        for (int i = 0; i < n; ++i)   // keep the ring filled, so a later delay starts with the voice in it
+        {
+            ringL[(size_t) pos] = left[i];
+            ringR[(size_t) pos] = right[i];
+            pos = (pos + 1) % size;
+        }
+        return;
+    }
+    for (int i = 0; i < n; ++i)
+    {
+        if (wanted != to && fadeLeft == 0)
+        {
+            from = to;
+            to = wanted;
+            fadeLeft = fadeLength;
+        }
+        ringL[(size_t) pos] = left[i];
+        ringR[(size_t) pos] = right[i];
+        auto tap = [&] (const std::vector<float>& ring, int delay) { return ring[(size_t) ((pos - delay + size) % size)]; };
+        float l = tap (ringL, to), r = tap (ringR, to);
+        if (fadeLeft > 0)
+        {
+            const float t = (float) fadeLeft / (float) fadeLength;   // 1 -> 0: from the old tap to the new one
+            l += (tap (ringL, from) - l) * t;
+            r += (tap (ringR, from) - r) * t;
+            --fadeLeft;
+        }
+        left[i] = l;
+        right[i] = r;
+        pos = (pos + 1) % size;
+    }
+}
+
+//==============================================================================
 // Whisperizer: CheapTrick and WORLD's aperiodic synthesis, ported from WORLD (https://github.com/mmorise/World,
 // Copyright (c) 2010 M. Morise, modified BSD licence) with every buffer allocated in prepare().
 void Whisperizer::prepare (double sampleRate)

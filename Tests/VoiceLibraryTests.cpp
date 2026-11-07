@@ -322,6 +322,23 @@ public:
             library.setSoundChoice ("male-blues", "Medium");
             expectWithinAbsoluteError (library.findById ("male-blues")->traits.aiGrowl, 0.35f * 0.85f * 0.45f, 1.0e-6f);
 
+            // Jazz: the dig-in growl as a rasp, both genders; Reggae: on the beat or laid back
+            for (auto* id : { "male-jazz", "female-jazz" })
+            {
+                const auto* jazz = library.findById (id);
+                expect (jazz->sounds.size() == 3 && jazz->soundName == "Medium", id);
+                expectWithinAbsoluteError (jazz->traits.aiGrowl, 0.35f * 0.85f * 0.5f, 1.0e-6f);
+            }
+            library.setSoundChoice ("female-jazz", "Strong");
+            expectWithinAbsoluteError (library.findById ("female-jazz")->traits.aiGrowl, 0.35f * 0.85f * 0.65f, 1.0e-6f);
+            for (auto* id : { "male-reggae", "female-reggae" })
+            {
+                expectEquals (library.findById (id)->soundName, juce::String ("On the beat"));
+                expectWithinAbsoluteError (library.findById (id)->traits.laidBackMs, 0.0f, 1.0e-6f);
+            }
+            library.setSoundChoice ("male-reggae", "Laid back");
+            expectWithinAbsoluteError (library.findById ("male-reggae")->traits.laidBackMs, 30.0f, 1.0e-6f);
+
             // Female Gospel: darker and fuller (listening audit 43)
             const auto& gospel = library.findById ("female-gospel")->traits;
             expectWithinAbsoluteError (gospel.tiltDb, -0.5f, 1.0e-6f);

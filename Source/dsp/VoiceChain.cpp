@@ -74,6 +74,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     vowels.prepare (sr);
     grit.prepare (sr);
     growl.prepare (sr);
+    laidBack.prepare (sr, 100.0);
     whisperizer.prepare (sr);
     breaths.prepare (sr);
     character.prepare (sr);
@@ -161,6 +162,7 @@ void VoiceChain::reset()
     vowels.reset();
     grit.reset();
     growl.reset();
+    laidBack.reset();
     whisperizer.reset();
     breaths.reset();
     character.reset();
@@ -693,6 +695,7 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
     }
     delay.process (busL.data(), busR.data(), n, delayMix, delaySeconds, s.delayFeedback);
     reverb.process (busL.data(), busR.data(), n, reverbMix, reverbSize);
+    laidBack.process (busL.data(), busR.data(), n, traits.laidBackMs);   // behind the beat (Reggae's "Laid back")
 
     std::copy (busL.begin(), busL.begin() + n, outL);
     std::copy (busR.begin(), busR.begin() + n, outR);

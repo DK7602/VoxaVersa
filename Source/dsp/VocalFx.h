@@ -293,6 +293,22 @@ private:
     juce::Random random { 2468 };
 };
 
+/** A laid-back feel (Reggae's "Laid back" sound): the whole voice a few milliseconds behind the beat. It is not
+    reported as latency, so the host doesn't compensate it: the vocal lands that much late, live and in exports.
+    A change of delay crossfades the two taps over 10 ms (no click). */
+class LaidBack
+{
+public:
+    void prepare (double sampleRate, double maxMs);
+    void reset();
+    void process (float* left, float* right, int numSamples, float ms) noexcept;
+
+private:
+    std::vector<float> ringL, ringR;
+    int pos = 0, from = 0, to = 0, fadeLeft = 0, fadeLength = 1;
+    double sr = 48000.0;
+};
+
 /** A whisper made from the voice itself, as the WORLD vocoder (M. Morise, modified BSD licence; see
     docs/THIRD_PARTY.md) makes one: every 5 ms its CheapTrick analysis takes the voice's spectral envelope with a
     pitch-adaptive window (3 periods long; a fixed 500 Hz "pitch" where it is unvoiced), and every 2 ms a short

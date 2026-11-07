@@ -137,6 +137,7 @@ private:
     VowelKeeper vowels;
     Grit grit;
     Growl growl;
+    LaidBack laidBack;
     Whisperizer whisperizer;
     BreathKeeper breaths;
     CharacterProcessor character;
