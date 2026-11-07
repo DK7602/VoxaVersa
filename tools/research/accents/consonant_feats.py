@@ -1,7 +1,7 @@
 """Training data for a consonant recognizer (the accents' step 2: th -> t / d, the r after a vowel, the d of "and"):
 LibriSpeech utterances (read speech, CC BY 4.0) with their phone timings from the LibriSpeech Alignments
 (L. Lugosch et al., Montreal Forced Aligner, CC BY 4.0, zenodo.org/records/2619474), as vowelnet/libri_feats.py,
-but every frame labelled with its phone: each consonant by name (DH, TH, D, T, R, N, ...), every vowel "V", silence
+but every frame labelled with its phone: each consonant by name (DH, TH, D, T, R, N, V, ...), every vowel "VOW", silence
 "SIL". ContentVec features (50 Hz) of the whole utterance, float16; `every` takes one utterance in so many.
 usage: consonant_feats.py contentvec.onnx LibriSpeech/dev-clean textgrid_dir out.npz [every]   (numpy, soundfile,
 onnxruntime)"""
@@ -32,7 +32,7 @@ for flac in sorted(glob.glob(os.path.join(sys.argv[2], "*", "*", "*.flac"))):
     for a, b, p in phones:
         base = p.rstrip("012")
         if base in ("", "sil", "sp", "spn"): continue
-        lab = "V" if base in VOWELS else base
+        lab = "VOW" if base in VOWELS else base
         for f in range(int(a * 50), min(len(F), int(b * 50) + 1)):
             if a <= (f + 0.5) / 50 < b: labs[f] = lab
     speech = np.where(labs != "SIL")[0]

@@ -753,6 +753,23 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
             if (f0Frames != nullptr)
                 southern->apply (features, (int) numEncoderFrames, (int) channels, f0Frames, numFrames, generatorSkip,
                                  firstFrame, ws.phone.data(), ws.southernState, ws.southernScratch, ws.accentChanged.data());
+
+            // the reggae / Latin / afrobeats consonants: tink, dat, an' you, fo (they set their own pitch)
+            const auto* consonants = AccentConsonants::get();
+            if (ws.consonantAccent != ws.accent)
+            {
+                ws.consonantState.reset();
+                ws.consonantAccent = ws.accent;
+            }
+            if (f0Frames != nullptr && ws.accent >= SouthernVowels::jamaican && consonants != nullptr
+                && consonants->getChannels() == (int) channels)
+            {
+                ws.f0Edited.assign (f0Frames, f0Frames + numFrames);
+                consonants->apply (features, (int) numEncoderFrames, (int) channels, ws.f0Edited.data(), numFrames,
+                                   generatorSkip, firstFrame, ws.phone.data(), ws.consonantState, ws.southernScratch,
+                                   ws.accentChanged.data());
+                f0Frames = ws.f0Edited.data();
+            }
         }
     }
 
@@ -967,6 +984,7 @@ bool NeuralVoiceModel::Impl::convert (const juce::AudioBuffer<float>& input, dou
         // each run on its own (its 1 s of context on both sides covers any vowel at its edges)
         ws.accent = accent;
         ws.southernState.reset();
+        ws.consonantState.reset();
 
         if (! runFrames (padded.data() + (size_t) runStart * dsp::samplesPerFrame16k, runEnd - runStart,
                          f0Frames.data() + runStart, runStart, ws, true, error))

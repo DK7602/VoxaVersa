@@ -382,9 +382,9 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
         std::copy (leadOverride, leadOverride + n, leadBuf.begin());
         if (s.aiLead)
         {
-            consonants.process (leadBuf.data(), dryBuf.data(), n);
+            consonants.process (leadBuf.data(), dryBuf.data(), n, accentOverride);
             fillInputVoicing (aheadStart, n, voicedBuf);
-            rKeeper.process (leadBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
+            rKeeper.process (leadBuf.data(), aheadBuf.data(), voicedBuf.data(), n, accentOverride);
             keepVowelsAndAddGrit (leadBuf.data(), tStart, n, s, accentOverride);
         }
     }
@@ -549,9 +549,9 @@ void VoiceChain::process (const float* in, float* outL, float* outR, int numSamp
 
         if (neuralActive)
         {
-            consonants.process (voiceBuf.data(), dryBuf.data(), n);
+            consonants.process (voiceBuf.data(), dryBuf.data(), n, neuralAccent.data());
             fillInputVoicing (aheadStart - alignAhead.delay, n, voicedBuf);
-            rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n);
+            rKeeper.process (voiceBuf.data(), aheadBuf.data(), voicedBuf.data(), n, neuralAccent.data());
             keepVowelsAndAddGrit (voiceBuf.data(), tStart - alignDry.delay, n, s, neuralAccent.data());   // dryBuf's input time
             for (int i = 0; i < n; ++i)
             {

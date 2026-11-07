@@ -658,6 +658,7 @@ private:
         {
             workspace.accent = a;
             workspace.southernState.reset();
+            workspace.consonantState.reset();
         }
 
         if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip))

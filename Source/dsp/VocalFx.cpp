@@ -221,7 +221,7 @@ void ConsonantKeeper::reset()
     gain = 1.0f;
 }
 
-void ConsonantKeeper::process (float* lead, const float* input, int n) noexcept
+void ConsonantKeeper::process (float* lead, const float* input, int n, const float* accent) noexcept
 {
     constexpr float floor = 1.0e-10f;   // -100 dB
     constexpr float gate = 1.0e-7f;     // -70 dB: quieter than this is silence, not a consonant
@@ -248,6 +248,8 @@ void ConsonantKeeper::process (float* lead, const float* input, int n) noexcept
         float target = audible ? juce::jlimit (0.0f, 1.0f, (inRatio - 2.0f) * 0.125f) : 0.0f;
         target = juce::jmax (target, juce::jlimit (0.0f, 1.0f, (aiRatio - 2.0f) * 0.125f)
                                      * juce::jlimit (0.0f, 1.0f, (inRatio + 8.0f) * 0.25f));
+        if (accent != nullptr)
+            target *= 1.0f - juce::jlimit (0.0f, 1.0f, accent[i]);
         weight = target + (target > weight ? attack : release) * (weight - target);
 
         // Level match on clearly voiced sound (vowels) of both.
@@ -500,7 +502,7 @@ void RKeeper::reset()
     dry.reset();
     ai.reset();
     boost.c = cut.c = BiquadCoeffs();
-    wantedWeight = 0.0f;
+    wantedWeight = released = 0.0f;
     untilUpdate = 0;
     boost.reset();
     cut.reset();
@@ -549,11 +551,13 @@ float RKeeper::baseline (std::vector<float>& history, int count, std::vector<flo
     return *middle;
 }
 
-void RKeeper::process (float* lead, const float* input, const float* inputVoiced, int n) noexcept
+void RKeeper::process (float* lead, const float* input, const float* inputVoiced, int n, const float* release) noexcept
 {
     for (int i = 0; i < n; ++i)
     {
         const float y = lead[i];
+        if (release != nullptr)
+            released = juce::jmax (released, release[i]);
         voicedSamples += inputVoiced[i] > 0.5f ? 1 : 0;
         ++frameSamples;
         ai.push (y);   // the AI voice as it came, before this
@@ -596,6 +600,8 @@ void RKeeper::process (float* lead, const float* input, const float* inputVoiced
                     cutTarget = aiF3;
                 }
             }
+            wantedWeight *= 1.0f - juce::jlimit (0.0f, 1.0f, released);
+            released = 0.0f;
             stats.sungFrames += sung ? 1 : 0;
             stats.rFrames += weight > 0.1f ? 1 : 0;
             stats.dryBase = dryBase;

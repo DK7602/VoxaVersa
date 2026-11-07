@@ -3,6 +3,7 @@
 #include "NeuralRuntime.h"
 #include "NeuralDsp.h"
 #include "NeuralPitch.h"
+#include "AccentConsonants.h"
 #include "SouthernVowels.h"
 
 #include <functional>
@@ -81,7 +82,12 @@ struct NeuralVoiceModel::Impl
         int accent = 0;
         SouthernVowels::State southernState;
         std::vector<float> southernScratch, timeMajor;
-        // after runFrames: per generator frame, how much it was given an accent's vowel (0..1, SouthernVowels::apply)
+        // the accents' consonants (AccentConsonants), and the pitch they give the generator
+        AccentConsonants::State consonantState;
+        int consonantAccent = 0;
+        std::vector<float> f0Edited;
+        // after runFrames: per generator frame, how much the accent changed its sound (0..1: SouthernVowels::apply,
+        // AccentConsonants::apply)
         std::vector<float> accentChanged;
     };
 

@@ -105,7 +105,23 @@ The model weights are not redistributed with VoxaVersa; only the generated image
   on **VocalSet** (J. Wilkins, P. Seetharaman, A. Wahl, B. Pardo, *VocalSet: A Singing Voice Dataset*, ISMIR 2018,
   <https://zenodo.org/records/1442513>, CC BY 4.0), and on speech from **Kokoro-82M** (hexgrad,
   <https://huggingface.co/hexgrad/Kokoro-82M>, Apache License 2.0). Its input features come from ContentVec
-  (MIT), the content encoder of the AI voices.
+  (MIT), the content encoder of the AI voices. Its version-3 data adds every class's mean features, averaged
+  over **LibriSpeech** (V. Panayotov et al., <https://www.openslr.org/12>, CC BY 4.0) frames labelled with the
+  **LibriSpeech Alignments** (L. Lugosch et al., <https://zenodo.org/records/2619474>, CC BY 4.0): the reggae,
+  Latin and afrobeats voices' vowels.
+
+## The accents' consonant recognizer (`Resources/neural/accent_consonants.gz`)
+
+- **Used for:** the reggae, Latin and afrobeats voices' consonants (tink, dat, an' you, fo;
+  `Source/neural/AccentConsonants.cpp`). The file holds the weights of a small network trained by
+  `tools/research/accents` (consonant_feats.py, consonant_stream.py) and seven content-feature frames (no audio).
+- **Trained on:** **LibriSpeech** dev-clean (V. Panayotov, G. Chen, D. Povey, S. Khudanpur, *LibriSpeech: an ASR
+  corpus based on public domain audio books*, ICASSP 2015, <https://www.openslr.org/12>, CC BY 4.0) with the
+  phone timings of the **LibriSpeech Alignments** (L. Lugosch, M. Ravanelli, P. Ignoto, V. S. Tomar, Y. Bengio,
+  <https://zenodo.org/records/2619474>, CC BY 4.0).
+- **Its "t" and "d" frames:** the ContentVec features of short clips spoken by **Kokoro-82M** (hexgrad,
+  <https://huggingface.co/hexgrad/Kokoro-82M>, Apache License 2.0) - "a tih", "a dah", "a deh", "a dih" - and the
+  mean of LibriSpeech's silence frames.
 
 ## Bundled with the installers (not part of the source code)
 

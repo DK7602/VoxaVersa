@@ -2,7 +2,7 @@
 //
 //   VoxaVersaRender <in.wav> <out.wav> [--voice <id>] [--preset "<name>"] [--quality 0|1|2]
 //                   [--set <paramId>=<value> ...] [--list-voices] [--list-params]
-//                   [--realtime | --host-offline]
+//                   [--realtime | --host-offline | --export]
 //   VoxaVersaRender <file> --analyse          source gender analysis
 //   VoxaVersaRender <file> --detect           look for the VoxaVersa AI / synthetic-singing watermark
 //   VoxaVersaRender --sing <lyrics.txt> <guide.wav> [--voice <id>] [--bpm 120] [--seed 1]
@@ -26,6 +26,8 @@
 // Values for --set are real parameter values (e.g. pitch=5, gender=60, tuneOn=1, key=1 for C).
 // --realtime feeds the blocks at the pace of live playback (what a DAW does while playing);
 // --host-offline flags the render as non-real-time, like a DAW export or Render in Place.
+// --export renders the file as the plug-in's own export of a loaded voice sample (the AI voice converts the
+// whole file at once).
 // Prints source/target pitch statistics so renders can be compared objectively.
 
 #include "PluginProcessor.h"
@@ -584,6 +586,26 @@ int main (int argc, char* argv[])
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
     if (processor.getNeuralStatus() != voxa::VoxaVersaProcessor::NeuralStatus::NoModelForVoice)
         std::printf ("  %s\n", processor.getNeuralStatusMessage().toRawUTF8());
+
+    // --export: the plug-in's own export of a loaded voice sample (the whole file at once, as Render does in the
+    // plug-in: the AI voice converts it offline with 1 s of context on both sides)
+    if (args.contains ("--export"))
+    {
+        juce::String error;
+        if (! processor.loadSample (inFile, error))
+            return fail ("cannot load the sample: " + error);
+        processor.startOfflineRender (voxa::VoxaVersaProcessor::RenderTarget::Sample);
+        while (processor.isOfflineRendering())
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+        const auto rendered = processor.getLastRenderedFile();
+        if (! rendered.existsAsFile())
+            return fail ("export failed: " + processor.getLastRenderError());
+        outFile.deleteFile();
+        if (! rendered.moveFileTo (outFile))
+            return fail ("cannot write " + outFile.getFullPathName());
+        std::printf ("%s -> %s (export)\n", inFile.getFileName().toRawUTF8(), outFile.getFileName().toRawUTF8());
+        return 0;
+    }
 
     const int latency = processor.getLatencySamples();
     const int tail = (int) (sr * 2.0);

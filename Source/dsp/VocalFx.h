@@ -74,8 +74,10 @@ class ConsonantKeeper
 public:
     void prepare (double sampleRate);
     void reset();
-    /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice, aligned with it. */
-    void process (float* lead, const float* input, int numSamples) noexcept;
+    /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice, aligned with it. `accent`
+        (optional, 0..1 per sample): where the AI singer was given an accent's consonant on purpose (a "th" sung as
+        "t" / "d"; NeuralVoiceStream's accent output), the input's own consonant is that much less kept. */
+    void process (float* lead, const float* input, int numSamples, const float* accent = nullptr) noexcept;
 
 private:
     double sr = 48000.0;
@@ -124,8 +126,11 @@ public:
     void prepare (double sampleRate);
     void reset();
     /** `lead` (the AI voice, mono) is processed in place; `input` is the dry voice lookAheadSeconds ahead of it
-        and `inputVoiced` (> 0.5) where the pitch detector hears that input voiced, per sample. */
-    void process (float* lead, const float* input, const float* inputVoiced, int numSamples) noexcept;
+        and `inputVoiced` (> 0.5) where the pitch detector hears that input voiced, per sample. `release`
+        (optional, 0..1 per sample, on the lead's timeline): where an accent sings no "r" on purpose (fo), none is
+        given back. */
+    void process (float* lead, const float* input, const float* inputVoiced, int numSamples,
+                  const float* release = nullptr) noexcept;
 
     /** How early the dry voice should arrive: the analysis looks back half its 25 ms window and the 3-frame
         median 5 ms more, so an r lands on time (measured: the r's F3 then ~140 Hz lower than without). */
@@ -178,6 +183,7 @@ private:
     Biquad boost, cut;
     // the filters glide toward the frame's targets, their coefficients updated every `updateEvery` samples
     float wantedWeight = 0.0f, boostTarget = 2000.0f, cutTarget = 2500.0f, logBoost = 7.6f, logCut = 7.8f;
+    float released = 0.0f;   // the most an accent asked to let go since the last frame
     float glide = 0.0f, rise = 0.0f, fall = 0.0f;
     int updateEvery = 16, untilUpdate = 0;
     std::vector<float> dryHistory, aiHistory, scratch;   // F3 of recent voiced frames (~1.5 s)

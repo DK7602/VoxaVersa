@@ -105,3 +105,15 @@ frames, the "d" of "and" the sound before it. Read back against A (ContentVec co
 for "the" (B, no "d" change: 0.70 - 0.79), "think" 0.90 - 0.95; "and you" differs (A turned the "d" into a vowel
 glide, C holds the "n"). Finding the sounds live needs a consonant recognizer: `consonant_feats.py` (LibriSpeech,
 every phone labelled).
+
+In the plug-in (`Source/neural/AccentConsonants`, round 29): the consonant recognizer (the vowel recognizer's MLP,
+`vowelnet/train.py` on LibriSpeech dev-clean: `consonant_feats.py`, whole files, a third of the utterances, and
+`consonant_stream.py`, the windows the live stream computes, a ninth; held-out speakers: th 0.92, dh 0.89, d 0.87,
+r 0.84 of frames) and `export_consonants.py` (its weights, Kokoro's "t" / "d" frames, LibriSpeech's mean silence ->
+`Resources/neural/accent_consonants.gz`). Its rule runs after the vowels' with the same 2 frames of lookahead: a
+"th" gets closure (a "d": voice bar) and its template's last two frames at its last two frames, a "t" no pitch, a
+"d" the next vowel's; a "d" / "t" up to 2 frames after an "n" is sung as that "n"; an "r" of at least 4 frames after
+a vowel is sung as the vowel from its 2nd frame. The consonant, vowel and r keepers let go where it changed the
+sound. On the user's take (recognizer read-back): Render (`VoxaVersaRender --export`, the whole take) finds them
+all; live, the stream hears only ~60 ms after each frame and takes the user's "think" for "f" / "s" for its first
+half and "this" for "t" (sung as it is), the rest as Render.
