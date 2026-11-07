@@ -1,4 +1,5 @@
 #include "ui/UserManual.h"
+#include "ui/ManualView.h"
 #include "voices/VoiceLibrary.h"
 
 #include <juce_core/juce_core.h>
@@ -26,6 +27,24 @@ public:
             expectEquals (file.loadFileAsString(), html);
             expect (ui::UserManual::write (dir) == file);   // unchanged: written once
             dir.deleteRecursively();
+        }
+
+        beginTest ("The manual shows inside VoxaVersa: every section listed and reachable");
+        {
+            ui::ManualView view;
+            view.setSize (1500, 905);
+            expectGreaterThan (view.getNumBlocks(), 100);
+            const auto html = ui::UserManual::getHtml();
+            int sectionsInPage = 0;
+            for (int i = html.indexOf ("<section id="); i >= 0; i = html.indexOf (i + 1, "<section id="))
+                ++sectionsInPage;
+            expectEquals ((int) view.getSections().size(), sectionsInPage);
+            for (const auto& [id, title] : view.getSections())
+            {
+                expect (title.isNotEmpty(), id);
+                expect (view.showSection (id), id);
+            }
+            expect (! view.showSection ("no-such-section"));
         }
 
         beginTest ("The manual names every voice style and specialty voice");

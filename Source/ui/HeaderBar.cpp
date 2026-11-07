@@ -552,7 +552,9 @@ void HeaderBar::showSettingsMenu()
         }
         else if (r == manual)
         {
-            if (! UserManual::open())
+            if (onShowManual)
+                onShowManual();
+            else if (! UserManual::open())
                 ctx.toast ("Couldn't open the user manual", ToastKind::Error);
         }
         else if (r == about)                                showAbout();

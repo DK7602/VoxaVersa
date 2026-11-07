@@ -9,6 +9,7 @@
 #include "AdvancedPanel.h"
 #include "TextToSingPanel.h"
 #include "Toast.h"
+#include "ManualView.h"
 
 namespace voxa::ui
 {
@@ -46,6 +47,7 @@ public:
     AdvancedPanel advanced;
     TextToSingPanel sing;
     ToastOverlay toast;
+    ManualView manual;   // menu > User Manual, over everything below the header
 
 private:
     void renderBackground (float scale);
@@ -61,6 +63,7 @@ private:
 
     juce::Image orbImage, wordmarkImage;
     juce::Rectangle<int> libraryBounds { 18, 583, 1500, 204 }, libraryExpandedBounds { 18, 100, 1500, 687 };
+    juce::Rectangle<int> manualBounds { 18, 100, 1500, 905 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainView)
 };

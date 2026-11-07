@@ -17,6 +17,15 @@ MainView::MainView (EditorContext& c)
     for (auto* comp : std::initializer_list<juce::Component*> { &centre, &header, &input, &output, &library, &character, &advanced, &sing })
         addAndMakeVisible (comp);
     addChildComponent (toast);
+    addChildComponent (manual);
+
+    header.onShowManual = [this]
+    {
+        manual.setVisible (true);
+        manual.toFront (true);
+        toast.toFront (false);
+    };
+    manual.onClose = [this] { manual.setVisible (false); };
 
     library.onExpandedChanged = [this] (bool expanded)
     {
@@ -51,6 +60,7 @@ void MainView::resized()
     advanced.setBounds (627, 797, 395, 208);
     sing.setBounds (1031, 797, 487, 208);
     toast.setAnchor ({ designWidth / 2, 100 });
+    manual.setBounds (manualBounds);
 }
 
 void MainView::mouseDown (const juce::MouseEvent&)

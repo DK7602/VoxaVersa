@@ -1,8 +1,10 @@
 # VoxaVersa user guide
 
-The manual users read is built into the plug-in and app: menu (top right) → **User Manual** opens
-`Resources/manual/VoxaVersa_Manual.html` in the browser (written to `<app data>/VoxaVersa/Manual`, with the build's
-version). Keep it in step with this guide; its tests check that it names every voice's styles.
+The manual users read is built into the plug-in and app: menu (top right) → **User Manual** shows
+`Resources/manual/VoxaVersa_Manual.html` inside VoxaVersa's window (`ManualView` draws its `<main>`: headings,
+paragraphs, lists, tables, notes, tips, the FAQ); its **Open in Browser** writes the page to
+`<app data>/VoxaVersa/Manual` and opens it there. Keep it in step with this guide; its tests check that it names every
+voice's styles and that every section shows in the app.
 
 ## 1. Two ways to use it
 

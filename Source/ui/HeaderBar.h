@@ -29,6 +29,7 @@ public:
     juce::Rectangle<float> getTaglineArea() const;
 
     std::function<void (int width)> onUiSizeChosen;
+    std::function<void()> onShowManual;   // menu > User Manual (the editor shows it in its own window)
     std::function<int()> getUiWidth;
 
     void showSettingsMenu();
