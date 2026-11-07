@@ -75,6 +75,7 @@ void VoiceChain::prepare (double sampleRate, int maxBlockSize, Quality q)
     grit.prepare (sr);
     growl.prepare (sr);
     laidBack.prepare (sr, 100.0);
+    smokyBreath.prepare (sr, maxBlock);
     whisperizer.prepare (sr);
     breaths.prepare (sr);
     character.prepare (sr);
@@ -163,6 +164,7 @@ void VoiceChain::reset()
     grit.reset();
     growl.reset();
     laidBack.reset();
+    smokyBreath.reset();
     whisperizer.reset();
     breaths.reset();
     character.reset();
@@ -238,6 +240,7 @@ void VoiceChain::keepVowelsAndAddGrit (float* lead, juce::int64 from, int n, con
         grit.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrit * (1.0f + s.style)));
     if (traits.aiGrowl > 0.0f)  // a growl where he digs in (Male Blues)
         growl.process (lead, leadHzBuf.data(), n, juce::jlimit (0.0f, 1.0f, traits.aiGrowl * (1.0f + s.style)), traits.aiGrowlSpread);
+    smokyBreath.process (lead, leadHzBuf.data(), n, traits.aiBreath);   // a breath under the voice (Jazz's "Smoky")
 }
 
 void VoiceChain::fillInputVoicing (juce::int64 from, int n, std::vector<float>& dest) noexcept

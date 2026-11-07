@@ -25,6 +25,7 @@ VoiceTraits VoiceTraits::blend (const VoiceTraits& a, const VoiceTraits& b, floa
     r.aiGrit = lerp (a.aiGrit, b.aiGrit);
     r.aiGrowl = lerp (a.aiGrowl, b.aiGrowl);
     r.aiGrowlSpread = lerp (a.aiGrowlSpread, b.aiGrowlSpread);
+    r.aiBreath = lerp (a.aiBreath, b.aiBreath);
     r.laidBackMs = lerp (a.laidBackMs, b.laidBackMs);
     r.formantSemis = lerp (a.formantSemis, b.formantSemis);
     r.tiltDb = lerp (a.tiltDb, b.tiltDb);

@@ -138,6 +138,7 @@ private:
     Grit grit;
     Growl growl;
     LaidBack laidBack;
+    SmokyBreath smokyBreath;
     Whisperizer whisperizer;
     BreathKeeper breaths;
     CharacterProcessor character;

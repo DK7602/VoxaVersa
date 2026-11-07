@@ -1067,6 +1067,35 @@ public:
             expectWithinAbsoluteError (rms (loose, 0, start), rms (before, 0, start), 1.0e-9);
         }
 
+        beginTest ("Smoky breath: noise between the harmonics above 900 Hz, nothing below, nothing on silence");
+        {
+            std::vector<float> x ((size_t) n), hz ((size_t) n, 200.0f);
+            for (int i = 0; i < n; ++i)
+                for (int h = 1; h <= 30; ++h)
+                    x[(size_t) i] += 0.05f / (float) h * (float) std::sin (juce::MathConstants<double>::twoPi * 200.0 * h * i / sr);
+            const auto before = x;
+            dsp::SmokyBreath breath;
+            breath.prepare (sr, 512);
+            for (int pos = 0; pos < n; pos += 512)
+                breath.process (x.data() + pos, hz.data() + pos, juce::jmin (512, n - pos), 0.3f);
+            const int a = n / 2;
+            const double gapHigh = tone (x, a, n, 3100.0, sr) - tone (before, a, n, 3100.0, sr);   // between harmonics 15 and 16
+            const double gapLow = tone (x, a, n, 300.0, sr) - tone (before, a, n, 300.0, sr);
+            const double harmonic = tone (x, a, n, 400.0, sr) - tone (before, a, n, 400.0, sr);
+            logMessage ("breath between the harmonics: at 3.1 kHz +" + juce::String (gapHigh, 1) + " dB, at 300 Hz "
+                        + juce::String (gapLow, 1) + " dB; a harmonic " + juce::String (harmonic, 2) + " dB");
+            expectGreaterThan (gapHigh, 10.0);
+            expectLessThan (std::abs (harmonic), 0.5);
+            expectLessThan (tone (x, a, n, 300.0, sr), tone (x, a, n, 3100.0, sr) + 10.0);
+
+            std::vector<float> quiet ((size_t) n, 0.0f);
+            dsp::SmokyBreath again;
+            again.prepare (sr, 512);
+            for (int pos = 0; pos < n; pos += 512)
+                again.process (quiet.data() + pos, hz.data() + pos, juce::jmin (512, n - pos), 0.3f);
+            expectLessThan (rms (quiet, 0, n), 1.0e-6);
+        }
+
         beginTest ("Laid back: the voice lands later by exactly the delay, and a change of delay doesn't click");
         {
             dsp::LaidBack laid;

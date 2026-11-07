@@ -245,8 +245,24 @@ envelope's rise made the first seconds of a take count as loud). On a 200 Hz tes
 subharmonic is -23 dB at a phrase start and -19 dB on a 10 dB push, gone (-100 dB) on a note held at the phrase's
 level, and 23 dB lower at 4 kHz. Its strength was then chosen by ear (rounds 40 - 42, as a share of round 38's
 growl): Male Blues' sounds (right-click > Style) are Strong 60 % (the default, `aiGrowl` 0.179), Medium 45 % and
-Light 35 %. The Jazz voices (both genders, round 15: "needs natural sounding jazzy rasp") use the same growl as a
-rasp: Medium 50 % (the default), Light 40 % and Strong 65 % (round 44). At 35 % on the user's take it comes in at -21 to -27 dB at phrase starts and pushes, -35 to -48 dB
+Light 35 %. The Jazz voices (both genders, round 15: "needs natural sounding jazzy rasp") use it as a rasp: at 40 - 65 %
+with Male Blues' rule it went unheard (round 44: "didn't hear any rasp ... loosen the boundaries of the digging
+in"), so they have it at 65 % with a looser rule (`aiGrowlSpread` 1: every word start after 30 ms without voice,
+fading over 0.35 s, singing from 1.5 dB under the phrase's level, and 35 % of it on everything sung; a held note
+at the phrase's level: -28 dB, against none with Male Blues' rule).
+
+### Smoky breath (`SmokyBreath`)
+
+Round 44 also asked for "more smokiness" in both Jazz voices. An AI lead gets none of the profile's synthetic
+breath noise (it sounded like static), so the breath is made the way the Whisper voice's is: the AI singer's own
+sound through `Whisperizer` (its spectral envelope on noise), high-passed at 900 Hz (two 2nd-order sections; with
+the low end the breath was a +13 dB rumble at 100 - 200 Hz on Female Jazz and cost Male Jazz 7 of 23 words) and
+mixed in at 0.3 (`aiBreath`). It is the Whisperizer's ~26 ms late, which a breath tolerates. Through the plug-in
+it raises the noise between the harmonics (1.5 - 5 kHz spectral flatness) from -15.2 to -13.9 dB on Male Jazz and
+from -18.1 to -14.1 dB on Female Jazz, words heard 19 and 16 of 23. Jazz's sounds (round 45, chosen by ear for both
+genders): Smoky (the default: the looser rasp, a smoky tone - tilt -4 dB, warmth 5 dB, presence -2 dB, air -3 dB,
+saturation 0.25, compressor 0.6 - and the breath), Velvet (the same without the breath) and Raspy (the rasp in
+the voice's own tone). At 35 % on the user's take it comes in at -21 to -27 dB at phrase starts and pushes, -35 to -48 dB
 between; 60 % is about 5 dB more.
 
 ### Whisper (`Whisperizer`)

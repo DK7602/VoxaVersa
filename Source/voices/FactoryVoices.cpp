@@ -247,9 +247,6 @@ namespace
         // round 39's dig-in rule; its strength in its sounds, below); Male Rap's grit is in its sounds too.
         if (male && juce::String (g.idPart) == "blues")
             t.aiGrowl = growlDepth (0.6f);
-        // Jazz rasp (round 15, Female Jazz: "needs natural sounding jazzy rasp"): the same dig-in growl, both genders
-        if (juce::String (g.idPart) == "jazz")
-            t.aiGrowl = growlDepth (0.5f);
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
         if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
         {
@@ -329,13 +326,30 @@ namespace
                          { "Medium", "A little less growl", growl (0.45f) },
                          { "Light", "A light growl", growl (0.35f) } };
         }
-        // Jazz's rasp strength (the user's 40 %, 50 % and 65 %; the default to be chosen by ear)
+        // Jazz (round 15, Female Jazz: "needs natural sounding jazzy rasp"; listening audits 44 - 45, both genders, on
+        // their own singers): Male Blues' growl at 65 % with a looser dig-in rule, a smoky tone (darker, warmer, more
+        // intimate) and a soft breath under the voice by default; the smoky tone without the breath; the rasp alone.
         if (juce::String (g.idPart) == "jazz")
         {
-            auto rasp = [] (float share) { return [=] (VoiceTraits& v) { v.aiGrowl = growlDepth (share); }; };
-            p.sounds = { { "Medium", "A jazzy rasp where you dig in: the start of a phrase, your loudest notes", rasp (0.5f) },
-                         { "Light", "A lighter rasp", rasp (0.4f) },
-                         { "Strong", "More rasp", rasp (0.65f) } };
+            const VoiceTraits own = t;
+            auto jazz = [own] (bool smoky, float breath)
+            {
+                return [=] (VoiceTraits& v)
+                {
+                    v.aiGrowl = growlDepth (0.65f);
+                    v.aiGrowlSpread = 1.0f;
+                    v.aiBreath = breath;
+                    v.tiltDb = smoky ? -4.0f : own.tiltDb;
+                    v.warmthDb = smoky ? 5.0f : own.warmthDb;
+                    v.presenceDb = smoky ? -2.0f : own.presenceDb;
+                    v.airDb = smoky ? -3.0f : own.airDb;
+                    v.vibeSaturation = smoky ? 0.25f : own.vibeSaturation;
+                    v.vibeCompressor = smoky ? 0.6f : own.vibeCompressor;
+                };
+            };
+            p.sounds = { { "Smoky", "Dark, warm and breathy, with a rasp where you dig in", jazz (true, 0.3f) },
+                         { "Velvet", "Smoky without the breath", jazz (true, 0.0f) },
+                         { "Raspy", "The rasp alone, in the voice's own tone", jazz (false, 0.0f) } };
         }
         // Reggae: on the beat, or laid back (the whole voice 30 ms behind it)
         if (juce::String (g.idPart) == "reggae")

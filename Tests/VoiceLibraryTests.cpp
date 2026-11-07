@@ -326,11 +326,18 @@ public:
             for (auto* id : { "male-jazz", "female-jazz" })
             {
                 const auto* jazz = library.findById (id);
-                expect (jazz->sounds.size() == 3 && jazz->soundName == "Medium", id);
-                expectWithinAbsoluteError (jazz->traits.aiGrowl, 0.35f * 0.85f * 0.5f, 1.0e-6f);
+                expect (jazz->sounds.size() == 3 && jazz->soundName == "Smoky", id);
+                expectWithinAbsoluteError (jazz->traits.aiGrowl, 0.35f * 0.85f * 0.65f, 1.0e-6f);
+                expectWithinAbsoluteError (jazz->traits.aiGrowlSpread, 1.0f, 1.0e-6f);
+                expectWithinAbsoluteError (jazz->traits.aiBreath, 0.3f, 1.0e-6f);
+                expectWithinAbsoluteError (jazz->traits.tiltDb, -4.0f, 1.0e-6f);
             }
-            library.setSoundChoice ("female-jazz", "Strong");
-            expectWithinAbsoluteError (library.findById ("female-jazz")->traits.aiGrowl, 0.35f * 0.85f * 0.65f, 1.0e-6f);
+            library.setSoundChoice ("female-jazz", "Velvet");
+            expectWithinAbsoluteError (library.findById ("female-jazz")->traits.aiBreath, 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (library.findById ("female-jazz")->traits.tiltDb, -4.0f, 1.0e-6f);
+            library.setSoundChoice ("female-jazz", "Raspy");   // the voice's own tone back
+            expectGreaterThan (library.findById ("female-jazz")->traits.tiltDb, -3.0f);
+            expectWithinAbsoluteError (library.findById ("female-jazz")->traits.aiGrowlSpread, 1.0f, 1.0e-6f);
             for (auto* id : { "male-reggae", "female-reggae" })
             {
                 expectEquals (library.findById (id)->soundName, juce::String ("On the beat"));

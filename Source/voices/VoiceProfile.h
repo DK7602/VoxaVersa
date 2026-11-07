@@ -45,6 +45,8 @@ struct VoiceTraits
     // A growl where the AI singer digs in (0..1, its deepest modulation: Male Blues, Jazz; dsp::Growl).
     float aiGrowl = 0.0f;
     float aiGrowlSpread = 0.0f;   // 0..1: how loose its dig-in rule is (0 Male Blues; dsp::Growl::process)
+    // A soft breath under the AI singer, made from its own sound (its level: Jazz's "Smoky" 0.3; dsp::SmokyBreath).
+    float aiBreath = 0.0f;
     // The whole voice this many milliseconds behind the beat (Reggae's "Laid back"; dsp::LaidBack, max 100).
     float laidBackMs = 0.0f;
 

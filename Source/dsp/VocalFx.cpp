@@ -1330,6 +1330,45 @@ void Growl::process (float* x, const float* hz, int n, float amount, float sprea
 }
 
 //==============================================================================
+void SmokyBreath::prepare (double sampleRate, int maxBlockSize)
+{
+    whisper.prepare (sampleRate);
+    for (auto& h : highPass)
+        h.c = BiquadCoeffs::highPass (sampleRate, 900.0);
+    in.assign ((size_t) juce::jmax (16, maxBlockSize), 0.0f);
+    out.assign (in.size(), 0.0f);
+    reset();
+}
+
+void SmokyBreath::reset()
+{
+    whisper.reset();
+    for (auto& h : highPass)
+        h.reset();
+    running = false;
+}
+
+void SmokyBreath::process (float* voice, const float* hz, int n, float amount) noexcept
+{
+    if (amount <= 0.0f)
+    {
+        if (running)   // switched off: start clean when it comes back
+            reset();
+        return;
+    }
+    running = true;
+    for (int pos = 0; pos < n; )
+    {
+        const int len = juce::jmin (n - pos, (int) in.size());
+        std::copy (voice + pos, voice + pos + len, in.begin());
+        whisper.process (in.data(), hz + pos, out.data(), len);
+        for (int i = 0; i < len; ++i)
+            voice[pos + i] += amount * highPass[1].process (highPass[0].process (out[(size_t) i]));
+        pos += len;
+    }
+}
+
+//==============================================================================
 void LaidBack::prepare (double sampleRate, double maxMs)
 {
     sr = sampleRate;

@@ -68,7 +68,8 @@ Drag an audio file onto the **Input** panel. Press ▶ to audition it through th
 - **Style**: right-click *Male Rap*, *Male Blues*, the *Jazz* and *Reggae* voices, *Deep Bass*, *Whisper* or *Female
   Country* → *Style* for the voice's other sounds, picked by ear: Male Rap *Street* (default: a light growl, more drive
   and compression), *Hard* (clean and punchy) or *Growl*; Male Blues *Strong* (default: a growl where you dig in),
-  *Medium* or *Light*; Jazz *Medium* (default: a jazzy rasp where you dig in), *Light* or *Strong*; Reggae *On the beat*
+  *Medium* or *Light*; Jazz *Smoky* (default: dark, warm and breathy, with a rasp where you dig in), *Velvet* (smoky without the
+  breath) or *Raspy* (the rasp alone); Reggae *On the beat*
   (default) or *Laid back* (the whole vocal 30 ms behind the beat; the host doesn't compensate it, so with Mix below
   100 % your dry voice stays on the beat); Deep Bass *Natural* (default: a touch of roughness, clear words), *Warm* or *Gritty*;
   Whisper *Natural* (default) or *Soft* (less low end, a softer top); Female Country *Mature* (default: darker

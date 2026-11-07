@@ -347,6 +347,25 @@ private:
     juce::uint32 rx = 123456789, ry = 362436069, rz = 521288629, rw = 88675123;
 };
 
+/** A soft breath under an AI singer (the Jazz voices' "Smoky", listening audit 45): the voice's own sound turned
+    into breath the way the Whisper voice does it (Whisperizer: its spectral envelope on noise), kept above 900 Hz
+    (below, it was a rumble that cost words) and mixed in under the voice. The breath is the Whisperizer's latency
+    (~26 ms) late, which a breath tolerates. */
+class SmokyBreath
+{
+public:
+    void prepare (double sampleRate, int maxBlockSize);
+    void reset();
+    /** `hz`: the voice's pitch per sample (0 where unvoiced). `amount`: the breath's level under the voice. */
+    void process (float* voice, const float* hz, int numSamples, float amount) noexcept;
+
+private:
+    Whisperizer whisper;
+    Biquad highPass[2];
+    std::vector<float> in, out;
+    bool running = false;
+};
+
 /** One-knob vocal compressor (feed-forward, soft knee, stereo linked, auto make-up). */
 class VocalCompressor
 {
