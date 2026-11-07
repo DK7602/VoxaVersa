@@ -627,11 +627,13 @@ bool NeuralVoiceModel::Impl::applyNeuralPitch (const float* audio16k, int numFra
 
 //==============================================================================
 bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, const float* f0Frames, int64_t firstFrame,
-                                        Workspace& ws, bool offline, juce::String& error, int generatorSkip) const
+                                        Workspace& ws, bool offline, juce::String& error, int generatorSkip,
+                                        int generatorTail) const
 {
     jassert (numFrames > 0 && numFrames % 2 == 0);
     jassert (generatorSkip >= 0 && generatorSkip < numFrames);
     generatorSkip = juce::jlimit (0, numFrames - 1, generatorSkip);
+    generatorTail = juce::jlimit (0, numFrames - generatorSkip - 1, generatorTail);
     const auto numSamples = (size_t) (numFrames * dsp::samplesPerFrame16k + dsp::encoderRightPad16k);
     const auto n = (int64_t) numSamples;
 
@@ -715,10 +717,12 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
 
     const auto c = (size_t) channels;
     const auto skip = (size_t) generatorSkip;
-    const auto frames = (size_t) (numFrames - generatorSkip);
-    ws.phone.resize (frames * c);
+    // every frame after the skipped context gets its features (the accents decide on them, the look-ahead
+    // frames included); the generator then sings all but the last `generatorTail`
+    const auto allFrames = (size_t) (numFrames - generatorSkip);
+    ws.phone.resize (allFrames * c);
 
-    for (size_t i = 0; i < frames; ++i)
+    for (size_t i = 0; i < allFrames; ++i)
     {
         const auto t = (size_t) juce::jmin ((int64_t) ((i + skip) / 2), numEncoderFrames - 1);
         auto* dest = ws.phone.data() + i * c;
@@ -735,7 +739,7 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
     }
 
     // The voice's accent (SouthernVowels): the country voices' Southern "ah", the reggae / Latin / afrobeats vowels
-    ws.accentChanged.assign (frames, 0.0f);
+    ws.accentChanged.assign (allFrames, 0.0f);
     if (ws.accent != 0)
     {
         if (const auto* southern = SouthernVowels::get())
@@ -752,7 +756,8 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
             }
             if (f0Frames != nullptr)
                 southern->apply (features, (int) numEncoderFrames, (int) channels, f0Frames, numFrames, generatorSkip,
-                                 firstFrame, ws.phone.data(), ws.southernState, ws.southernScratch, ws.accentChanged.data());
+                                 firstFrame, ws.phone.data(), ws.southernState, ws.southernScratch, ws.accentChanged.data(),
+                                 generatorTail);
 
             // the reggae / Latin / afrobeats consonants: tink, dat, an' you, fo (they set their own pitch)
             const auto* consonants = AccentConsonants::get();
@@ -767,20 +772,21 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
                 ws.f0Edited.assign (f0Frames, f0Frames + numFrames);
                 consonants->apply (features, (int) numEncoderFrames, (int) channels, ws.f0Edited.data(), numFrames,
                                    generatorSkip, firstFrame, ws.phone.data(), ws.consonantState, ws.southernScratch,
-                                   ws.accentChanged.data());
+                                   ws.accentChanged.data(), generatorTail);
                 f0Frames = ws.f0Edited.data();
             }
         }
     }
 
     //=== Generator ============================================================
+    const auto frames = allFrames - (size_t) generatorTail;
     std::array<InputTensor, 6> inputs {};
     size_t numInputs = 0;
     const auto frameCount = (int64_t) frames;
     const int64_t lengthValue64 = frameCount, speaker64 = config.speakerId;
     const int32_t lengthValue32 = (int32_t) frames, speaker32 = config.speakerId;
 
-    setFloatTensor (inputs[numInputs++], gen.phone, gen.phoneType, ws.phone.data(), ws.phone.size(), ws.phoneHalf,
+    setFloatTensor (inputs[numInputs++], gen.phone, gen.phoneType, ws.phone.data(), frames * c, ws.phoneHalf,
                     { 1, frameCount, channels });
 
     if (! gen.lengths.empty())

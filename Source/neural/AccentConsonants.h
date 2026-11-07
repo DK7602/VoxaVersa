@@ -100,10 +100,11 @@ public:
     /** Edits one chunk of generator features (and its pitch) in place, as SouthernVowels::apply (same arguments;
         call it after that). `f0Frames` (per 10 ms frame, 0 where unvoiced) gets a "t"'s silence and a "d"'s
         voicing; `changed` (optional, numFrames - skip values) is raised to 1 where a consonant was changed, so the
-        plug-in's consonant, vowel and r keepers let the AI singer's own sound through there. */
+        plug-in's consonant, vowel and r keepers let the AI singer's own sound through there. `lookAheadFrames`:
+        as SouthernVowels::apply. */
     void apply (const float* features, int numEncoderFrames, int channels, float* f0Frames, int numFrames,
                 int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch,
-                float* changed = nullptr) const;
+                float* changed = nullptr, int lookAheadFrames = 0) const;
 
     /** The recognizer's probabilities for one encoder frame (context frames clamped to the chunk). */
     Frame recognise (const float* features, int numEncoderFrames, int frame, std::vector<float>& scratch) const;

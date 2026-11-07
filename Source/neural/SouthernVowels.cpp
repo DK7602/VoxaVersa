@@ -412,7 +412,7 @@ SouthernVowels::Frame SouthernVowels::recognise (const float* features, int numE
 
 void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch, const float* f0Frames, int numFrames,
                             int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch,
-                            float* changed) const
+                            float* changed, int lookAheadFrames) const
 {
     if (changed != nullptr && numFrames > skip)
         std::fill_n (changed, numFrames - skip, 0.0f);
@@ -431,7 +431,8 @@ void SouthernVowels::apply (const float* features, int numEncoderFrames, int ch,
     };
 
     // recognise every frame that has its full context in this chunk, deciding the one `lookahead` frames before
-    const int64_t lastRecognisable = first + numEncoderFrames - 1 - context / 2;
+    const int64_t lastRecognisable = juce::jmin (first + numEncoderFrames - 1 - context / 2,
+                                                 first + (numFrames - lookAheadFrames) / 2 - 1 + Rule::lookahead);
     for (int64_t a = juce::jmax (state.recognised + 1, first); a <= lastRecognisable; ++a)
     {
         const int e = (int) (a - first);

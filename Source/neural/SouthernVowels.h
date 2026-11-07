@@ -192,10 +192,12 @@ public:
         `f0Frames`: per 10 ms frame, 0 where unvoiced; `phone`: the generator's frames [skip, numFrames), each the
         features of encoder frame frame / 2; `firstFrame`: the absolute 10 ms frame where the chunk starts.
         `changed` (optional, numFrames - skip values): how much each generator frame was given an accent's vowel
-        (0..1; Jamaican, Spanish and Nigerian only), so the plug-in's vowel keeper lets those vowels through. */
+        (0..1; Jamaican, Spanish and Nigerian only), so the plug-in's vowel keeper lets those vowels through.
+        `lookAheadFrames`: the chunk's last 10 ms frames are context only (offline look-ahead, not sung): frames
+        are recognised up to the sung ones and the rule's lookahead, so each is heard with what follows it. */
     void apply (const float* features, int numEncoderFrames, int channels, const float* f0Frames, int numFrames,
                 int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch,
-                float* changed = nullptr) const;
+                float* changed = nullptr, int lookAheadFrames = 0) const;
 
     /** Sets the stream's accent (an `Accent`); a change resets it. Southern runs `Rule`; Jamaican, Spanish and
         Nigerian run `AccentRule` when the data has the vowel means (version 3), else nothing. */

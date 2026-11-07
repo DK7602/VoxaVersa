@@ -415,7 +415,7 @@ private:
             checkForReset();
 
             while (! threadShouldExit() && isChunkReady (available))
-                processNextChunk();
+                processNextChunk (available);
 
             wait (streaming::pollSeconds * 1000.0);
         }
@@ -471,8 +471,14 @@ private:
 
     bool isChunkReady (int64_t available) const noexcept
     {
-        const auto endFrame = (nextChunk + 1) * streaming::blockFrames;
+        const auto endFrame = (nextChunk + 1) * streaming::blockFrames + lookAheadFrames();
         return available > toEncoder.lastInputFor (endFrame * dsp::samplesPerFrame16k - 1);
+    }
+
+    /** Offline, each chunk's encoder also hears what follows it (streaming::offlineLookAheadFrames). */
+    int lookAheadFrames() const noexcept
+    {
+        return offlineMode.load (std::memory_order_relaxed) ? streaming::offlineLookAheadFrames : 0;
     }
 
     void readInput (const std::vector<float>& ring, int64_t from, int count, std::vector<float>& dest,
@@ -487,8 +493,14 @@ private:
         }
     }
 
-    void processNextChunk()
+    void processNextChunk (int64_t available)
     {
+        // the look-ahead the input written so far allows (the mode may have changed since isChunkReady)
+        int lookAhead = lookAheadFrames();
+        while (lookAhead > 0
+               && available <= toEncoder.lastInputFor (((nextChunk + 1) * streaming::blockFrames + lookAhead) * dsp::samplesPerFrame16k - 1))
+            lookAhead -= 2;
+
         const auto chunk = nextChunk++;
         const auto startFrame = chunk * streaming::blockFrames;
         const auto endFrame = startFrame + streaming::blockFrames;
@@ -512,7 +524,7 @@ private:
                 const auto& liveContexts = m->getLiveContextFrames();
                 const int context = live && ! liveContexts.empty() ? liveContexts[juce::jmin (liveLevel, liveContexts.size() - 1)]
                                                                    : m->getStreamContextFrames();
-                produced = infer (*m, context, endFrame, regionStart, regionLength);
+                produced = infer (*m, context, endFrame, regionStart, regionLength, lookAhead);
             }
         }
 
@@ -598,10 +610,12 @@ private:
         }
     }
 
-    bool infer (const NeuralVoiceModel::Impl& m, int contextFrames, int64_t endFrame, int64_t regionStart, int regionLength)
+    bool infer (const NeuralVoiceModel::Impl& m, int contextFrames, int64_t endFrame, int64_t regionStart, int regionLength,
+                int lookAhead)
     {
-        const int chunkFrames = NeuralVoiceModel::Impl::chunkFramesFor (contextFrames);
-        const auto segmentStart = endFrame - chunkFrames;
+        // the encoder hears [segmentStart, endFrame + lookAhead); the generator sings up to endFrame
+        const auto segmentStart = endFrame - NeuralVoiceModel::Impl::chunkFramesFor (contextFrames);
+        const int chunkFrames = NeuralVoiceModel::Impl::chunkFramesFor (contextFrames) + lookAhead;
         const auto first16k = segmentStart * dsp::samplesPerFrame16k;
         const int num16k = chunkFrames * dsp::samplesPerFrame16k;
 
@@ -616,7 +630,7 @@ private:
 
         // Target pitch of each 10 ms frame
         const auto f0From = hostIndexForFrame (segmentStart);
-        readInput (f0Ring, f0From, (int) (hostIndexForFrame (endFrame) - f0From), f0Scratch);
+        readInput (f0Ring, f0From, (int) (hostIndexForFrame (endFrame + lookAhead) - f0From), f0Scratch);
         f0Frames.resize ((size_t) chunkFrames);
 
         for (int i = 0; i < chunkFrames; ++i)
@@ -633,7 +647,7 @@ private:
         // The input's own pitch from the neural tracker (with the caller's shift), for the frames the generator sings.
         if (m.pitchTracker != nullptr)
         {
-            readInput (shiftRing, f0From, (int) (hostIndexForFrame (endFrame) - f0From), f0Scratch,
+            readInput (shiftRing, f0From, (int) (hostIndexForFrame (endFrame + lookAhead) - f0From), f0Scratch,
                        std::numeric_limits<float>::quiet_NaN());
             shiftFrames.resize ((size_t) chunkFrames);
             bool any = false;
@@ -661,7 +675,8 @@ private:
             workspace.consonantState.reset();
         }
 
-        if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip))
+        if (! m.runFrames (audio16k.data(), chunkFrames, f0Frames.data(), segmentStart, workspace, false, error, generatorSkip,
+                           lookAhead))
         {
             if (! reportedError)
             {

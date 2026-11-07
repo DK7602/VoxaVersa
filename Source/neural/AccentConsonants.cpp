@@ -286,7 +286,7 @@ void AccentConsonants::State::reset() noexcept
 //==============================================================================
 void AccentConsonants::apply (const float* features, int numEncoderFrames, int ch, float* f0Frames, int numFrames,
                               int skip, int64_t firstFrame, float* phone, State& state, std::vector<float>& scratch,
-                              float* changed) const
+                              float* changed, int lookAheadFrames) const
 {
     if (ch != channels || numEncoderFrames < context || numFrames <= skip)
         return;
@@ -315,7 +315,8 @@ void AccentConsonants::apply (const float* features, int numEncoderFrames, int c
     };
 
     constexpr int lookahead = 2;
-    const int64_t lastRecognisable = first + numEncoderFrames - 1 - context / 2;
+    const int64_t lastRecognisable = juce::jmin (first + numEncoderFrames - 1 - context / 2,
+                                                 first + (numFrames - lookAheadFrames) / 2 - 1 + lookahead);
     for (int64_t a = juce::jmax (state.recognised + 1, first); a <= lastRecognisable; ++a)
     {
         const int e = (int) (a - first);

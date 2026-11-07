@@ -24,6 +24,13 @@ namespace streaming
                                                           // every 0.4 s, so up to ~0.35 s keeps up; the host
                                                           // compensates the latency it adds during playback)
     inline constexpr double pollSeconds = 0.002;          // worker polling interval
+    /** Offline (a DAW export, Render in Place) the stream waits for every chunk, so it does not need the inference
+        budget: it lets the encoder hear this much of what follows each chunk instead (10 ms frames, even), within
+        the same latency. Live a chunk's last frames are heard with none; the user's "think" then came out as "f",
+        and the accents' consonants were missed (audit round 29). */
+    inline constexpr int offlineLookAheadFrames = 30;
+    static_assert (offlineLookAheadFrames % 2 == 0 && offlineLookAheadFrames * 0.01 <= headroomSeconds - 0.04,
+                   "the look-ahead must arrive before the audio thread waits for the chunk's output");
 
     /** Live playback uses the longest left context whose chunk inference takes at most this fraction of the
         budget (the rest is margin for the host's own load); offline renders always use the configured one. */
@@ -97,11 +104,13 @@ struct NeuralVoiceModel::Impl
     /** The core of the pipeline. `audio16k` holds numFrames * 160 + dsp::encoderRightPad16k samples at
         16 kHz, `f0Frames` the target pitch of each of the numFrames 10 ms frames. The content encoder sees
         all frames, the generator only frames [generatorSkip, numFrames). On success ws.audio holds
-        (numFrames - generatorSkip) * hopSize samples at the model rate, starting at frame generatorSkip.
+        (numFrames - generatorSkip - generatorTail) * hopSize samples at the model rate, starting at frame
+        generatorSkip: the last `generatorTail` frames are look-ahead the encoder and the accents hear but the
+        generator does not sing.
         `firstFrame` is the absolute index of the first frame (keeps the noise consistent across
         overlapping segments); `offline` releases ONNX Runtime's arena memory after big runs. */
     bool runFrames (const float* audio16k, int numFrames, const float* f0Frames, int64_t firstFrame,
-                    Workspace& ws, bool offline, juce::String& error, int generatorSkip = 0) const;
+                    Workspace& ws, bool offline, juce::String& error, int generatorSkip = 0, int generatorTail = 0) const;
 
     bool convert (const juce::AudioBuffer<float>& input, double inputSampleRate,
                   const std::vector<float>& f0Hz, double f0FrameRate,
