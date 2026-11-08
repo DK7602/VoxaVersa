@@ -278,9 +278,10 @@ namespace
         t.singLegato = g.legato;
         t.singRhythmBusy = g.busy;
 
-        // Female Gospel, darker and fuller with more chest (listening audit 43; round 15: "more depth / richness to
-        // voice needed"): the tone of Female Country's Mature, on the same singer.
-        if (! male && juce::String (g.idPart) == "gospel")
+        // Female Gospel and Female Pop, darker and fuller with more chest: the tone of Female Country's Mature
+        // (listening audit 43, Gospel: "more depth / richness to voice needed"; audit 46, Pop: "too high pitched and
+        // thin, needs more richness, depth", on Studio Female A).
+        if (! male && (juce::String (g.idPart) == "gospel" || juce::String (g.idPart) == "pop"))
         {
             t.tiltDb = -0.5f; t.warmthDb = 3.5f; t.bodyHz = 280.0f; t.bodyDb = 4.0f; t.airDb = -0.5f; t.presenceDb = 1.5f;
         }

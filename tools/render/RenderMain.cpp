@@ -617,12 +617,36 @@ int main (int argc, char* argv[])
     juce::MidiBuffer midi;
     const auto start = juce::Time::getMillisecondCounterHiRes();
 
+    // --stop-at <seconds>: a transport that plays, then stops there (silence after it, as on a track that is not
+    // record-armed), for checking what VoxaVersa does after Stop. Use with --realtime for live playback.
+    struct Transport : juce::AudioPlayHead
+    {
+        double stopAtSamples = -1.0;
+        juce::int64 position = 0;
+        bool playing() const { return stopAtSamples < 0.0 || (double) position < stopAtSamples; }
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo info;
+            info.setIsPlaying (playing());
+            info.setTimeInSamples (position);
+            info.setBpm (120.0);
+            return info;
+        }
+    } transport;
+    const auto stopAt = optionValue (args, "--stop-at", {});
+    if (stopAt.isNotEmpty())
+    {
+        transport.stopAtSamples = stopAt.getDoubleValue() * sr;
+        processor.setPlayHead (&transport);
+    }
+
     for (int pos = 0; pos < total; pos += block)
     {
         const int n = juce::jmin (block, total - pos);
         buffer.setSize (2, n, false, false, true);
         buffer.clear();
-        const int avail = juce::jmax (0, juce::jmin (n, input.getNumSamples() - pos));
+        transport.position = pos;
+        const int avail = transport.playing() ? juce::jmax (0, juce::jmin (n, input.getNumSamples() - pos)) : 0;
         for (int ch = 0; ch < 2 && avail > 0; ++ch)
             buffer.copyFrom (ch, 0, input, 0, pos, avail);
         midi.clear();

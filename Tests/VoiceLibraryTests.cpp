@@ -346,11 +346,14 @@ public:
             library.setSoundChoice ("male-reggae", "Laid back");
             expectWithinAbsoluteError (library.findById ("male-reggae")->traits.laidBackMs, 30.0f, 1.0e-6f);
 
-            // Female Gospel: darker and fuller (listening audit 43)
-            const auto& gospel = library.findById ("female-gospel")->traits;
-            expectWithinAbsoluteError (gospel.tiltDb, -0.5f, 1.0e-6f);
-            expectWithinAbsoluteError (gospel.bodyDb, 4.0f, 1.0e-6f);
-            expectWithinAbsoluteError (gospel.warmthDb, 3.5f, 1.0e-6f);
+            // Female Gospel and Female Pop: darker and fuller (listening audits 43 and 46)
+            for (auto* id : { "female-gospel", "female-pop" })
+            {
+                const auto& t = library.findById (id)->traits;
+                expectWithinAbsoluteError (t.tiltDb, -0.5f, 1.0e-6f, id);
+                expectWithinAbsoluteError (t.bodyDb, 4.0f, 1.0e-6f, id);
+                expectWithinAbsoluteError (t.warmthDb, 3.5f, 1.0e-6f, id);
+            }
 
             expectEquals (library.findById ("male-deep-bass")->soundName, juce::String ("Natural"));
             expectEquals (library.findById ("neutral-whisper")->soundName, juce::String ("Natural"));
