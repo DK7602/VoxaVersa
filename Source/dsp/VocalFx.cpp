@@ -313,6 +313,12 @@ void BreathKeeper::prepare (double sampleRate)
     sungCoeff = (float) std::exp (-1.0 / (0.400 * sampleRate));
     attack = (float) std::exp (-1.0 / (0.003 * sampleRate));
     release = (float) std::exp (-1.0 / (0.005 * sampleRate));   // the next note starts at full level
+    // 4th-order Butterworth high-pass: the two Q values of its biquad sections
+    for (auto* f : { inHigh, outHigh })
+    {
+        f[0].c = BiquadCoeffs::highPass (sampleRate, measureFromHz, 0.5412);
+        f[1].c = BiquadCoeffs::highPass (sampleRate, measureFromHz, 1.3066);
+    }
     reset();
 }
 
@@ -320,6 +326,8 @@ void BreathKeeper::reset()
 {
     inEnv = outEnv = inSung = outSung = 0.0f;
     gain = 1.0f;
+    for (auto& f : inHigh) f.reset();
+    for (auto& f : outHigh) f.reset();
 }
 
 void BreathKeeper::process (float* left, float* right, const float* input, const float* inputVoiced, int n) noexcept
@@ -328,10 +336,12 @@ void BreathKeeper::process (float* left, float* right, const float* input, const
     constexpr float leeway = 1.41f;     // +1.5 dB
     constexpr float floorGain = 0.03f;  // -30 dB at most
     constexpr float silence = 1.0e-9f;  // -90 dB
+    constexpr float unsungQuiet = 2.5e-4f;   // -36 dBFS: before the first note, quieter than any sung word
 
     for (int i = 0; i < n; ++i)
     {
-        const float x = input[i], y = right != nullptr ? 0.5f * (left[i] + right[i]) : left[i];
+        const float x = inHigh[1].process (inHigh[0].process (input[i]));
+        const float y = outHigh[1].process (outHigh[0].process (right != nullptr ? 0.5f * (left[i] + right[i]) : left[i]));
         inEnv = x * x + envCoeff * (inEnv - x * x);
         outEnv = y * y + envCoeff * (outEnv - y * y);
         const bool voiced = inputVoiced[i] > 0.5f;
@@ -342,10 +352,13 @@ void BreathKeeper::process (float* left, float* right, const float* input, const
             outSung = outEnv + sungCoeff * (outSung - outEnv);
         }
 
+        // Before the first note there is no sung level to compare with: the breath (or noise) of a count-in is
+        // kept no louder than the singer's own, where the input is quiet.
         float target = 1.0f;
-        if (! voiced && inSung > silence && outSung > silence && inEnv < inSung * quiet)
+        const bool reference = inSung > silence && outSung > silence;
+        if (! voiced && (reference ? inEnv < inSung * quiet : inEnv < unsungQuiet))
         {
-            const float allowed = inEnv / inSung * outSung * leeway;
+            const float allowed = (reference ? inEnv / inSung * outSung : inEnv) * leeway;
             if (outEnv > allowed)
                 target = juce::jmax (floorGain, std::sqrt (allowed / outEnv));
         }
@@ -353,6 +366,12 @@ void BreathKeeper::process (float* left, float* right, const float* input, const
         left[i] *= gain;
         if (right != nullptr)
             right[i] *= gain;
+    }
+
+    for (auto* f : { inHigh, outHigh })
+    {
+        f[0].sanitise();
+        f[1].sanitise();
     }
 }
 

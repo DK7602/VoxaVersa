@@ -96,7 +96,13 @@ private:
     to 13 dB louder against the singing than the singer's own, and brighter. Where the input is unvoiced and more
     than 15 dB below its sung level, the AI voice is turned down to the input's level relative to the singing
     (+1.5 dB of leeway); it is never turned up, and sung notes are untouched. It runs after the voice's EQ and the
-    compressor, which lift breaths too. */
+    compressor, which lift breaths too.
+    Both voices are measured above 200 Hz, where breaths are heard: a vocal track's gaps are often mostly rumble
+    (10 - 25 Hz) and mains hum (50 / 60 Hz and its harmonics) that nobody hears. Measured full-range on a user's
+    song, that rumble made the gaps read 15 - 20 dB louder than they sound, and the AI singer's murmur in them
+    was let through that much louder than the singer's own breaths. Before the first note (no sung level yet), a
+    quiet input's breath or noise is kept no louder than the input itself: on that song the AI singer made the
+    breaths of the count-in 20 dB louder. */
 class BreathKeeper
 {
 public:
@@ -107,7 +113,11 @@ public:
     void process (float* left, float* right, const float* input, const float* inputVoiced, int numSamples) noexcept;
     float getGain() const noexcept { return gain; }
 
+    /** Below this the voices are not measured (4th-order high-pass). */
+    static constexpr double measureFromHz = 200.0;
+
 private:
+    Biquad inHigh[2], outHigh[2];
     float inEnv = 0.0f, outEnv = 0.0f, inSung = 0.0f, outSung = 0.0f;   // mean squares: now, and while sung
     float envCoeff = 0.0f, sungCoeff = 0.0f, gain = 1.0f, attack = 0.0f, release = 0.0f;
 };

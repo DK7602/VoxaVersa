@@ -926,6 +926,68 @@ public:
             }
             expect (10.0 * std::log10 (err / energy + 1.0e-20) < -60.0);
         }
+
+        beginTest ("Rumble and hum in the gap don't let the AI singer's murmur through");
+        {
+            // The gap of a real vocal track: rumble (15 Hz) and mains hum (60 / 120 Hz) ~19 dB below the singing,
+            // which nobody hears, and a quiet breath ~40 dB below it. The AI singer murmurs a note there, 20 dB
+            // below its singing: as loud as the rumble, but heard.
+            std::vector<float> gapIn ((size_t) seg * 3), gapLead ((size_t) seg * 3), breathOnly ((size_t) seg * 3);
+            for (int i = 0; i < seg * 3; ++i)
+            {
+                const bool sung = i < seg || i >= 2 * seg;
+                const double t = i / sr;
+                const float tone = 0.3f * std::sin ((float) (juce::MathConstants<double>::twoPi * 220.0 * t));
+                const float breath = 0.003f * (rng.nextFloat() * 2.0f - 1.0f);
+                const float rumble = 0.03f * (float) std::sin (juce::MathConstants<double>::twoPi * 15.0 * t)
+                                   + 0.015f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * t)
+                                   + 0.005f * (float) std::sin (juce::MathConstants<double>::twoPi * 120.0 * t);
+                gapIn[(size_t) i] = sung ? tone : rumble + breath;
+                breathOnly[(size_t) i] = sung ? tone : breath;
+                gapLead[(size_t) i] = sung ? tone : 0.03f * (float) std::sin (juce::MathConstants<double>::twoPi * 280.0 * t);
+            }
+            auto kept = gapLead;
+            dsp::BreathKeeper k2;
+            k2.prepare (sr);
+            for (int pos = 0; pos < seg * 3; pos += 512)
+                k2.process (kept.data() + pos, nullptr, gapIn.data() + pos, voiced.data() + pos, juce::jmin (512, seg * 3 - pos));
+
+            const double heard = db (breathOnly, seg + seg / 10, 2 * seg) - db (breathOnly, seg / 2, seg);
+            const double before = db (gapLead, seg + seg / 10, 2 * seg) - db (gapLead, seg / 2, seg);
+            const double after = db (kept, seg + seg / 10, 2 * seg) - db (kept, seg / 2, seg);
+            expect (after < heard + 4.0 && before - after > 12.0, "breath heard in the input " + juce::String (heard, 1)
+                    + " dB, AI murmur " + juce::String (before, 1) + " dB, kept " + juce::String (after, 1) + " dB");
+        }
+
+        beginTest ("A breath before the first note is kept no louder than the singer's");
+        {
+            // a count-in breath ~-55 dBFS, the AI singer's 20 dB louder; then the first note
+            std::vector<float> preIn ((size_t) seg * 2), preLead ((size_t) seg * 2), preVoiced ((size_t) seg * 2);
+            for (int i = 0; i < seg * 2; ++i)
+            {
+                const bool sung = i >= seg;
+                const float tone = 0.3f * std::sin ((float) (juce::MathConstants<double>::twoPi * 220.0 * i / sr));
+                const float noise = rng.nextFloat() * 2.0f - 1.0f;
+                preIn[(size_t) i] = sung ? tone : 0.003f * noise;
+                preLead[(size_t) i] = sung ? tone : 0.03f * noise;
+                preVoiced[(size_t) i] = sung ? 1.0f : 0.0f;
+            }
+            auto kept = preLead;
+            dsp::BreathKeeper k3;
+            k3.prepare (sr);
+            for (int pos = 0; pos < seg * 2; pos += 512)
+                k3.process (kept.data() + pos, nullptr, preIn.data() + pos, preVoiced.data() + pos, juce::jmin (512, seg * 2 - pos));
+
+            const double input = db (preIn, seg / 10, seg), after = db (kept, seg / 10, seg);
+            expect (after < input + 2.5, "input breath " + juce::String (input, 1) + " dBFS, AI breath kept at " + juce::String (after, 1));
+            double err = 0.0, energy = 0.0;
+            for (int i = seg + seg / 10; i < 2 * seg; ++i)
+            {
+                err += std::pow ((double) kept[(size_t) i] - preLead[(size_t) i], 2.0);
+                energy += (double) preLead[(size_t) i] * preLead[(size_t) i];
+            }
+            expect (10.0 * std::log10 (err / energy + 1.0e-20) < -60.0, "the first note is untouched");
+        }
     }
 };
 
