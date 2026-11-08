@@ -532,6 +532,7 @@ int main (int argc, char* argv[])
                 *traits[name] = value;
             }
             processor.selectVoice (id);
+            processor.voiceSoundChanged();   // re-read the traits (selecting the voice already selected changes nothing)
         }
         else if (args[i] == "--trait" || args[i] == "--sound")
         {
