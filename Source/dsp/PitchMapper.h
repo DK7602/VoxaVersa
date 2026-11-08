@@ -91,6 +91,7 @@ private:
     int registerOctaves = 0;
     bool registerLocked = false;
     int lockedCentre = -1000, lockedSource = -1;
+    bool lockedOnGuess = false;   // locked while the source's gender was guessed from its pitch
     KeyDetector keyDetector;
     bool keyKnown = false;
     int keyUpdateCounter = 0;

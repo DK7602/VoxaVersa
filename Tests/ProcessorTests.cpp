@@ -127,6 +127,7 @@ public:
             VoxaVersaProcessor p;
             p.prepareToPlay (sr, block);
             setParam (p, ParamID::pitch, 5.0f);
+            setParam (p, ParamID::pitchPreserve, 1.0f);   // the knob alone (a man's G3 into Female Pop also goes up an octave)
             setParam (p, ParamID::reverbMix, 0.0f);
             setParam (p, ParamID::vibe, 0.0f);
             setParam (p, ParamID::expression, 0.0f);
@@ -150,6 +151,7 @@ public:
             midi.addEvent (juce::MidiMessage::noteOn (1, 67, (juce::uint8) 100), 0);   // G4
             auto in = test::makeVoice (sr, (int) (sr * 2.0), [] (int) { return 220.0f; });
             const float measured = medianPitch (run (p, in, &midi), (int) (sr * 0.5));
+            // the note as played, not the voice's octave above it (a man's A3 into Female Pop goes up an octave)
             expect (std::abs (1200.0f * std::log2 (measured / 392.0f)) < 15.0f, "measured " + juce::String (measured));
         }
 

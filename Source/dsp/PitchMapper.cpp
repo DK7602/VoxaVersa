@@ -33,6 +33,7 @@ void PitchMapper::reset()
     registerLocked = false;
     lockedCentre = -1000;
     lockedSource = -1;
+    lockedOnGuess = false;
     keyDetector.reset();
     keyKnown = false;
     keyUpdateCounter = 0;
@@ -87,11 +88,18 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
 {
     const bool ai = s.aiRegister && s.traits.aiCentreMidi > 0.0f;
     const int centre = ai ? 1000 + juce::roundToInt (s.traits.aiCentreMidi) : s.traits.centreMidi();
-    const int source = s.sourceGender != 0 ? s.sourceGender : genderEstimate;
+    int source = s.sourceGender != 0 ? s.sourceGender : genderEstimate;
+    // Until the estimator knows the voice (it needs a few seconds of singing) its pitch says it: a man's below C4, a
+    // woman's above. Without it a song's first phrase was sung at the input's pitch and the next one jumped an
+    // octave (a man into Female Pop: "goes from deep to high pitched"; every take and DAW export starts fresh).
+    const bool guessed = source == 0 && sourceWeight > 0.0f;
+    if (guessed)
+        source = sourceMedian < 60.0f ? 1 : 2;
 
     // Once the input voice is known the octave is locked, so phrases never jump between registers.
-    // It is re-evaluated only for a new target voice or a different source gender (an AI voice: see below).
-    const bool sameTarget = registerLocked && centre == lockedCentre && source == lockedSource;
+    // It is re-evaluated only for a new target voice or a different source gender (an AI voice: see below; when
+    // the estimator corrects a guess, an AI voice keeps the octave it has been singing in unless it is far worse).
+    const bool sameTarget = registerLocked && centre == lockedCentre && (source == lockedSource || (ai && lockedOnGuess));
     if (sameTarget && ! ai)
         return;
 
@@ -146,6 +154,7 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
         registerLocked = true;
         lockedCentre = centre;
         lockedSource = source;
+        lockedOnGuess = guessed;
     }
 }
 
@@ -156,8 +165,10 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     out.voiced = frame.voiced && frame.frequencyHz > 0.0f;
     out.periodSamples = out.voiced ? frame.periodSamples : 0.0f;
 
-    // Global offset: transposition + smart register.
-    const float global = s.pitchSemis + s.fineCents * 0.01f + (s.pitchPreserve || s.sourceIsSynth ? 0.0f : 12.0f * (float) registerOctaves);
+    // Global offset: transposition + smart register. Notes played with MIDI Pitch Control are sung as played: the
+    // voice's octave is not added on top (G4 played into a female voice was sung G5 once the singer was recognised).
+    const bool register_ = ! s.pitchPreserve && ! s.sourceIsSynth && s.midiNote < 0;
+    const float global = s.pitchSemis + s.fineCents * 0.01f + (register_ ? 12.0f * (float) registerOctaves : 0.0f);
     out.globalOffset = global;
 
     if (! out.voiced)
@@ -209,7 +220,8 @@ PitchFrame PitchMapper::process (const PitchDetector::Frame& frame, juce::int64 
     if (onset)
     {
         // From the very first phrase: until the input has been heard for a moment the source gender's usual
-        // octave (a male input into a female voice goes up), so the first phrase is never an octave off the rest.
+        // octave (a male input into a female voice goes up; until the gender is known, the one its pitch says),
+        // so the first phrase is never an octave off the rest.
         if (! s.pitchPreserve && ! s.sourceIsSynth)
             updateRegister (s);
         noteTime = 0.0f;

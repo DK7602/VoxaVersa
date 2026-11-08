@@ -564,6 +564,47 @@ public:
             expectEquals (run (41, 66, 52.6f, -7.0f, VoiceGender::Male, 8), -12, "and stays there");
         }
 
+        beginTest ("Before the singer's gender is recognised, the first phrase is already in the song's octave");
+        {
+            // Female Pop's singer (Studio Female Blend: D#3 - B4, median D4); Source Voice on Auto, nothing recognised yet
+            auto settings = [] (VoiceGender gender)
+            {
+                dsp::PitchMapper::Settings s;
+                s.pitchPreserve = false;
+                s.sourceGender = 0;
+                s.traits.gender = gender;
+                s.traits.aiCentreMidi = 62.1f;
+                s.traits.aiLowMidi = 53;
+                s.traits.aiHighMidi = 71;
+                s.aiRegister = true;
+                return s;
+            };
+            {
+                dsp::PitchMapper mapper;   // a man singing around G#3: up an octave from the first phrase
+                mapper.prepare (48000.0, 256);
+                const auto s = settings (VoiceGender::Female);
+                expectEquals (juce::roundToInt (sing (mapper, s, { 56.0f, 52.0f }, 1).globalOffset), 12, "first phrase");
+                mapper.setSourceGenderEstimate (1);   // a few seconds later the estimator agrees
+                expectEquals (juce::roundToInt (sing (mapper, s, { 56.0f, 61.0f, 52.0f }, 4).globalOffset), 12, "and after");
+            }
+            {
+                dsp::PitchMapper mapper;   // a woman singing around E4: stays at her pitch
+                mapper.prepare (48000.0, 256);
+                const auto s = settings (VoiceGender::Female);
+                expectEquals (juce::roundToInt (sing (mapper, s, { 64.0f, 67.0f }, 1).globalOffset), 0, "first phrase");
+                mapper.setSourceGenderEstimate (2);
+                expectEquals (juce::roundToInt (sing (mapper, s, { 64.0f, 62.0f, 67.0f }, 4).globalOffset), 0, "and after");
+            }
+            {
+                dsp::PitchMapper mapper;   // a man singing a little high (D4): the estimator's correction makes no jump
+                mapper.prepare (48000.0, 256);
+                const auto s = settings (VoiceGender::Female);
+                const int first = juce::roundToInt (sing (mapper, s, { 62.0f, 63.0f }, 1).globalOffset);
+                mapper.setSourceGenderEstimate (1);
+                expectEquals (juce::roundToInt (sing (mapper, s, { 62.0f, 60.0f, 63.0f }, 4).globalOffset), first);
+            }
+        }
+
         beginTest ("A hard-tune voice snaps every note at once, also with tuning switched off");
         {
             dsp::PitchMapper mapper;
