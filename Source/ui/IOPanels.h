@@ -86,9 +86,13 @@ public:
 
 private:
     void showOutputMenu();
+    void renderClicked();
+    void updateRenderButton();
 
     EditorContext& ctx;
     IconButton linkButton { "Output options", Icon::Link };
+    GlassButton renderButton { "Render", Icon::Sparkle };
+    VoxaVersaProcessor::TrackRenderState lastRenderState = VoxaVersaProcessor::TrackRenderState::Off;
     WaveformScope scope;
     Knob gain;
     LevelMeter meter;

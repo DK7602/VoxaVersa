@@ -399,6 +399,178 @@ public:
             tempDir.deleteRecursively();
         }
 
+        beginTest ("Render: a played take is rendered at full quality and plays back in place of the live voice");
+        {
+            struct Head : juce::AudioPlayHead
+            {
+                bool playing = true;
+                juce::int64 time = 0;
+                juce::Optional<PositionInfo> getPosition() const override
+                {
+                    PositionInfo info;
+                    info.setIsPlaying (playing);
+                    info.setTimeInSamples (time);
+                    info.setBpm (120.0);
+                    return info;
+                }
+            } head;
+
+            // the same take as a WAV file, so the sample export (the reference) gets exactly the same samples
+            auto tempDir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("voxaversa-render-tests");
+            tempDir.deleteRecursively();
+            tempDir.createDirectory();
+            auto wavFile = tempDir.getChildFile ("take.wav");
+            {
+                auto v = test::makeVoice (sr, (int) (sr * 3.0), [] (int i) { return 180.0f * std::pow (2.0f, (float) (i / 24000 % 3) / 12.0f); });
+                juce::AudioBuffer<float> b (1, (int) v.size());
+                b.copyFrom (0, 0, v.data(), (int) v.size());
+                expect (writeWav (wavFile, b, sr));
+            }
+            std::vector<float> take;
+            {
+                juce::AudioFormatManager fm;
+                fm.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (wavFile));
+                juce::AudioBuffer<float> b (1, (int) reader->lengthInSamples);
+                reader->read (&b, 0, b.getNumSamples(), 0, true, false);
+                take.assign (b.getReadPointer (0), b.getReadPointer (0) + b.getNumSamples());
+            }
+
+            VoxaVersaProcessor p;
+            setParam (p, ParamID::aiEngine, 0.0f);    // the DSP voice: no AI model in the tests
+            setParam (p, ParamID::sourceVoice, 1.0f); // Male: the same for the export and the track
+            p.setPlayHead (&head);
+            p.prepareToPlay (sr, block);
+            const int latency = p.getLatencySamples();
+
+            auto play = [&] (juce::int64 from, const std::vector<float>& in)
+            {
+                head.playing = true;
+                std::vector<float> out (in.size(), 0.0f);
+                juce::AudioBuffer<float> buffer (2, block);
+                juce::MidiBuffer midi;
+                for (size_t pos = 0; pos < in.size(); pos += block)
+                {
+                    const int n = (int) juce::jmin ((size_t) block, in.size() - pos);
+                    buffer.setSize (2, n, false, false, true);
+                    for (int ch = 0; ch < 2; ++ch)
+                        buffer.copyFrom (ch, 0, in.data() + pos, n);
+                    head.time = from + (juce::int64) pos;
+                    p.processBlock (buffer, midi);
+                    std::copy (buffer.getReadPointer (0), buffer.getReadPointer (0) + n, out.begin() + (long) pos);
+                }
+                return out;
+            };
+            auto stop = [&]
+            {
+                head.playing = false;   // ... and long enough for the output's mute after Stop to end
+                run (p, std::vector<float> ((size_t) (p.getLatencySamples() + sr * 0.5), 0.0f));
+            };
+
+            using RS = VoxaVersaProcessor::TrackRenderState;
+            expect (p.getTrackRenderState() == RS::Off);
+            p.startTrackRender();
+            expect (p.getTrackRenderState() == RS::Capturing);
+            play (0, take);
+            stop();
+            expect (test::waitFor ([&p] { return p.getTrackRenderState() == RS::Ready || p.getTrackRenderState() == RS::Failed; }, 60000),
+                    "render finished");
+            expect (p.getTrackRenderState() == RS::Ready, p.getTrackRenderMessage());
+            expectWithinAbsoluteError (p.getTrackRenderCapturedSeconds(), 3.0, 0.01);
+
+            // the reference: the same take exported through the sample render (renderVoice, the same settings)
+            juce::String error;
+            expect (p.loadSample (wavFile, error), error);
+            p.startOfflineRender (VoxaVersaProcessor::RenderTarget::Sample);
+            expect (test::waitFor ([&p] { return ! p.isOfflineRendering(); }, 60000));
+            std::vector<float> reference;
+            {
+                juce::AudioFormatManager fm;
+                fm.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (p.getLastRenderedFile()));
+                expect (reader != nullptr, p.getLastRenderError());
+                if (reader != nullptr)
+                {
+                    juce::AudioBuffer<float> b (2, (int) reader->lengthInSamples);
+                    reader->read (&b, 0, b.getNumSamples(), 0, true, true);
+                    reference.assign (b.getReadPointer (0), b.getReadPointer (0) + b.getNumSamples());
+                }
+            }
+            p.clearSample();
+
+            // played again, the output is the render, delayed by the reported latency like the live voice
+            auto again = play (0, take);
+            expect (p.isPlayingTrackRender(), "playing the render");
+            double diff = 0.0, energy = 0.0;
+            const int fade = (int) (0.01 * sr);
+            for (int k = fade; k + latency + fade < (int) again.size() && k < (int) reference.size(); ++k)
+            {
+                const double a = again[(size_t) (k + latency)], b = reference[(size_t) k];
+                diff += (a - b) * (a - b);
+                energy += b * b;
+            }
+            expect (energy > 1.0, "the render is audible");
+            expect (diff < energy * 1.0e-4, "the render, aligned: error " + juce::String (juce::Decibels::gainToDecibels (std::sqrt (diff / energy)), 1) + " dB");
+
+            // beyond the captured take the live voice plays
+            play ((juce::int64) take.size() + (juce::int64) sr, take);
+            expect (! p.isPlayingTrackRender(), "live outside the take");
+
+            // a changed setting: the live voice until the render is made again with it
+            stop();
+            setParam (p, ParamID::pitch, 2.0f);
+            expect (test::waitFor ([&p] { return p.getTrackRenderState() == RS::Rendering; }, 5000), "re-rendering");
+            play (0, std::vector<float> ((size_t) block * 4, 0.0f));
+            expect (! p.isPlayingTrackRender(), "the old render doesn't play once a setting changed");
+            stop();
+            expect (test::waitFor ([&p] { return p.getTrackRenderState() == RS::Ready; }, 60000), "re-rendered");
+            auto higher = play (0, take);
+            expect (p.isPlayingTrackRender());
+            const float before = medianPitch (std::vector<float> (again.begin() + latency, again.end()), 0);
+            const float after = medianPitch (std::vector<float> (higher.begin() + latency, higher.end()), 0);
+            expectWithinAbsoluteError (12.0f * std::log2 (after / before), 2.0f, 0.3f);
+
+            // Mix and Output Gain apply live, without a new render
+            stop();
+            setParam (p, ParamID::outputGain, -6.0f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
+            expect (p.getTrackRenderState() == RS::Ready);
+
+            // saved with the project: reopened, it renders again from the captured input (kept in a file of its own)
+            juce::MemoryBlock saved;
+            p.getStateInformation (saved);
+            juce::File captureFile;
+            if (auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize()))
+                if (auto* r = xml->getChildByName ("TrackRender"))
+                    captureFile = juce::File (r->getStringAttribute ("file"));
+            expect (captureFile.existsAsFile(), "the capture is saved: " + captureFile.getFullPathName());
+            {
+                Head head2;
+                VoxaVersaProcessor reopened;
+                reopened.setStateInformation (saved.getData(), (int) saved.getSize());
+                reopened.setPlayHead (&head2);
+                reopened.prepareToPlay (sr, block);
+                expect (test::waitFor ([&reopened] { return reopened.getTrackRenderState() == RS::Ready; }, 60000), "rendered again");
+                expectWithinAbsoluteError (reopened.getTrackRenderCapturedSeconds(), 3.0, 0.01);
+                juce::MemoryBlock again2;
+                reopened.getStateInformation (again2);
+                expect (again2.toString().length() > 0 && captureFile.existsAsFile());
+            }
+
+            p.stopTrackRender();
+            expect (p.getTrackRenderState() == RS::Off);
+            play (0, take);
+            expect (! p.isPlayingTrackRender());
+            {
+                juce::MemoryBlock off;
+                p.getStateInformation (off);
+                auto xml = juce::AudioProcessor::getXmlFromBinary (off.getData(), (int) off.getSize());
+                expect (xml != nullptr && xml->getChildByName ("TrackRender") == nullptr, "no render saved once it is off");
+            }
+            captureFile.deleteFile();
+            tempDir.deleteRecursively();
+        }
+
         beginTest ("Text to Sing generation completes");
         {
             VoxaVersaProcessor p;

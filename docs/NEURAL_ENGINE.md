@@ -302,6 +302,21 @@ level, at most -30 dB). It never turns anything up and leaves sung notes alone. 
 went from +12.9 to +4.5 dB over the singer's (Female Pop) and +11.9 to +5.8 dB (Male Pop). Not used for Text
 to Sing's synthesized guide. `VoxaVersaRender --breaths dry.wav ai.wav out.wav` runs it on two files.
 
+### Render (the track at full quality, `TrackRender`)
+
+The Output panel's **Render** button plays a track at offline quality. While armed, `TrackRender::capture` keeps
+the input (before Input Gain) of every played stretch on the host's timeline, in 32768-sample pages that the
+message thread keeps ready (the audio thread never allocates; during an offline export it may). When the
+transport stops, a background thread renders each stretch with `renderVoice()` (Input Gain and Auto Level
+applied, then the same two passes as a sample export: target pitch, `NeuralVoiceModel::convert` on the whole
+stretch, the DSP chain at High Quality) into a stereo timeline of the wet signal. Playback replaces the live wet
+signal with it at input time `host time - latency`, crossfading over 10 ms (and ending a fade early, so the live
+voice is in full where a stretch ends); Mix, Output Gain and Power stay live. A signature of everything else
+(parameters, voice and sound, the singer's model, tempo) is compared 20 times a second: when it changes the render
+is dropped (live voice) and made again 0.4 s after the last change. The capture is written to
+`<user data>/Renders/Capture <uuid>.flac` on the first render and referenced from the plug-in state, so a reopened
+project renders again. Not rendered: a choir voice's second section and MIDI pitch control (the live voice plays).
+
 ### Offline conversion
 
 `NeuralVoiceModel::convert` resamples the clip to 16 kHz, interpolates the target f0 contour onto 10 ms

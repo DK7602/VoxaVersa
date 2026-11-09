@@ -161,7 +161,8 @@
   </ul>
   <h3>Input and Output</h3>
   <p>The <b class="ui">Input</b> panel shows what comes in: live input or a <b>voice sample</b> (drag an audio file onto it).
-    The <b class="ui">Output</b> panel shows the transformed voice and holds Render, Record and the exports folder.</p>
+    The <b class="ui">Output</b> panel shows the transformed voice and holds <b class="ui">Render</b> (the track at full AI quality, see
+    <a href="#ai">The AI voice engine</a>), Record and the exports folder.</p>
   <h3>Voice Character</h3>
   <ul>
     <li><b class="ui">Pitch</b>: higher or deeper in semitones (±24), <b class="ui">Fine</b> in cents.</li>
@@ -271,6 +272,21 @@
   <p>The AI engine converts in short chunks as the track plays. If your computer can't keep up for a moment, VoxaVersa fills that moment
     with the DSP voice, so playback never drops out (you'll see a message). Exports, Render in Place and Freeze always wait for every chunk
     and use the AI engine's best quality.</p>
+  <h3>Render: hear the full quality while you mix</h3>
+  <p>Live playback converts in short chunks, with little time per chunk, so a slower computer uses less context and the voice can sound
+    less like its singer. <b class="ui">Render</b> (top of the <b class="ui">Output</b> panel) gives you the best quality during playback:</p>
+  <ol>
+    <li>Click <b class="ui">Render</b>. It says <i>Play to render</i>.</li>
+    <li>Play your vocal once, the whole song or just a part. VoxaVersa keeps what it hears.</li>
+    <li>Press Stop. It renders in the background (<i>Rendering 40%</i>); the live voice plays meanwhile.</li>
+    <li>When it says <b class="ui">Rendered</b>, playback uses the render wherever you played, and the live voice everywhere else.</li>
+  </ol>
+  <p>The render converts each stretch at once, with context on both sides, exactly as an export does. Change the voice or a setting and it
+    renders again by itself (<b class="ui">Mix</b> and <b class="ui">Output Gain</b> apply without a new render). After you edit or
+    re-record the vocal, click <b class="ui">Render</b> → <i>Capture Again</i>; <i>Capture More Parts</i> adds parts you haven't played
+    yet; <i>Turn Off</i> goes back to the live voice. The render is saved with your project (its input is kept in
+    <code>VoxaVersa/Renders</code>) and comes back when you reopen it. Not rendered yet: a choir voice's second section and MIDI Pitch
+    Control (the live voice plays for those).</p>
   <h3>CPU or GPU, and the status line</h3>
   <p>The <b class="ui">menu</b> shows the engine's status: whether it runs on the CPU or the graphics card, and its <b>real-time load</b>.
     Under 80 % plays live without gaps. <b class="ui">AI Device</b> lets you choose: <i>CPU (recommended)</i> or <i>Graphics card (GPU)</i>
@@ -337,7 +353,7 @@
   <h2>Exporting your vocal</h2>
   <h3>From a track (VoxaVersa as an insert)</h3>
   <p>Use your DAW: <b>Export Audio Mixdown</b>, <b>Render in Place</b>, <b>Bounce</b> or <b>Freeze</b>. These give the AI voice its best
-    quality. You don't need VoxaVersa's Render button.</p>
+    quality. To hear that quality while you mix, use <a href="#ai">Render</a>.</p>
   <h3>From an audio file (voice sample)</h3>
   <p>Drag an audio file onto the <b class="ui">Input</b> panel. Press ▶ to hear it through the current voice, then <b class="ui">Render</b> to
     make a WAV and drag it into your DAW. Renders are also saved in <code>Documents\VoxaVersa\Exports</code>.</p>
@@ -394,6 +410,7 @@
     <tr><td>User presets</td><td><code>%APPDATA%\VoxaVersa\Presets</code> (menu → Open Presets Folder)</td></tr>
     <tr><td>Renders and MIDI exports</td><td><code>Documents\VoxaVersa\Exports</code></td></tr>
     <tr><td>Recordings (standalone)</td><td><code>Documents\VoxaVersa\Recordings</code></td></tr>
+    <tr><td>Rendered tracks' input (Render, saved with projects)</td><td><code>%APPDATA%\VoxaVersa\Renders</code></td></tr>
     <tr><td>This manual</td><td><code>%APPDATA%\VoxaVersa\Manual</code></td></tr>
   </table></div>
   <p>On macOS <code>%APPDATA%</code> is <code>~/Library/Application Support</code>; on Linux <code>~/.config</code>.</p>

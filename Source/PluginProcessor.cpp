@@ -4,6 +4,8 @@
 #include "core/AudioUtils.h"
 #include "core/Watermark.h"
 #include "dsp/VoiceChain.h"
+#include "dsp/RenderVoice.h"
+#include "dsp/TrackRender.h"
 #include "dsp/VoiceGenderEstimator.h"
 #include "neural/NeuralVoice.h"
 #include "neural/NeuralRuntime.h"
@@ -13,6 +15,8 @@ namespace voxa
 
 namespace
 {
+    const juce::Identifier trackRenderTag ("TrackRender");
+
     /** A mono audio clip kept at its original rate plus a copy resampled to the session rate. */
     struct AudioClip
     {
@@ -168,6 +172,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     explicit Impl (VoxaVersaProcessor& p) : owner (p), params (p.apvts)
     {
         formatManager.registerBasicFormats();
+        trackRender.setCaptureFolder (VoiceLibrary::getUserDataDirectory().getChildFile ("Renders"));
         startTimerHz (20);
     }
 
@@ -263,6 +268,9 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
     bool wasPlaying = false;
     int lastSourceGender = 0;   // the input's gender as last reported to the message thread (1 male, 2 female)
 
+    // Full-quality render of the track (the Render button): its own render thread
+    dsp::TrackRender trackRender;
+
     // Offline jobs
     juce::ThreadPool pool { 1 };
     std::atomic<bool> cancelJobs { false }, cancelRender { false }, cancelSing { false };
@@ -290,6 +298,8 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         if (qualityChangePending.exchange (false))
             owner.updateLatency();
 
+        owner.serviceTrackRender();
+
         const bool ai = ParamCache::on (params.aiEngine);
         if (ai != lastAiEngine)
         {
@@ -304,6 +314,7 @@ struct VoxaVersaProcessor::Impl : private juce::Timer
         neuralStream.prepare (sampleRate, maxBlock);
         partnerStream.prepare (sampleRate, maxBlock);
         chain.prepare (sampleRate, maxBlock, currentQuality());
+        trackRender.setSampleRate (sampleRate);
         chain.setNeuralStream (reservesAiLatency() ? &neuralStream : nullptr);
         chain.setChoirPartnerStream (&partnerStream);
         liveSinger.prepare (sampleRate, maxBlock);
@@ -618,6 +629,11 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             juce::FloatVectorOperations::clear (mono, n);
         }
 
+        // Render (full quality): the live track's input as it plays, before Input Gain (the render applies it)
+        const bool sampleActive = samplePlaying.load() && sampleClip != nullptr && sampleClip->playback.getNumSamples() > 0;
+        const bool trackInput = ! singMode && ! sampleActive;
+        d.trackRender.capture (hostTime >= 0 ? hostTime + pos : -1, mono, n, playing && trackInput && hostTime >= 0, isNonRealtime());
+
         for (int i = 0; i < n; ++i)
             mono[i] *= d.inGain.next();
         if (autoLevelOn)
@@ -708,6 +724,11 @@ void VoxaVersaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             settings.pitch.sourceGender = sampleClip->gender;
         settings.choirPartnerOctave = d.partnerOctave.load (std::memory_order_relaxed);
         d.chain.process (mono, wetL, wetR, n, settings);
+
+        // Rendered stretches of the track replace the live voice (the wet signal, aligned like it)
+        if (trackInput)
+            d.trackRender.play (hostTime >= 0 ? hostTime + pos - d.chain.getLatencySamples() : -1, wetL, wetR, n,
+                                playing && hostTime >= 0);
 
         // 4. Dry alignment, mix, output gain, power
         const int dlySize = (int) d.dryDelay.size();
@@ -859,7 +880,17 @@ void VoxaVersaProcessor::getStateInformation (juce::MemoryBlock& dest)
     auto state = apvts.copyState();
     state.setProperty ("version", VOXAVERSA_VERSION_STRING, nullptr);
     if (auto xml = state.createXml())
+    {
+        // the rendered track's captured input (kept in a file of its own), so reopening the project renders it again
+        if (const auto saved = impl->trackRender.getSavedCapture(); saved.isValid())
+        {
+            auto* r = xml->createNewChildElement (trackRenderTag);
+            r->setAttribute ("file", saved.file);
+            r->setAttribute ("runs", saved.runs);
+            r->setAttribute ("sampleRate", saved.sampleRate);
+        }
         copyXmlToBinary (*xml, dest);
+    }
 }
 
 juce::AudioProcessorParameter* VoxaVersaProcessor::getBypassParameter() const
@@ -871,6 +902,15 @@ void VoxaVersaProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
     {
+        dsp::TrackRender::SavedCapture saved;
+        if (auto* r = xml->getChildByName (trackRenderTag))
+        {
+            saved = { r->getStringAttribute ("file"), r->getStringAttribute ("runs"), r->getDoubleAttribute ("sampleRate") };
+            xml->removeChildElement (r, true);   // not part of the parameters (presets, A/B)
+        }
+        if (saved.isValid())
+            impl->trackRender.restoreCapture (saved);
+
         auto tree = juce::ValueTree::fromXml (*xml);
         if (tree.hasType (apvts.state.getType()))
         {
@@ -1330,13 +1370,10 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
         settings.pitch.sourceGender = sourceGender;   // whole-file analysis beats the live estimate
     const auto model = (! sourceIsNeural && settings.useNeural) ? impl->currentModel : nullptr;
     const int accent = sourceIsSynth ? 0 : traits.singAccent;   // as live (processBlock)
-    settings.useNeural = false;
-    settings.aiLead = model != nullptr;   // the AI lead keeps the singer's own vibrato, breath and register
 
     const float mix = ParamCache::v (impl->params.mix) * 0.01f;
     const float outGainLin = juce::Decibels::decibelsToGain (ParamCache::v (impl->params.outputGain));
     const double sr = currentSampleRate;
-    const auto quality = Quality::HighQuality;   // latency is irrelevant offline
     const auto voiceName = getSelectedVoice().name;
     const auto origin = sourceIsSynth ? ((sourceIsNeural || model != nullptr) ? VocalOrigin::SynthesizedSingingAiVoice
                                                                                : VocalOrigin::SynthesizedSinging)
@@ -1352,72 +1389,20 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
     offlineRendering.store (true);
 
     auto* self = this;
-    impl->pool.addJob ([self, source, settings, model, accent, mix, outGainLin, sr, quality, outFile, metadata, mark]
+    dsp::VoiceRenderJob job;
+    job.settings = settings;
+    job.model = model;
+    job.accent = accent;
+    job.sampleRate = sr;
+    job.tailSeconds = 3.0;
+    impl->pool.addJob ([self, source, job, mix, outGainLin, sr, outFile, metadata, mark]
     {
         auto& cancel = self->impl->cancelRender;
         juce::String error;
-
-        dsp::VoiceChain chain;
-        chain.prepare (sr, 1024, quality);
-        const int latency = chain.getLatencySamples();
-        const int tail = (int) (sr * 3.0);
-        const int total = source.getNumSamples() + latency + tail;
-
-        juce::AudioBuffer<float> padded (1, total);
-        padded.clear();
-        padded.copyFrom (0, 0, source, 0, 0, source.getNumSamples());
-
-        // Optional neural lead: pass 1 captures the target pitch contour, then the model converts offline.
-        juce::AudioBuffer<float> neuralLead;
-        std::vector<float> neuralAccent;   // per sample of neuralLead: how much it was given the accent's vowel
-        if (model != nullptr)
-        {
-            std::vector<float> f0, shift;
-            f0.reserve ((size_t) (total / sr * 100.0) + 16);
-            shift.reserve (f0.capacity());
-            chain.setF0Capture (&f0, 100.0, &shift);
-            juce::AudioBuffer<float> scratch (2, 1024);
-            for (int pos = 0; pos < total && ! cancel.load(); pos += 1024)
-            {
-                const int n = juce::jmin (1024, total - pos);
-                chain.process (padded.getReadPointer (0, pos), scratch.getWritePointer (0), scratch.getWritePointer (1), n, settings);
-                self->offlineProgress.store (0.3f * (float) pos / (float) total);
-            }
-            chain.setF0Capture (nullptr, 100.0);
-
-            juce::AudioBuffer<float> converted;
-            std::vector<float> accentFrames;
-            if (! cancel.load() && model->convert (source, sr, f0, 100.0, converted, &cancel, error, &shift, accent,
-                                                   accent != 0 ? &accentFrames : nullptr))
-            {
-                // Align to the chain's output timeline (DSP latency).
-                neuralLead.setSize (1, total);
-                neuralLead.clear();
-                const int copyLen = juce::jmin (converted.getNumSamples(), total - latency);
-                if (copyLen > 0)
-                    neuralLead.copyFrom (0, latency, converted, 0, 0, copyLen);
-                if (! accentFrames.empty())
-                {
-                    neuralAccent.assign ((size_t) total, 0.0f);
-                    for (int i = 0; i < copyLen; ++i)
-                        neuralAccent[(size_t) (latency + i)] = accentFrames[(size_t) juce::jmin ((int) accentFrames.size() - 1,
-                                                                                                 (int) ((double) i * 100.0 / sr))];
-                }
-            }
-            chain.reset();
-        }
-
-        auto renderSettings = settings;
-        renderSettings.aiLead = neuralLead.getNumSamples() > 0;   // the DSP voice if the conversion failed
-        juce::AudioBuffer<float> wet (2, total);
-        for (int pos = 0; pos < total && ! cancel.load(); pos += 1024)
-        {
-            const int n = juce::jmin (1024, total - pos);
-            chain.process (padded.getReadPointer (0, pos), wet.getWritePointer (0, pos), wet.getWritePointer (1, pos), n, renderSettings,
-                           renderSettings.aiLead ? neuralLead.getReadPointer (0, pos) : nullptr,
-                           renderSettings.aiLead && ! neuralAccent.empty() ? neuralAccent.data() + pos : nullptr);
-            self->offlineProgress.store ((model != nullptr ? 0.5f : 0.0f) + (model != nullptr ? 0.45f : 0.95f) * (float) pos / (float) total);
-        }
+        juce::AudioBuffer<float> wet;
+        dsp::renderVoice (source, job, cancel, [self] (float p) { self->offlineProgress.store (0.95f * p); }, wet, error);
+        error.clear();   // a failed AI conversion falls back to the DSP voice, as before
+        const int tail = wet.getNumSamples() - source.getNumSamples();
 
         bool ok = false;
         if (! cancel.load())
@@ -1427,7 +1412,7 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
             for (int ch = 0; ch < 2; ++ch)
             {
                 float* dst = out.getWritePointer (ch);
-                const float* w = wet.getReadPointer (ch, latency);
+                const float* w = wet.getReadPointer (ch);
                 for (int i = 0; i < outLen; ++i)
                 {
                     const float dryS = i < source.getNumSamples() ? source.getSample (0, i) : 0.0f;
@@ -1469,6 +1454,79 @@ void VoxaVersaProcessor::startOfflineRender (RenderTarget target)
         }
         self->offlineProgress.store (1.0f);
         self->offlineRendering.store (false);
+    });
+}
+
+//==============================================================================
+// Render (the track at full quality)
+void VoxaVersaProcessor::startTrackRender (bool addToCapture)
+{
+    impl->trackRender.startCapture (currentSampleRate, addToCapture);
+}
+
+void VoxaVersaProcessor::stopTrackRender()
+{
+    impl->trackRender.turnOff();
+}
+
+VoxaVersaProcessor::TrackRenderState VoxaVersaProcessor::getTrackRenderState() const noexcept
+{
+    return (TrackRenderState) impl->trackRender.getState();
+}
+
+float VoxaVersaProcessor::getTrackRenderProgress() const noexcept     { return impl->trackRender.getProgress(); }
+double VoxaVersaProcessor::getTrackRenderCapturedSeconds() const noexcept { return impl->trackRender.getCapturedSeconds(); }
+juce::String VoxaVersaProcessor::getTrackRenderMessage() const        { return impl->trackRender.getMessage(); }
+bool VoxaVersaProcessor::isPlayingTrackRender() const noexcept        { return impl->trackRender.isPlayingRender(); }
+
+juce::String VoxaVersaProcessor::trackRenderSignature() const
+{
+    // Everything a render depends on: the voice (its sound, its singer's model), the settings it was made with and
+    // the tempo (delay). Mix, Output Gain and Power are applied after it, live; the rest only matter elsewhere.
+    static const juce::StringArray after { ParamID::mix, ParamID::outputGain, ParamID::bypass, ParamID::quality, ParamID::mode,
+                                           ParamID::singTempo, ParamID::singSyncHost, ParamID::melodySource };
+    juce::String sig;
+    for (auto* param : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (param))
+            if (! after.contains (ranged->getParameterID()))
+                sig << ranged->getParameterID() << '=' << juce::String (ranged->getValue(), 5) << ';';
+
+    for (const auto& id : { getSelectedVoiceId(), getBlendVoiceId() })
+        if (const auto* v = voiceLibrary.findById (id))
+            sig << v->id << '/' << v->soundName << ';';
+    sig << impl->currentModelKey << ';' << (int) neuralStatus.load() << ';' << impl->partnerOctave.load() << ';'
+        << juce::roundToInt (hostBpm.load() * 10.0) << ';' << currentSampleRate;
+    return sig;
+}
+
+void VoxaVersaProcessor::serviceTrackRender()
+{
+    impl->trackRender.service (trackRenderSignature(), [this]
+    {
+        dsp::TrackRender::Request r;
+        r.signature = trackRenderSignature();
+        const auto& p = impl->params;
+        if (neuralStatus.load() == NeuralStatus::Loading)
+            r.notReady = "Waiting for the AI voice to load";
+        if (impl->partnerOctave.load() != 0)
+            r.unsupported = "A choir voice's second section isn't rendered yet: the live voice plays";
+        if (ParamCache::on (p.midiControl))
+            r.unsupported = "MIDI pitch control isn't rendered: the live voice plays";
+
+        VoiceTraits traits;
+        {
+            const juce::SpinLock::ScopedLockType lock (impl->traitsLock);
+            traits = impl->hasBlend ? VoiceTraits::blend (impl->traitsA, impl->traitsB, ParamCache::v (p.voiceBlend) * 0.01f)
+                                    : impl->traitsA;
+        }
+        const double bpm = hostBpm.load() > 0.0 ? hostBpm.load() : 120.0;
+        r.job.settings = buildChainSettings (p, traits, bpm, -1, false);
+        r.job.model = r.job.settings.useNeural ? impl->currentModel : nullptr;
+        r.job.accent = traits.singAccent;   // as live (processBlock)
+        r.job.sampleRate = currentSampleRate;
+        r.inputGain = juce::Decibels::decibelsToGain (ParamCache::v (p.inputGain));
+        r.autoLevel = ParamCache::on (p.autoLevel);
+        return r;
     });
 }
 

@@ -127,6 +127,7 @@ bool InputPanel::isAudioFile (const juce::String& path)
 void InputPanel::resized()
 {
     linkButton.setBounds (getWidth() - 50, 8, 36, 32);
+    renderButton.setBounds (getWidth() - 58 - 160, 9, 160, 32);
     scope.setBounds (16, 54, getWidth() - 32, 100);
     captionArea = { 16.0f, 156.0f, (float) getWidth() - 32.0f, 30.0f };
 
@@ -365,8 +366,14 @@ OutputPanel::OutputPanel (EditorContext& c)
                                             "Output gain after the voice engine" }),
       meter (c.processor.outputMeter)
 {
-    for (auto* comp : std::initializer_list<juce::Component*> { &linkButton, &scope, &gain, &meter, &mixLabel, &mixSlider, &mixValue })
+    for (auto* comp : std::initializer_list<juce::Component*> { &linkButton, &renderButton, &scope, &gain, &meter, &mixLabel, &mixSlider, &mixValue })
         addAndMakeVisible (comp);
+
+    renderButton.setFontHeight (16.0f);
+    renderButton.setCornerRadius (8.0f);
+    renderButton.setTitle ("Render at full quality");
+    renderButton.onClick = [this] { renderClicked(); };
+    updateRenderButton();
 
     linkButton.setIconScale (0.75f);
     linkButton.setTooltip ("Output: export folder, renders and recordings");
@@ -425,6 +432,108 @@ void OutputPanel::tick (float dt)
 {
     scope.tick();
     meter.tick (dt);
+    updateRenderButton();
+}
+
+void OutputPanel::updateRenderButton()
+{
+    using RS = VoxaVersaProcessor::TrackRenderState;
+    auto& proc = ctx.processor;
+    const auto st = proc.getTrackRenderState();
+    const bool voiceTransform = ctx.getChoice (ParamID::mode) == (int) Mode::VoiceTransform;
+    const auto note = proc.getTrackRenderMessage();
+
+    // tell the user once when a render is ready or failed
+    if (st != lastRenderState)
+    {
+        if (st == RS::Ready && lastRenderState == RS::Rendering)
+            ctx.toast (note.isNotEmpty() ? note : juce::String ("Rendered: playback uses the full-quality AI voice"),
+                       note.isNotEmpty() ? ToastKind::Info : ToastKind::Success);
+        else if (st == RS::Failed)
+            ctx.toast (note.isNotEmpty() ? note : juce::String ("The render failed: the live voice plays"), ToastKind::Error);
+        lastRenderState = st;
+    }
+
+    juce::String text = "Render", tip;
+    float prog = -1.0f;
+    switch (st)
+    {
+        case RS::Off:
+            tip = "Render at full quality: click, then play your vocal once. When you stop, VoxaVersa converts what was "
+                  "played with the best AI quality and plays that back in place of the live voice. It renders again by "
+                  "itself when you change the voice or a setting; after editing the vocal, capture it again.";
+            break;
+        case RS::Capturing:
+        {
+            const int secs = (int) proc.getTrackRenderCapturedSeconds();
+            text = secs > 0 ? "Capturing " + juce::String (secs / 60) + ":" + juce::String (secs % 60).paddedLeft ('0', 2)
+                            : juce::String ("Play to render");
+            tip = "Capturing: play the part to render. It renders when you stop. Click to cancel.";
+            break;
+        }
+        case RS::Rendering:
+            text = note.isNotEmpty() ? juce::String ("Waiting...") : "Rendering " + juce::String (juce::roundToInt (proc.getTrackRenderProgress() * 100.0f)) + "%";
+            prog = proc.getTrackRenderProgress();
+            tip = note.isNotEmpty() ? note : juce::String ("Rendering at full quality; the live voice plays until it's done.");
+            break;
+        case RS::Ready:
+            text = "Rendered";
+            tip = "Playback uses the full-quality render where it was captured (the live voice elsewhere). Click for options."
+                  + (note.isNotEmpty() ? "\n" + note : juce::String());
+            break;
+        case RS::Failed:
+            text = "Render off";
+            tip = (note.isNotEmpty() ? note : juce::String ("The render failed")) + ". Click for options.";
+            break;
+    }
+    if (! voiceTransform)
+        tip = "Render is for Voice Transform (Text to Sing renders its takes itself).";
+
+    renderButton.setEnabled (voiceTransform || st != RS::Off);
+    renderButton.setButtonText (text);
+    renderButton.setTooltip (tip);
+    renderButton.setProgress (prog);
+    renderButton.setToggleState (st == RS::Capturing || st == RS::Ready || st == RS::Rendering, juce::dontSendNotification);
+    renderButton.setIconColour (st == RS::Capturing ? std::optional<juce::Colour> (juce::Colour (0xffff5a6e)) : std::nullopt);
+}
+
+void OutputPanel::renderClicked()
+{
+    using RS = VoxaVersaProcessor::TrackRenderState;
+    auto& proc = ctx.processor;
+    const auto st = proc.getTrackRenderState();
+    if (st == RS::Off)
+    {
+        proc.startTrackRender();
+        ctx.toast ("Render: play your vocal once. It renders when you stop.");
+        updateRenderButton();
+        return;
+    }
+
+    juce::PopupMenu m;
+    m.addSectionHeader ("Render at full quality");
+    if (st == RS::Capturing || st == RS::Rendering)
+    {
+        m.addItem (3, "Cancel (live voice)");
+    }
+    else
+    {
+        m.addItem (1, "Capture Again (after editing the vocal)");
+        m.addItem (2, "Capture More Parts", st == RS::Ready);
+        m.addSeparator();
+        m.addItem (3, "Turn Off (live voice)");
+    }
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&renderButton),
+                     [this, safeThis = juce::Component::SafePointer<juce::Component> (this)] (int r)
+    {
+        if (safeThis == nullptr)
+            return;
+        auto& p = ctx.processor;
+        if (r == 1)      { p.startTrackRender (false); ctx.toast ("Render: play your vocal once. It renders when you stop."); }
+        else if (r == 2) { p.startTrackRender (true);  ctx.toast ("Render: play the other parts. They render when you stop."); }
+        else if (r == 3) { p.stopTrackRender(); }
+        updateRenderButton();
+    });
 }
 
 void OutputPanel::showOutputMenu()

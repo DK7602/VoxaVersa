@@ -134,6 +134,22 @@ public:
     static juce::File getExportDirectory();
 
     //==============================================================================
+    // Render: the track at full quality (the AI singer converting it whole, offline), played back in place of the
+    // live voice. Arm it, play the vocal once; it renders when the transport stops and again by itself when the
+    // voice or a setting changes. Voice Transform only. Message thread.
+    enum class TrackRenderState { Off, Capturing, Rendering, Ready, Failed };
+    /** Arms capturing: from scratch, or adding to the stretches captured before. */
+    void startTrackRender (bool addToCapture = false);
+    void stopTrackRender();
+    TrackRenderState getTrackRenderState() const noexcept;
+    float getTrackRenderProgress() const noexcept;
+    double getTrackRenderCapturedSeconds() const noexcept;
+    /** Why a render failed or what it fell back to (empty when all is well). */
+    juce::String getTrackRenderMessage() const;
+    /** True while playback uses the render (any thread). */
+    bool isPlayingTrackRender() const noexcept;
+
+    //==============================================================================
     // Text to Sing
     void setLyrics (const juce::String& lyrics);
     juce::String getLyrics() const;
@@ -192,6 +208,9 @@ private:
     void handleAsyncUpdate() override;
 
     void updateVoiceTraits();
+    /** Message thread timer: the track render's capture pages, renders and re-renders. */
+    void serviceTrackRender();
+    juce::String trackRenderSignature() const;
     void updateNeuralModel();
     void updateChoirPartner();
     void updateLatency();

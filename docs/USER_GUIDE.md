@@ -43,6 +43,11 @@ Settings): plug in a mic, pick a voice, sing.
    - **Vibe** adds the genre's production chain (compression, de-essing, saturation, space, doubling).
    - **Intensity**: how strongly the voice's character is applied.
 5. **Mix** blends the original and transformed vocal. **Output** sets the level.
+6. **Render** (top of the Output panel) plays the track at full AI quality: click it, play the vocal once and
+   press Stop. VoxaVersa renders what it heard in the background (each stretch converted at once, as an export
+   does) and from then on plays the render there, the live voice elsewhere. It renders again by itself when you
+   change the voice or a setting (Mix and Output apply live); after editing the vocal choose *Capture Again*.
+   The render is saved with the project.
 
 ### Voice sample instead of live input
 Drag an audio file onto the **Input** panel. Press ▶ to audition it through the current settings, then
