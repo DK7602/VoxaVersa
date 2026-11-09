@@ -226,6 +226,58 @@ public:
             library.rescanUserVoices (root.getChildFile ("none"));
         }
 
+        beginTest ("An assignment can rename installed singers; what refers to them follows");
+        {
+            auto work = root.getChildFile ("rename");
+            auto user = work.getChildFile ("user");
+            auto voicesDir = user.getChildFile ("Voices");
+            auto src = work.getChildFile ("old-singer");
+            src.createDirectory();
+            src.getChildFile ("model.onnx").replaceWithText ("model");
+            src.getChildFile ("voice.json").replaceWithText (R"({ "name": "Vendor Singer", "id": "old_singer", "gender": "female",
+                                                                   "model": { "file": "model.onnx", "sampleRate": 40000 } })");
+            VoiceLibrary library;
+            expect (library.importVoices (src, user).installed.size() == 1);
+
+            auto first = work.getChildFile ("first.json");
+            first.replaceWithText (R"({ "packs": { "old-singer": { "name": "Studio Singer", "listed": false, "range": [55, 70], "median": 62,
+                                                                   "factoryVoices": ["female-jazz"] } } })");
+            expectEquals (library.importVoices (first, user).assignedPacks, 1);
+            library.setSingerChoice ("female-rock", "user-old-singer");
+            expect (library.findById ("female-rock")->aiSingerId == "user-old-singer");
+
+            // the rename, with only the fields that change: the range stays
+            auto rename = work.getChildFile ("voice_assignment.json");
+            rename.replaceWithText (R"({ "packs": { "new-singer": { "factoryVoices": ["female-pop"] } },
+                                         "renamed": { "old-singer": "new-singer" } })");
+            const auto r = library.importVoices (rename, user);
+            expect (r.succeeded() && r.renamedPacks == 1 && r.summary().contains ("1 singer renamed"), r.summary());
+            expect (! voicesDir.getChildFile ("old-singer").exists());
+            const auto manifest = juce::JSON::parse (voicesDir.getChildFile ("new-singer").getChildFile ("voice.json"));
+            expect (manifest.getProperty ("id", {}).toString() == "new-singer");
+            expect (manifest.getProperty ("name", {}).toString() == "Studio Singer", "the assignment's name, not the vendor's");
+            const auto* singer = library.findSinger ("user-new-singer");
+            expect (singer != nullptr && singer->traits.rangeLowMidi == 55 && singer->traits.rangeHighMidi == 70);
+            expect (library.findById ("female-pop")->aiSingerId == "user-new-singer");
+            expect (library.findById ("female-rock")->aiSingerId == "user-new-singer", "the singer chosen by ear follows");
+            expect (library.getSingerChoice ("female-rock") == "user-new-singer");
+            const auto stored = juce::JSON::parse (voicesDir.getChildFile (VoiceLibrary::assignmentFileName));
+            expect (! stored["packs"].hasProperty ("old-singer") && stored["packs"].hasProperty ("new-singer"), "the old entry moved");
+
+            // the old pack imported again (an older download) becomes the new one, and isn't installed twice
+            expect (library.importVoices (src, user).installed.size() == 1);
+            expect (! voicesDir.getChildFile ("old-singer").exists());
+            expect (library.findSinger ("user-new-singer") != nullptr && library.findSinger ("user-old-singer") == nullptr);
+            expect (library.findById ("female-pop")->aiSingerId == "user-new-singer");
+
+            // a song saved with the old id still finds the singer when it is listed
+            auto listed = work.getChildFile ("listed.json");
+            listed.replaceWithText (R"({ "packs": { "new-singer": { "listed": true } } })");
+            library.importVoices (listed, user);
+            expect (library.findById ("user-old-singer") != nullptr && library.findById ("user-old-singer")->id == "user-new-singer");
+            library.rescanUserVoices (root.getChildFile ("none"));
+        }
+
         beginTest ("Robot and choir follow the input's gender; a singer chosen by ear sticks; spare singers get a card");
         {
             auto dir = root.getChildFile ("gendered");

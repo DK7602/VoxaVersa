@@ -58,10 +58,12 @@ public:
         bool encoderInstalled = false;   // a content encoder (e.g. contentvec-768.onnx) was copied to Encoders/
         bool pitchTrackerInstalled = false;   // the AI voices' neural pitch tracker (fcpe.onnx) was copied there
         int assignedPacks = 0;           // packs described by an imported voice assignment
+        int renamedPacks = 0;            // pack ids an imported voice assignment renames
         juce::StringArray placed;        // installed singers the assignment now places in built-in voices
         juce::StringArray errors;
 
-        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled || pitchTrackerInstalled || assignedPacks > 0; }
+        bool succeeded() const noexcept   { return installed.size() > 0 || encoderInstalled || pitchTrackerInstalled || assignedPacks > 0
+                                                   || renamedPacks > 0; }
         juce::String summary() const;
     };
 
@@ -73,7 +75,12 @@ public:
                                         "range": [53, 72], "median": 63 } } }
 
         Imported assignments are merged (by pack id) into <Voices>/voice_assignment.json, which every rescan
-        applies, so a pack never has to be rewritten when more singers finish and the assignment changes. */
+        applies, so a pack never has to be rewritten when more singers finish and the assignment changes. An entry
+        gives the fields it changes; the others stay as they were.
+
+        An assignment can also rename packs: "renamed": { "<old id>": "<new id>" }. Installed packs with an old id
+        get the new one (voice.json and folder), and so do their assignment entries, the singers chosen by ear,
+        favourites, and packs imported later under the old id. */
     static constexpr const char* assignmentFileName = "voice_assignment.json";
 
     /** The installed AI singers (packs with a voice model), as presented by the assignment. */
@@ -108,6 +115,10 @@ public:
 private:
     void loadFavourites();
     void saveFavourites() const;
+    /** Applies the assignment's renamed pack ids in `dir` (see above). A pack in `justImported` under an old id
+        replaces the one installed under the new id; otherwise the one already there stays. */
+    void migrateRenamedPacks (const juce::File& dir, const juce::Array<juce::File>& justImported);
+    juce::StringPairArray renamedIds;   // "user-<old id>" -> "user-<new id>"
 
     std::vector<VoiceProfile> voices;
     size_t numFactoryVoices = 0;

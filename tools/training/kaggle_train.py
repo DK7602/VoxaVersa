@@ -8,8 +8,8 @@ VOXAVERSA_KAGGLE (the push tool writes it at the top of the kernel source):
 
   {"repo": "https://github.com/DK7602/VoxaVersa", "rev": "<commit>",
    "data": "/kaggle/input/<dataset>",        the attached dataset
-   "only": ["cymatics_female_blend"],        voices from the kit's voices.json to train
-   "words_tests": {"cymatics_female_blend": [["/kaggle/input/<dataset>/user_excerpt.wav", 12, "lyric"]]},
+   "only": ["studio_female_blend"],        voices from the kit's voices.json to train
+   "words_tests": {"studio_female_blend": [["/kaggle/input/<dataset>/user_excerpt.wav", 12, "lyric"]]},
    "military": {"like": ["3 female=bf3_ref_a.wav,bf3_ref_b.wav"]},
                                              optional: rebuild the military-band singers' audio (military_test.py:
                                              download, separate, clean, group) and find singers by reference takes

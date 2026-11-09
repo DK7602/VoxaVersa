@@ -276,6 +276,12 @@ installed pack, so packs are never rewritten when the assignment changes. With o
 gender that singer powers all of that gender's voices; the voices spread out as more singers finish.
 `train_queue.py assign --work W` re-writes the file on its own (the Colab notebook does it at every start).
 
+An imported entry only needs the fields it changes; the others stay. An assignment can also rename packs,
+`"renamed": { "<old id>": "<new id>" }`: VoxaVersa gives installed packs with an old id the new one (in voice.json
+and as the folder name) and moves their assignment entries, singers chosen by ear and favourites with them. It
+keeps the renames, so a pack imported later under its old id is renamed too. To train a renamed singer under its
+new id, give its row in the data kit's `voices.json` an `"id"`.
+
 ## 6. Installing the voice in VoxaVersa
 
 Once per computer:

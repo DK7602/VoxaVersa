@@ -84,6 +84,12 @@ const VoiceProfile* VoiceLibrary::findById (const juce::String& id) const
     for (auto& v : voices)
         if (v.id == id)
             return &v;
+
+    // a singer saved (e.g. in a song) under the id it had before a voice assignment renamed it
+    if (const auto renamed = renamedIds.getValue (id, {}); renamed.isNotEmpty() && renamed != id)
+        for (auto& v : voices)
+            if (v.id == renamed)
+                return &v;
     return nullptr;
 }
 
@@ -383,6 +389,52 @@ static void applyAssignment (VoiceProfile& p, const juce::var& entry)
     }
 }
 
+/** A pack id as VoxaVersa writes it after "user-" ("Studio_Female A" -> "studio-female-a"). */
+static juce::String normalisedPackId (const juce::String& s)
+{
+    return s.trim().toLowerCase().replaceCharacters (" _/\\", "----");
+}
+
+/** The pack ids an assignment renames ("renamed": { "<old id>": "<new id>" }), normalised. */
+static juce::StringPairArray readRenames (const juce::File& file)
+{
+    juce::StringPairArray renames;
+    if (! file.existsAsFile())
+        return renames;
+
+    const auto json = juce::JSON::parse (file);
+    if (auto* obj = json.getProperty ("renamed", {}).getDynamicObject())
+    {
+        for (const auto& e : obj->getProperties())
+        {
+            const auto from = normalisedPackId (e.name.toString());
+            const auto to = normalisedPackId (e.value.toString());
+            if (from.isNotEmpty() && to.isNotEmpty() && from != to)
+                renames.set (from, to);
+        }
+    }
+    return renames;
+}
+
+/** Moves the assignment entries of renamed packs to their new id (an entry already there for the new id wins). */
+static void renameEntries (juce::DynamicObject& packs, const juce::StringPairArray& renames)
+{
+    juce::Array<juce::Identifier> keys;
+    for (const auto& e : packs.getProperties())
+        keys.add (e.name);
+
+    for (const auto& key : keys)
+    {
+        const auto to = renames.getValue (normalisedPackId (key.toString()), {});
+        if (to.isEmpty())
+            continue;
+        const auto entry = packs.getProperty (key);
+        packs.removeProperty (key);
+        if (! packs.hasProperty (to))
+            packs.setProperty (to, entry);
+    }
+}
+
 /** A built-in voice sung by `singer` (a pack with a voice model). */
 static void giveModel (VoiceProfile& v, const VoiceProfile& singer)
 {
@@ -414,6 +466,7 @@ static void giveSound (VoiceProfile& v, const juce::String& name)
 void VoiceLibrary::rescanUserVoices (const juce::File& dir)
 {
     scannedDirectory = dir;
+    migrateRenamedPacks (dir, {});
     aiSingers.clear();
     voices.resize (numFactoryVoices);
     const auto sounds = juce::JSON::parse (dir.getChildFile (soundsFileName));
@@ -562,7 +615,8 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
     sendChangeMessage();
 }
 
-static bool installPack (const juce::File& source, const juce::File& voicesDir, juce::String& error, juce::String& name)
+static bool installPack (const juce::File& source, const juce::File& voicesDir, juce::String& error, juce::String& name,
+                         juce::File& installedDir)
 {
     if (! voicesDir.createDirectory())
     {
@@ -624,6 +678,7 @@ static bool installPack (const juce::File& source, const juce::File& voicesDir, 
     }
 
     name = p.name;
+    installedDir = installed;
     return true;
 }
 
@@ -716,8 +771,10 @@ bool VoiceLibrary::applyNeutralSingers()
 bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& error)
 {
     juce::String name;
-    if (! installPack (source, getUserVoicesDirectory(), error, name))
+    juce::File installed;
+    if (! installPack (source, getUserVoicesDirectory(), error, name, installed))
         return false;
+    migrateRenamedPacks (getUserVoicesDirectory(), { installed });
 
     rescanUserVoices();
     return true;
@@ -729,29 +786,149 @@ static bool isAssignmentFile (const juce::String& fileName)
     return fileName.containsIgnoreCase ("assignment") && fileName.endsWithIgnoreCase (".json");
 }
 
-/** Merges an imported assignment into <Voices>/voice_assignment.json (newer entries replace older ones).
-    Returns the number of packs it describes, or -1 if it isn't a voice assignment. */
-static int mergeAssignment (const juce::File& imported, const juce::File& voicesDir)
+namespace
 {
-    const auto incoming = readAssignment (imported);
-    auto* in = incoming.getDynamicObject();
-    if (in == nullptr || ! voicesDir.createDirectory())
-        return -1;
+    struct MergeResult
+    {
+        int packs = -1;     // packs the imported assignment describes; -1: not a voice assignment
+        int renamed = 0;    // pack ids it renames
+    };
+}
+
+/** Merges an imported assignment into <Voices>/voice_assignment.json. An entry gives the fields it changes:
+    newer fields replace older ones, fields it leaves out are kept. Renamed pack ids ("renamed") are kept too, and
+    move the entries of the old ids to the new ones. */
+static MergeResult mergeAssignment (const juce::File& imported, const juce::File& voicesDir)
+{
+    const auto root = juce::JSON::parse (imported);
+    auto* in = root.getProperty ("packs", {}).getDynamicObject();
+    const auto incomingRenames = readRenames (imported);
+    if ((in == nullptr && incomingRenames.size() == 0) || ! voicesDir.createDirectory())
+        return {};
 
     const auto target = voicesDir.getChildFile (VoiceLibrary::assignmentFileName);
+    auto renames = readRenames (target);
+    renames.addArray (incomingRenames);
+
     auto merged = readAssignment (target);
     if (merged.getDynamicObject() == nullptr)
         merged = juce::var (new juce::DynamicObject());
+    auto& packs = *merged.getDynamicObject();
+    renameEntries (packs, renames);
 
-    for (const auto& entry : in->getProperties())
-        merged.getDynamicObject()->setProperty (entry.name, entry.value);
+    if (in != nullptr)
+    {
+        juce::var incoming (new juce::DynamicObject());
+        for (const auto& entry : in->getProperties())
+            incoming.getDynamicObject()->setProperty (entry.name, entry.value);
+        renameEntries (*incoming.getDynamicObject(), renames);
 
-    auto root = std::make_unique<juce::DynamicObject>();
-    root->setProperty ("packs", merged);
-    if (! target.replaceWithText (juce::JSON::toString (juce::var (root.release()))))
-        return -1;
+        for (const auto& entry : incoming.getDynamicObject()->getProperties())
+        {
+            auto* older = packs.getProperty (entry.name).getDynamicObject();
+            auto* newer = entry.value.getDynamicObject();
+            if (older == nullptr || newer == nullptr)
+            {
+                packs.setProperty (entry.name, entry.value);
+                continue;
+            }
+            juce::var combined (new juce::DynamicObject());
+            for (const auto& field : older->getProperties())
+                combined.getDynamicObject()->setProperty (field.name, field.value);
+            for (const auto& field : newer->getProperties())
+                combined.getDynamicObject()->setProperty (field.name, field.value);
+            packs.setProperty (entry.name, combined);
+        }
+    }
 
-    return in->getProperties().size();
+    auto out = std::make_unique<juce::DynamicObject>();
+    out->setProperty ("packs", merged);
+    if (renames.size() > 0)
+    {
+        auto renamed = std::make_unique<juce::DynamicObject>();
+        for (const auto& from : renames.getAllKeys())
+            renamed->setProperty (from, renames[from]);
+        out->setProperty ("renamed", juce::var (renamed.release()));
+    }
+    if (! target.replaceWithText (juce::JSON::toString (juce::var (out.release()))))
+        return {};
+
+    return { in != nullptr ? in->getProperties().size() : 0, incomingRenames.size() };
+}
+
+void VoiceLibrary::migrateRenamedPacks (const juce::File& dir, const juce::Array<juce::File>& justImported)
+{
+    renamedIds.clear();
+    const auto assignmentFile = dir.getChildFile (assignmentFileName);
+    const auto renames = readRenames (assignmentFile);
+    for (const auto& from : renames.getAllKeys())
+        renamedIds.set ("user-" + from, "user-" + renames[from]);
+    if (renames.size() == 0 || ! dir.isDirectory())
+        return;
+
+    // installed packs: the new id in voice.json (with the assignment's name) and as the folder name
+    const auto packs = readAssignment (assignmentFile);
+    for (const auto& packDir : dir.findChildFiles (juce::File::findDirectories, false))
+    {
+        const auto manifest = packDir.getChildFile ("voice.json");
+        auto json = juce::JSON::parse (manifest);
+        auto* obj = json.getDynamicObject();
+        if (obj == nullptr)
+            continue;
+
+        const auto name = obj->hasProperty ("name") ? obj->getProperty ("name").toString() : packDir.getFileName();
+        const auto newId = renames.getValue (normalisedPackId (obj->hasProperty ("id") ? obj->getProperty ("id").toString() : name), {});
+        if (newId.isEmpty())
+            continue;
+
+        const auto target = dir.getChildFile (newId);
+        if (target != packDir && target.exists())
+        {
+            // the same singer twice: a pack just imported under its old id replaces the one installed before
+            if (! justImported.contains (packDir))
+            {
+                packDir.deleteRecursively();
+                continue;
+            }
+            target.deleteRecursively();
+        }
+
+        obj->setProperty ("id", newId);
+        if (const auto newName = packs.getProperty (newId, {}).getProperty ("name", {}).toString(); newName.isNotEmpty())
+            obj->setProperty ("name", newName);
+        if (manifest.replaceWithText (juce::JSON::toString (json)) && target != packDir)
+            packDir.moveFileTo (target);
+    }
+
+    // singers chosen by ear and favourites follow
+    const auto choicesFile = dir.getChildFile (choicesFileName);
+    auto choices = juce::JSON::parse (choicesFile);
+    if (auto* chosen = choices.getDynamicObject())
+    {
+        juce::Array<juce::Identifier> moved;
+        for (const auto& entry : chosen->getProperties())
+            if (renamedIds.getValue (entry.value.toString(), {}).isNotEmpty())
+                moved.add (entry.name);
+        for (const auto& voiceId : moved)
+            chosen->setProperty (voiceId, renamedIds.getValue (chosen->getProperty (voiceId).toString(), {}));
+        if (! moved.isEmpty())
+            choicesFile.replaceWithText (juce::JSON::toString (choices));
+    }
+
+    bool favouritesChanged = false;
+    for (auto& id : favourites)
+    {
+        if (const auto to = renamedIds.getValue (id, {}); to.isNotEmpty())
+        {
+            id = to;
+            favouritesChanged = true;
+        }
+    }
+    if (favouritesChanged)
+    {
+        favourites.removeDuplicates (false);
+        saveFavourites();
+    }
 }
 
 static bool isPitchTrackerFile (const juce::String& fileName)
@@ -789,6 +966,8 @@ juce::String VoiceLibrary::ImportResult::summary() const
                               : ". Placed in the built-in voices: " + juce::StringArray (names.begin(), shown).joinIntoString (", ")
                                   + (names.size() > shown ? " and " + juce::String (names.size() - shown) + " more" : juce::String()));
     }
+    if (renamedPacks > 0)
+        s << (s.isEmpty() ? juce::String() : juce::String (". ")) << renamedPacks << (renamedPacks == 1 ? " singer renamed" : " singers renamed");
     if (errors.size() > 0)
         s << (s.isEmpty() ? "Import failed: " : " (") << errors[0]
           << (errors.size() > 1 ? " and " + juce::String (errors.size() - 1) + " more" : juce::String())
@@ -802,13 +981,20 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
     const auto voicesDir = userDataDirectory.getChildFile ("Voices");
     const auto encodersDir = userDataDirectory.getChildFile ("Encoders");
 
+    juce::Array<juce::File> justImported;
     auto pack = [&] (const juce::File& f)
     {
         juce::String error, name;
-        if (installPack (f, voicesDir, error, name))
+        juce::File installed;
+        if (installPack (f, voicesDir, error, name, installed))
+        {
             r.installed.add (name);
+            justImported.add (installed);
+        }
         else
+        {
             r.errors.add (f.getFileName() + ": " + error);
+        }
     };
 
     auto encoder = [&] (const juce::File& f)
@@ -826,13 +1012,15 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
 
     auto assignment = [&] (const juce::File& f)
     {
-        const int n = mergeAssignment (f, voicesDir);
-        if (n < 0)
+        const auto merged = mergeAssignment (f, voicesDir);
+        if (merged.packs < 0)
         {
             r.errors.add (f.getFileName() + ": not a valid voice assignment");
             return;
         }
-        r.assignedPacks += n;
+        r.assignedPacks += merged.packs;
+        r.renamedPacks += merged.renamed;
+        migrateRenamedPacks (voicesDir, justImported);
 
         const auto incoming = readAssignment (f);
         for (const auto& dir : voicesDir.findChildFiles (juce::File::findDirectories, false))
@@ -913,8 +1101,11 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
         }
     }
 
-    if (r.installed.size() > 0 || r.assignedPacks > 0)
+    if (r.installed.size() > 0 || r.assignedPacks > 0 || r.renamedPacks > 0)
+    {
+        migrateRenamedPacks (voicesDir, justImported);
         rescanUserVoices (voicesDir);
+    }
     return r;
 }
 
