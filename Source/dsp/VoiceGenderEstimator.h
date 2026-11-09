@@ -32,6 +32,9 @@ public:
     float getMedianF3F4() const noexcept      { return medianF34; }
     int getNumVoicedFrames() const noexcept   { return totalFrames; }
 
+    /** Offline: the gender of the whole take, known beforehand (it stays until reset()). */
+    void prime (Gender g) noexcept   { primed = g; if (g != Gender::Unknown) gender = g; }
+
     /** Re-evaluates the decision now (normally done every 50 analysed frames). */
     void finalise() noexcept { updateDecision(); }
 
@@ -60,7 +63,7 @@ private:
     float peakRms = 0.0f;
     std::vector<float> scratch;
 
-    Gender gender = Gender::Unknown;
+    Gender gender = Gender::Unknown, primed = Gender::Unknown;
     float score = 0.0f, medianF0 = 0.0f, medianF34 = 0.0f;
     float prevSample = 0.0f;
 };

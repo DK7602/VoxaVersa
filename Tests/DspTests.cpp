@@ -605,6 +605,57 @@ public:
             }
         }
 
+        beginTest ("A man singing around C4 into an alto: her octave from the first note when the take is known");
+        {
+            // GTSinger Alto 1 (G#3 - A4, middle D4) as Female Blues' singer, a man singing C4 - E4 (a user's song: sung
+            // an octave up, up to E5, for its first 9.5 s, then dropped to his octave).
+            auto settings = [] (int sourceGender)
+            {
+                dsp::PitchMapper::Settings s;
+                s.pitchPreserve = false;
+                s.sourceGender = sourceGender;
+                s.traits.gender = VoiceGender::Female;
+                s.traits.aiCentreMidi = 62.1f;
+                s.traits.aiLowMidi = 56;
+                s.traits.aiHighMidi = 69;
+                s.aiRegister = true;
+                return s;
+            };
+            const std::initializer_list<float> song { 59.0f, 60.0f, 57.0f, 61.0f, 64.0f, 63.0f };
+
+            for (int source : { 0, 1 })
+            {
+                const juce::String who = source == 0 ? "Source Voice Auto" : "Source Voice Male";
+                {
+                    // a render: the whole take is analysed first
+                    dsp::PitchMapper mapper;
+                    mapper.prepare (48000.0, 256);
+                    std::vector<dsp::PitchDetector::Frame> take;
+                    for (float note : song)
+                        for (int i = 0; i < 188; ++i)
+                        {
+                            dsp::PitchDetector::Frame f;
+                            f.voiced = true;
+                            f.frequencyHz = music::midiToHz (note);
+                            f.confidence = 0.95f;
+                            take.push_back (f);
+                        }
+                    mapper.primeSource (take, 256.0f / 48000.0f, 1);
+                    const auto s = settings (source);
+                    expectEquals (juce::roundToInt (sing (mapper, s, song, 1).globalOffset), 0, who + ": rendered, first phrase");
+                    expectEquals (juce::roundToInt (sing (mapper, s, song, 6).globalOffset), 0, who + ": rendered, all through");
+                }
+                {
+                    // live: the first phrases follow a typical man's G#3; by the fourth 1 s phrase he is in his octave
+                    dsp::PitchMapper mapper;
+                    mapper.prepare (48000.0, 256);
+                    const auto s = settings (source);
+                    expectEquals (juce::roundToInt (sing (mapper, s, song, 4).globalOffset), 0, who + ": live, fourth phrase");
+                    expectEquals (juce::roundToInt (sing (mapper, s, song, 6).globalOffset), 0, who + ": live, and on");
+                }
+            }
+        }
+
         beginTest ("A hard-tune voice snaps every note at once, also with tuning switched off");
         {
             dsp::PitchMapper mapper;

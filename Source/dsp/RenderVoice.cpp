@@ -13,6 +13,10 @@ bool renderVoice (const juce::AudioBuffer<float>& source, const VoiceRenderJob& 
 
     VoiceChain chain;
     chain.prepare (sr, block, Quality::HighQuality);   // latency is irrelevant offline
+    // The whole take is known: the octave the AI singer sings in, the input's gender and the auto key are chosen
+    // from all of it before the first note, not learned as it goes (no first phrase an octave off, then a jump).
+    const auto prime = [&chain, &source] { chain.primeSource (source.getReadPointer (0), source.getNumSamples()); };
+    prime();
     const int latency = chain.getLatencySamples();
     const int length = source.getNumSamples() + (int) (sr * job.tailSeconds);
     const int total = length + latency;
@@ -63,6 +67,7 @@ bool renderVoice (const juce::AudioBuffer<float>& source, const VoiceRenderJob& 
             }
         }
         chain.reset();
+        prime();
         report (0.55f);
     }
 

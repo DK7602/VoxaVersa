@@ -140,6 +140,17 @@ bool VoiceChain::setNeuralStream (neural::NeuralVoiceStream* stream)
     return true;
 }
 
+void VoiceChain::primeSource (const float* input, int numSamples)
+{
+    if (input == nullptr || numSamples <= 0)
+        return;
+    const int hop = detector.getHopSize();
+    const auto frames = PitchDetector::analyse (input, numSamples, sr, hop, detector.getMinHz(), detector.getMaxHz());
+    const auto gender = VoiceGenderEstimator::analyse (input, numSamples, sr);
+    genderEstimator.prime (gender);
+    mapper.primeSource (frames, (float) hop / (float) sr, (int) gender);
+}
+
 void VoiceChain::clearTails()
 {
     delay.reset();

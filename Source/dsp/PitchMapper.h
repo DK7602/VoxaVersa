@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <vector>
 
 #include "PitchDetector.h"
 #include "Psola.h"
@@ -59,6 +60,11 @@ public:
     float getSourceMedianMidi() const noexcept  { return sourceMedian; }
     int getRegisterOctaves() const noexcept     { return registerOctaves; }
 
+    /** Offline (a render of a whole take): the take's pitches and its voice's gender, known before its first note,
+        so the register (the AI singer's octave) and the auto key are right from the start instead of being learned
+        as the take goes (a first phrase an octave off, then a jump). Not on the audio thread. */
+    void primeSource (const std::vector<PitchDetector::Frame>& frames, float frameSeconds, int gender);
+
     /** Formant baseline of the source voice in "formant semitones" (male -1, female +1, unknown 0). */
     float getSourceFormantBaseline (int sourceGenderSetting) const noexcept;
 
@@ -90,6 +96,8 @@ private:
     int genderEstimate = 0;
     int registerOctaves = 0;
     bool registerLocked = false;
+    bool primed = false;          // primeSource(): the whole take's notes are known
+    float lockedEvidence = 0.0f;  // how much of the input had been heard when the octave was chosen (0..1)
     int lockedCentre = -1000, lockedSource = -1;
     bool lockedOnGuess = false;   // locked while the source's gender was guessed from its pitch
     KeyDetector keyDetector;

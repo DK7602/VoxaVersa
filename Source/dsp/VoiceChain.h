@@ -64,6 +64,9 @@ public:
     /** Allocates everything. Not real-time safe. */
     void prepare (double sampleRate, int maxBlockSize, Quality quality);
     void reset();
+    /** Offline: analyses a whole take before it is processed (its pitches and its voice's gender), so the register
+        and the auto key are right from its first note (PitchMapper::primeSource). Call after prepare() / reset(). */
+    void primeSource (const float* input, int numSamples);
     /** Clears the reverb and delay tails (the transport stopped; learned pitch / key / gender state stays). */
     void clearTails();
 

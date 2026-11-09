@@ -38,6 +38,7 @@ void VoiceGenderEstimator::reset()
     f0Count = f0Write = pitchDecimator = 0;
     peakRms = 0.0f;
     gender = Gender::Unknown;
+    primed = Gender::Unknown;
     score = medianF0 = medianF34 = 0.0f;
 }
 
@@ -256,6 +257,12 @@ void VoiceGenderEstimator::updateDecision() noexcept
     medianF0 = median (f0History, f0Count);
     medianF34 = median (f34History, historyCount);
     score = std::log (medianF0 / f0Centre) / f0Scale + std::log (medianF34 / formantCentre) / formantScale - decisionOffset;
+
+    if (primed != Gender::Unknown)
+    {
+        gender = primed;   // the whole take's decision (a render)
+        return;
+    }
 
     // The more voice we've heard, the more evidence it takes to change our mind.
     const float hysteresis = totalFrames < 600 ? 0.15f : 0.6f;

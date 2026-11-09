@@ -31,6 +31,8 @@ void PitchMapper::reset()
     genderEstimate = 0;
     registerOctaves = 0;
     registerLocked = false;
+    primed = false;
+    lockedEvidence = 0.0f;
     lockedCentre = -1000;
     lockedSource = -1;
     lockedOnGuess = false;
@@ -72,6 +74,30 @@ float PitchMapper::harmonyShift (const PitchFrame& f, HarmonyInterval interval, 
     return juce::jlimit (-36.0f, 36.0f, target - f.srcMidi);
 }
 
+void PitchMapper::primeSource (const std::vector<PitchDetector::Frame>& frames, float frameSeconds, int gender)
+{
+    for (const auto& f : frames)
+    {
+        if (! f.voiced || f.frequencyHz <= 0.0f)
+            continue;
+        const float src = music::hzToMidi (f.frequencyHz);
+        const float w = juce::jlimit (0.0f, 1.0f, f.confidence) * frameSeconds;
+        sourceNotes[(size_t) juce::jlimit (0, 127, (int) std::lround (src))] += w;
+        sourceNotesTotal += w;
+        sourceWeight += w;
+        keyDetector.addPitch (src, w);
+    }
+    if (sourceNotesTotal > 0.0f)
+    {
+        primed = true;
+        sourceMedian = sourcePercentile (0.5f);
+        keyDetector.update();
+        keyKnown = keyDetector.getTotalWeight() > 2.0f && keyDetector.getConfidence() > 0.15f;
+    }
+    if (gender != 0)
+        genderEstimate = gender;
+}
+
 float PitchMapper::sourcePercentile (float fraction) const noexcept
 {
     if (sourceNotesTotal <= 0.0f)
@@ -89,12 +115,15 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
     const bool ai = s.aiRegister && s.traits.aiCentreMidi > 0.0f;
     const int centre = ai ? 1000 + juce::roundToInt (s.traits.aiCentreMidi) : s.traits.centreMidi();
     int source = s.sourceGender != 0 ? s.sourceGender : genderEstimate;
+    // The input's middle note: the middle of all it has sung (the whole take's in a render). The running average
+    // jumps with a single high phrase, which flipped a voice's octave once a typical singer's guess counted less.
+    const float heardMedian = (primed || sourceNotesTotal > 0.5f) ? sourcePercentile (0.5f) : sourceMedian;
     // Until the estimator knows the voice (it needs a few seconds of singing) its pitch says it: a man's below C4, a
     // woman's above. Without it a song's first phrase was sung at the input's pitch and the next one jumped an
     // octave (a man into Female Pop: "goes from deep to high pitched"; every take and DAW export starts fresh).
     const bool guessed = source == 0 && sourceWeight > 0.0f;
     if (guessed)
-        source = sourceMedian < 60.0f ? 1 : 2;
+        source = heardMedian < 60.0f ? 1 : 2;
 
     // Once the input voice is known the octave is locked, so phrases never jump between registers.
     // It is re-evaluated only for a new target voice or a different source gender (an AI voice: see below; when
@@ -116,12 +145,14 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
         // the octave closest to the middle of that range, the gender's usual direction on a near tie. The song's
         // high notes count too: above the singer's top a voice turns thin and "chipmunk", which is worse than
         // dipping below the bottom. A live input reveals its range only as the song goes on, so a typical singer
-        // of its gender (median G#3 for a man, D#4 for a woman, +-5 semitones) weighs in until ~10 s were heard.
+        // of its gender (median G#3 for a man, D#4 for a woman, +-5 semitones) weighs in until ~5 s were heard (a
+        // render knows the whole take before its first note). A man singing around C4 into an alto (GTSinger Alto 1,
+        // middle D4) was sung an octave up for a song's first 9 s by the typical man's G#3, up to E5, far above her.
         const int preferred = k;
         const float aim = s.traits.aiCentreMidi + s.traits.registerBiasSemis;
         const float prior = source == 2 ? 63.0f : 56.0f;
-        const float w = sourceNotesTotal > 0.0f ? juce::jlimit (0.0f, 1.0f, sourceWeight / 10.0f) : 0.0f;
-        const float median = prior + (sourceMedian - prior) * w;
+        const float w = primed ? 1.0f : (sourceNotesTotal > 0.0f ? juce::jlimit (0.0f, 1.0f, sourceWeight / 5.0f) : 0.0f);
+        const float median = prior + (heardMedian - prior) * w;
         const float low = prior - 5.0f + (sourcePercentile (0.05f) - (prior - 5.0f)) * w;
         const float high = prior + 5.0f + (sourcePercentile (0.95f) - (prior + 5.0f)) * w;
         auto cost = [&] (int o)
@@ -138,14 +169,19 @@ void PitchMapper::updateRegister (const Settings& s) noexcept
                 k = o;
 
         // Singers don't change octave in the middle of a song: once phrases were sung in one, another octave
-        // takes over only when it is far better (the input turned out far from a typical singer).
-        if (sameTarget && cost (registerOctaves) <= cost (k) + 6.0f)
+        // takes over only when it is far better (the input turned out far from a typical singer). An octave chosen
+        // on little of the input (the typical singer's guess) gives way sooner, at the next phrase.
+        if (sameTarget && cost (registerOctaves) <= cost (k) + 6.0f * juce::jmax (0.5f, lockedEvidence))
             k = registerOctaves;
+        if (! sameTarget || k != registerOctaves)
+            lockedEvidence = w;
+        else
+            lockedEvidence = juce::jmax (lockedEvidence, w);
     }
     else if (heard)
     {
-        while (k > -2 && sourceMedian + 12.0f * (float) k > (float) s.traits.rangeHighMidi + 3.0f) --k;
-        while (k < 2 && sourceMedian + 12.0f * (float) k < (float) s.traits.rangeLowMidi - 3.0f) ++k;
+        while (k > -2 && heardMedian + 12.0f * (float) k > (float) s.traits.rangeHighMidi + 3.0f) --k;
+        while (k < 2 && heardMedian + 12.0f * (float) k < (float) s.traits.rangeLowMidi - 3.0f) ++k;
     }
     registerOctaves = k;
 
