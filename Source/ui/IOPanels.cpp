@@ -127,7 +127,6 @@ bool InputPanel::isAudioFile (const juce::String& path)
 void InputPanel::resized()
 {
     linkButton.setBounds (getWidth() - 50, 8, 36, 32);
-    renderButton.setBounds (getWidth() - 58 - 160, 9, 160, 32);
     scope.setBounds (16, 54, getWidth() - 32, 100);
     captionArea = { 16.0f, 156.0f, (float) getWidth() - 32.0f, 30.0f };
 
@@ -406,6 +405,7 @@ OutputPanel::~OutputPanel()
 void OutputPanel::resized()
 {
     linkButton.setBounds (getWidth() - 50, 8, 36, 32);
+    renderButton.setBounds (getWidth() - 58 - 160, 9, 160, 32);
     scope.setBounds (16, 54, getWidth() - 32, 100);
     gain.setBounds (70, 196, 180, 186);
     meter.setBounds (300, 190, 126, 160);
