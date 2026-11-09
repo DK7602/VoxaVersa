@@ -19,6 +19,9 @@ VOXAVERSA_KAGGLE (the push tool writes it at the top of the kernel source):
    "vocalset": ["male8"],                    optional: VocalSet singers to download and clean first (fetch_vocalset.py
                                              + prepare_dataset.py, as for the CPU queue); "only" then names them
                                              (vocalset_male8)
+   "gtsinger": ["EN-Alto-1"],                optional: GTSinger singers (CC BY-NC-SA 4.0: personal, non-commercial
+   "gtsinger_minutes": 70,                   use only) to download and clean first (fetch_gtsinger.py); "only"
+                                             then names them (gtsinger_en_alto_1)
    "hours": 11}                              stop (with checkpoints) before Kaggle's 12-hour limit
 
 Output (/kaggle/working/queue): queue_state.json and QUEUE_STATUS.md (evaluations: validation mel, singer
@@ -96,6 +99,15 @@ def main():
     if CFG.get("vocalset"):     # in the foreground: the queue below trains them
         cs.run("%s %s vocalset --work %s --python %s --scratch %s --singers %s"
                % (py, q, WORK, py, TMP + "/scratch", " ".join(CFG["vocalset"])))
+    if CFG.get("gtsinger"):     # personal use only: the voices it trains must never be shared or sold
+        raw, csv = TMP + "/gtsinger", TMP + "/gtsinger.csv"
+        cs.run("%s %s --out %s --manifest %s --minutes %s --singers %s"
+               % (py, tools + "/fetch_gtsinger.py", raw, csv, CFG.get("gtsinger_minutes", 70), " ".join(CFG["gtsinger"])))
+        data = os.path.join(WORK, "data")
+        cs.run("%s %s --manifest %s --out %s" % (py, tools + "/prepare_dataset.py", csv, data + "/datasets_gtsinger"))
+        import fetch_gtsinger
+        print("GTSinger singers ready: " + ", ".join(fetch_gtsinger.queue_voices(data)), flush=True)
+        shutil.rmtree(raw, ignore_errors=True)
     if CFG.get("military"):
         likes = []
         for spec in CFG["military"].get("like", []):

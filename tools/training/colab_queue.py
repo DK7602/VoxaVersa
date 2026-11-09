@@ -317,6 +317,9 @@ def write_queue(args):
     military = [v for v in (load(os.path.join(data, "voices_military.json")) or {}).get("voices", [])
                 if os.path.isdir(os.path.join(data, v["dataset"]))]
     voices += military
+    # GTSinger singers (fetch_gtsinger.py; CC BY-NC-SA 4.0, personal use only), once prepared
+    voices += [v for v in (load(os.path.join(data, "voices_gtsinger.json")) or {}).get("voices", [])
+               if os.path.isdir(os.path.join(data, v["dataset"]))]
     if args.only:
         voices = [v for v in voices if v["name"] in args.only]
     # voices already started keep going first, so adding singers later never interrupts one
