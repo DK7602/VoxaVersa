@@ -632,9 +632,29 @@ static juce::StringArray filesNamedBy (const juce::File& manifest)
     return names;
 }
 
-static bool installPack (const juce::File& source, const juce::File& voicesDir, juce::String& error, juce::String& name,
-                         juce::File& installedDir)
+/** The installed singer an update is for: the folder named as the update, else the pack whose voice.json has its id. */
+static juce::File findInstalledPack (const juce::File& voicesDir, const juce::String& folderName, const juce::String& id)
 {
+    auto idOf = [] (const juce::File& dir)
+    {
+        const auto json = juce::JSON::parse (dir.getChildFile ("voice.json"));
+        return normalisedPackId (json.getProperty ("id", json.getProperty ("name", dir.getFileName())).toString());
+    };
+    if (const auto named = voicesDir.getChildFile (folderName); named.getChildFile ("voice.json").existsAsFile())
+        if (id.isEmpty() || idOf (named) == normalisedPackId (id))
+            return named;
+    if (id.isNotEmpty())
+        for (const auto& dir : voicesDir.findChildFiles (juce::File::findDirectories, false))
+            if (! dir.getFileName().startsWith ("import") && dir.getChildFile ("voice.json").existsAsFile()
+                && idOf (dir) == normalisedPackId (id))
+                return dir;
+    return {};
+}
+
+static bool installPack (const juce::File& source, const juce::File& voicesDir, juce::String& error, juce::String& name,
+                         juce::File& installedDir, bool& wasUpdate)
+{
+    wasUpdate = false;
     if (! voicesDir.createDirectory())
     {
         error = "Could not create " + voicesDir.getFullPathName();
@@ -642,8 +662,8 @@ static bool installPack (const juce::File& source, const juce::File& voicesDir, 
     }
 
     // Unpacked beside the installed singer first: a pack that doesn't load leaves the installed one as it was.
-    const auto installed = voicesDir.getChildFile (source.isDirectory() ? source.getFileName() : source.getFileNameWithoutExtension());
-    const auto staged = voicesDir.getNonexistentChildFile ("import", "");
+    auto installed = voicesDir.getChildFile (source.isDirectory() ? source.getFileName() : source.getFileNameWithoutExtension());
+    auto staged = voicesDir.getNonexistentChildFile ("import", "");
 
     if (source.isDirectory())
     {
@@ -682,6 +702,59 @@ static bool installPack (const juce::File& source, const juce::File& voicesDir, 
                 tmp.moveFileTo (staged);
             }
         }
+    }
+
+    // An update ("update": true in its voice.json, e.g. a singer's feature index): the installed singer with the
+    // update's files added and its voice.json fields over hers ("model" key by key); her id and name stay.
+    const auto update = juce::JSON::parse (staged.getChildFile ("voice.json"));
+    if (update.getDynamicObject() != nullptr && (bool) update.getProperty ("update", false))
+    {
+        const auto id = update.getProperty ("id", {}).toString();
+        const auto label = update.getProperty ("name", id).toString();
+        const auto target = findInstalledPack (voicesDir, installed.getFileName(), id);
+        if (target == juce::File())
+        {
+            staged.deleteRecursively();
+            error = "an update for " + label + ": import " + label + " itself first";
+            return false;
+        }
+
+        const auto merged = voicesDir.getNonexistentChildFile ("import", "");
+        bool ok = target.copyDirectoryTo (merged);
+        for (const auto& f : staged.findChildFiles (juce::File::findFiles, true))
+        {
+            if (f == staged.getChildFile ("voice.json"))
+                continue;
+            const auto dest = merged.getChildFile (f.getRelativePathFrom (staged));
+            ok = dest.getParentDirectory().createDirectory() && f.copyFileTo (dest) && ok;
+        }
+        auto manifest = juce::JSON::parse (merged.getChildFile ("voice.json"));
+        if (auto* into = manifest.getDynamicObject(); into != nullptr && ok)
+        {
+            for (const auto& field : update.getDynamicObject()->getProperties())
+            {
+                const auto key = field.name.toString();
+                if (key == "update" || key == "id" || key == "name")
+                    continue;
+                auto* section = into->getProperty (field.name).getDynamicObject();
+                if (section != nullptr && field.value.getDynamicObject() != nullptr)
+                    for (const auto& entry : field.value.getDynamicObject()->getProperties())
+                        section->setProperty (entry.name, entry.value);
+                else
+                    into->setProperty (field.name, field.value);
+            }
+            ok = merged.getChildFile ("voice.json").replaceWithText (juce::JSON::toString (manifest));
+        }
+        staged.deleteRecursively();
+        if (! ok || manifest.getDynamicObject() == nullptr)
+        {
+            merged.deleteRecursively();
+            error = "Could not update " + label;
+            return false;
+        }
+        staged = merged;
+        installed = target;
+        wasUpdate = true;
     }
 
     // An update of an installed singer may leave out files it already has (its model, ~90 MB): they are kept.
@@ -811,7 +884,8 @@ bool VoiceLibrary::importVoicePack (const juce::File& source, juce::String& erro
 {
     juce::String name;
     juce::File installed;
-    if (! installPack (source, getUserVoicesDirectory(), error, name, installed))
+    bool wasUpdate = false;
+    if (! installPack (source, getUserVoicesDirectory(), error, name, installed, wasUpdate))
         return false;
     migrateRenamedPacks (getUserVoicesDirectory(), { installed });
 
@@ -990,6 +1064,9 @@ juce::String VoiceLibrary::ImportResult::summary() const
         s << "Voice installed: " << installed[0];
     else if (installed.size() > 1)
         s << installed.size() << " voices installed";
+    if (updated.size() > 0)
+        s << (s.isEmpty() ? juce::String() : juce::String (" + ")) << (updated.size() == 1 ? "Singer updated: " + updated[0]
+                                                                          : juce::String (updated.size()) + " singers updated");
     if (encoderInstalled)
         s << (s.isEmpty() ? "AI content encoder installed" : " + AI content encoder");
     if (pitchTrackerInstalled)
@@ -1025,9 +1102,10 @@ VoiceLibrary::ImportResult VoiceLibrary::importVoices (const juce::File& source,
     {
         juce::String error, name;
         juce::File installed;
-        if (installPack (f, voicesDir, error, name, installed))
+        bool wasUpdate = false;
+        if (installPack (f, voicesDir, error, name, installed, wasUpdate))
         {
-            r.installed.add (name);
+            (wasUpdate ? r.updated : r.installed).add (name);
             justImported.add (installed);
         }
         else

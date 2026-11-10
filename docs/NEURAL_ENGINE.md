@@ -527,10 +527,11 @@ python3 tools/neural/package_voice.py ... --index my_voice_index.npy
 
 (`--audio <recordings> --encoder contentvec-768.onnx` instead of `--features` computes the features with the
 plug-in's encoder.) The training queue (`train_queue.py`) does this by itself. For a singer already installed,
-`build_index.py update --pack my_voice.vxpack --index my_voice_index.npy --out update/my-voice.vxpack` writes an
-*update*: its `voice.json` and the index, without the model. Imported like any pack (named as the installed
-pack's folder), it keeps the model the installed singer has; a pack that doesn't load leaves the installed one
-as it was.
+`build_index.py update --id my-voice --index my_voice_index.npy --out my-voice-index.vxpack` writes an *update*:
+a `voice.json` with `"update": true`, her `id` and only what changes (`"model": {"index": ...}`), plus the index.
+Imported like any pack, it finds the installed singer by her id, adds its files and sets its fields over hers
+(`model` key by key; her id and name stay). A full pack imported over an installed singer may also leave out
+files she already has (her model). A pack that doesn't load leaves the installed singer as it was.
 
 You can also build the pack by hand: put `voice.json` (see below) and the files in a folder and zip its
 contents, renaming the archive to `.vxpack`.

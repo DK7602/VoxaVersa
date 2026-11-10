@@ -12,9 +12,9 @@ up").
     # from recordings, with the plug-in's encoder
     python3 tools/neural/build_index.py build --audio dataset/my_voice --encoder contentvec-768.onnx --out index.npy
 
-    # an update for an installed singer: its voice.json + the index, without the model (VoxaVersa keeps the
-    # model it has); import the .vxpack as usual
-    python3 tools/neural/build_index.py update --pack my_voice.vxpack --index index.npy --out update/my_voice.vxpack
+    # an update adding the index to an installed singer (found by her id; everything else she has stays);
+    # import the .vxpack as usual
+    python3 tools/neural/build_index.py update --id my-voice --index index.npy --out my-voice-index.vxpack
 
 Needs numpy and scikit-learn; --audio also soundfile, scipy and onnxruntime. The index is derived from the
 recordings: share it only where the recordings' terms allow (a GTSinger singer's: personal use only).
@@ -131,24 +131,31 @@ def cmd_build(args):
 
 
 def cmd_update(args):
-    voice = read_pack(args.pack)
-    model = voice.get("model")
-    if not isinstance(model, dict) or not model.get("file"):
-        fail(args.pack + " is not an AI singer's pack (no model)")
-    index_name = args.name or (voice.get("id", "voice") + "_index.npy")
-    model["index"] = index_name
+    """An update pack: {"update": true, id, name, model: {index}} + the index. VoxaVersa finds the installed singer
+    by her id and adds the index to her voice.json; everything else she has stays."""
+    if args.pack:
+        voice = read_pack(args.pack)
+        if not isinstance(voice.get("model"), dict):
+            fail(args.pack + " is not an AI singer's pack (no model)")
+        sid, name = voice.get("id") or voice.get("name"), voice.get("name") or voice.get("id")
+    else:
+        sid, name = args.id, args.display_name or args.id
+    if not sid:
+        fail("--pack or --id is needed")
+    index_name = args.name or (sid + "_index.npy")
+    model = {"index": index_name}
     if args.rate is not None:
         model["indexRate"] = args.rate
+    update = {"update": True, "id": sid, "name": name, "model": model}
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         manifest = os.path.join(tmp, "voice.json")
         with open(manifest, "w", encoding="utf-8") as f:
-            json.dump(voice, f, indent=2, ensure_ascii=False)
+            json.dump(update, f, indent=2, ensure_ascii=False)
         with zipfile.ZipFile(args.out, "w", compression=zipfile.ZIP_DEFLATED) as z:
             z.write(manifest, "voice.json")
             z.write(args.index, index_name)
-    print("Wrote %s: an update of %s (%s) with its feature index; VoxaVersa keeps the installed model %s"
-          % (args.out, voice.get("name"), voice.get("id"), model["file"]))
+    print("Wrote %s: an update of %s (%s) adding its feature index" % (args.out, name, sid))
 
 
 def main():
@@ -162,12 +169,15 @@ def main():
     b.add_argument("--threads", type=int, default=0, help="encoder threads (default: all)")
     b.add_argument("--clusters", type=int, default=CLUSTERS)
     b.add_argument("--out", required=True, help="the index (.npy)")
-    u = sub.add_parser("update", help="an update pack: an installed singer's voice.json + the index, no model")
-    u.add_argument("--pack", required=True, help="the singer's .vxpack or installed folder")
+    u = sub.add_parser("update", help="an update pack adding the index to an installed singer")
+    who = u.add_mutually_exclusive_group(required=True)
+    who.add_argument("--pack", help="the singer's .vxpack or installed folder (for her id and name)")
+    who.add_argument("--id", help="the singer's pack id, e.g. studio-female-a")
+    u.add_argument("--display-name", help="her name, for messages (with --id)")
     u.add_argument("--index", required=True)
     u.add_argument("--name", help="the index's file name in the pack (default <id>_index.npy)")
     u.add_argument("--rate", type=float, help="indexRate (default: the plug-in's, 0.75)")
-    u.add_argument("--out", required=True, help="the update .vxpack: name it as the installed pack's folder")
+    u.add_argument("--out", required=True, help="the update .vxpack")
     args = p.parse_args()
     (cmd_build if args.cmd == "build" else cmd_update)(args)
 

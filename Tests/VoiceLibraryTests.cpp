@@ -198,6 +198,44 @@ public:
                         "the installed singer is untouched");
                 leftovers = user.getChildFile ("Voices").findChildFiles (juce::File::findDirectories, false, "import*");
                 expect (leftovers.isEmpty(), "staging folders left behind");
+
+                // "update": true - found by its id whatever the archive is called; its fields over the installed
+                // voice.json, "model" key by key, so it needs nothing but what changes
+                auto patchDir = work.getChildFile ("patch");
+                patchDir.createDirectory();
+                patchDir.getChildFile ("a_index.npy").replaceWithText ("index 2");
+                patchDir.getChildFile ("voice.json").replaceWithText (R"({ "update": true, "id": "Singer_A", "name": "Renamed?",
+                    "model": { "index": "a_index.npy", "indexRate": 0.6 } })");
+                auto patch = work.getChildFile ("patches/whatever-it-is-called.vxpack");
+                patch.getParentDirectory().createDirectory();
+                {
+                    juce::ZipFile::Builder zb;
+                    zb.addFile (patchDir.getChildFile ("voice.json"), 9, "voice.json");
+                    zb.addFile (patchDir.getChildFile ("a_index.npy"), 9, "a_index.npy");
+                    juce::FileOutputStream os (patch);
+                    zb.writeToStream (os, nullptr);
+                }
+                const auto rp = library.importVoices (patch, user);
+                expect (rp.succeeded() && rp.installed.isEmpty() && rp.updated == juce::StringArray ("Singer A"), rp.summary());
+                expect (rp.summary().contains ("Singer updated: Singer A"), rp.summary());
+                const auto json = juce::JSON::parse (installed.getChildFile ("voice.json"));
+                expectEquals (json.getProperty ("name", {}).toString(), juce::String ("Singer A"), "her name stays");
+                expectEquals (json.getProperty ("model", {}).getProperty ("file", {}).toString(), juce::String ("model.onnx"));
+                expectEquals (json.getProperty ("model", {}).getProperty ("index", {}).toString(), juce::String ("a_index.npy"));
+                expectWithinAbsoluteError ((float) (double) json.getProperty ("model", {}).getProperty ("indexRate", 0.0), 0.6f, 1.0e-6f);
+                expect (json.getProperty ("factoryVoices", {}).isArray(), "the rest of her voice.json stays");
+                expectEquals (installed.getChildFile ("model.onnx").loadFileAsString(), juce::String ("model singer-a"));
+                expect (installed.getChildFile ("a_index.npy").existsAsFile());
+                expect (! user.getChildFile ("Voices/whatever-it-is-called").exists(), "no second singer");
+                expect (library.findById ("user-singer-a") != nullptr);
+
+                // for a singer who isn't installed: says so
+                patchDir.getChildFile ("voice.json").replaceWithText (R"({ "update": true, "id": "singer-z", "name": "Singer Z",
+                    "model": { "index": "a_index.npy" } })");
+                const auto rz = library.importVoices (patchDir, user);
+                expect (! rz.succeeded() && rz.summary().contains ("import Singer Z itself first"), rz.summary());
+                leftovers = user.getChildFile ("Voices").findChildFiles (juce::File::findDirectories, false, "import*");
+                expect (leftovers.isEmpty(), "staging folders left behind");
             }
             library.rescanUserVoices (root.getChildFile ("none"));
         }
