@@ -5,6 +5,7 @@
 #include "NeuralPitch.h"
 #include "AccentConsonants.h"
 #include "SouthernVowels.h"
+#include "FeatureIndex.h"
 
 #include <functional>
 
@@ -49,7 +50,10 @@ namespace streaming
             "hopSize": 400,                  // optional: generator samples per 10 ms frame (default sampleRate / 100)
             "speakerId": 0,                  // optional: speaker index for multi-speaker models
             "noiseScale": 0.66666,           // optional: scale of the generator's "rnd" noise input
-            "streamContextMs": 1000          // optional: left context of each real-time chunk (100..3000)
+            "streamContextMs": 1000,         // optional: left context of each real-time chunk (100..3000)
+            "index": "features.npy",         // optional: the singer's own sounds (FeatureIndex)
+            "indexRate": 0.75,               // optional: how far each frame is pulled toward them (0..1)
+            "indexProtect": 0.33             // optional: ... in unvoiced frames, as a share of indexRate
         }
 */
 struct ModelConfig
@@ -62,6 +66,8 @@ struct ModelConfig
     float noiseScale = 0.66666f;
     int streamContextMs = 1000;   // 0.3 s measurably weakened the timbre; 1 s is close to offline quality
     bool allowAccelerator = true; // false: CPU only, whatever the runtime's accelerator
+    juce::File indexFile;         // FeatureIndex (none: the input's features as they are)
+    float indexRate = 0.75f, indexProtect = 0.33f;
 
     static ModelConfig fromProfile (const VoiceProfile&);
 
@@ -96,6 +102,8 @@ struct NeuralVoiceModel::Impl
         // after runFrames: per generator frame, how much the accent changed its sound (0..1: SouthernVowels::apply,
         // AccentConsonants::apply)
         std::vector<float> accentChanged;
+        // FeatureIndex::blend's scratch and the voicing of each generator frame
+        std::vector<float> indexScratch, indexVoiced;
     };
 
     /** `cancel` (optional) is checked between the loading steps and the timing runs. */
@@ -149,6 +157,7 @@ struct NeuralVoiceModel::Impl
     std::shared_ptr<OrtModelSession> encoder;     // shared between voices using the same encoder file
     std::unique_ptr<OrtModelSession> generator;
     std::shared_ptr<NeuralPitchTracker> pitchTracker;   // optional (<Encoders>/fcpe.onnx)
+    std::shared_ptr<const FeatureIndex> featureIndex;   // optional (the pack's "index")
 
     int sampleRate = 0, hopSize = 0, featureChannels = 0, noiseChannels = 192;
     bool usesF0 = false;

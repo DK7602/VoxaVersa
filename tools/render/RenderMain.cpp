@@ -526,7 +526,7 @@ int main (int argc, char* argv[])
                                                         { "ringDb", &t.ringDb }, { "bodyHz", &t.bodyHz }, { "bodyDb", &t.bodyDb },
                                                         { "breathiness", &t.breathiness }, { "vibeSaturation", &t.vibeSaturation },
                                                         { "vibeCompressor", &t.vibeCompressor }, { "vibeReverbMix", &t.vibeReverbMix },
-                                                        { "registerBiasSemis", &t.registerBiasSemis } };
+                                                        { "registerBiasSemis", &t.registerBiasSemis }, { "nasalDb", &t.nasalDb }, { "formantSemis", &t.formantSemis } };
                 if (traits.count (name) == 0)
                     return fail ("unknown trait " + name);
                 *traits[name] = value;

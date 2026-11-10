@@ -152,6 +152,10 @@ ModelConfig ModelConfig::fromProfile (const VoiceProfile& profile)
             if (model->hasProperty ("speakerId"))       c.speakerId = juce::jmax (0, (int) get ("speakerId"));
             if (model->hasProperty ("noiseScale"))      c.noiseScale = juce::jlimit (0.0f, 2.0f, (float) (double) get ("noiseScale"));
             if (model->hasProperty ("streamContextMs")) c.streamContextMs = juce::jlimit (100, 3000, (int) get ("streamContextMs"));
+            if (auto index = get ("index").toString(); index.isNotEmpty())
+                c.indexFile = profile.packDirectory.getChildFile (index);
+            if (model->hasProperty ("indexRate"))       c.indexRate = juce::jlimit (0.0f, 1.0f, (float) (double) get ("indexRate"));
+            if (model->hasProperty ("indexProtect"))    c.indexProtect = juce::jlimit (0.0f, 1.0f, (float) (double) get ("indexProtect"));
 
             if (c.sampleRate <= 0)
                 c.sampleRate = (int) get ("sampleRate");
@@ -278,6 +282,14 @@ bool NeuralVoiceModel::Impl::initialise (const ModelConfig& c, juce::String& err
     {
         error = encoder->getFile().getFileName() + ": " + error;
         return false;
+    }
+
+    if (config.indexFile != juce::File())
+    {
+        juce::String indexError;
+        featureIndex = FeatureIndex::load (config.indexFile, featureChannels, indexError);
+        if (featureIndex == nullptr)
+            DBG ("VoxaVersa: " << indexError << " - the AI voice converts without its feature index");
     }
 
     if (config.sampleRate > 0)
@@ -736,6 +748,18 @@ bool NeuralVoiceModel::Impl::runFrames (const float* audio16k, int numFrames, co
         {
             std::copy_n (ws.encoderOut.data.data() + t * c, c, dest);
         }
+    }
+
+    // The singer's own sounds: each frame pulled toward the nearest things she sang (consonants less, so the
+    // words stay clear)
+    if (featureIndex != nullptr && config.indexRate > 0.0f)
+    {
+        ws.indexScratch.resize (2 * c);
+        ws.indexVoiced.resize (allFrames);
+        for (size_t i = 0; i < allFrames; ++i)
+            ws.indexVoiced[i] = f0Frames == nullptr || f0Frames[i + skip] > 0.0f ? 1.0f : 0.0f;
+        featureIndex->blend (ws.phone.data(), (int) allFrames, ws.indexVoiced.data(), config.indexRate,
+                             config.indexProtect, ws.indexScratch.data());
     }
 
     // The voice's accent (SouthernVowels): the country voices' Southern "ah", the reggae / Latin / afrobeats vowels

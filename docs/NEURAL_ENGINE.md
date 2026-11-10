@@ -559,7 +559,10 @@ engine. (Copying the unzipped folder into `<user data>/Voices/` and rescanning w
     "hopSize": 400,
     "speakerId": 0,
     "noiseScale": 0.66666,
-    "streamContextMs": 1000
+    "streamContextMs": 1000,
+    "index": "features.npy",
+    "indexRate": 0.75,
+    "indexProtect": 0.33
   }
 }
 ```
@@ -589,6 +592,9 @@ Top level (read by the voice library; all optional except `name`):
 | `speakerId` | no | Speaker index (`ds`) for multi-speaker models, default 0. |
 | `noiseScale` | no | Scale of the `rnd` noise input, default 0.66666 (0 = deterministic, slightly duller). |
 | `streamContextMs` | no | Left context of each real-time chunk, 100 – 3000 ms, default 1000. More context = more consistent timbre between chunks but more encoder CPU; it does not change the latency. 2000 matches offline quality on a fast CPU; 300 is the minimum sensible value for slow machines. |
+| `index` | no | The singer's feature index: content features (contentvec) of her training recordings, k-means clustered, as a NumPy `.npy` file `[count, channels]` (float16 or float32). Each frame of the input is pulled toward the mean of its 8 nearest (weighted 1 / distance², as RVC's `.index`), so she sings with her own sounds instead of the input singer's (without it a man's input made a woman's voice sound "like a man sped up": duller, hootier vowels). 2048 clusters (3 MB as float16) measured as close to her recordings as 8192, at a quarter of the search time. |
+| `indexRate` | no | How far each sung frame is pulled toward the index, 0 – 1, default 0.75 (RVC's "index rate"). |
+| `indexProtect` | no | The share of `indexRate` used in unvoiced frames (consonants, breaths), default 0.33 (RVC's "protect"): the words stay clear. |
 
 \* strongly recommended.
 
