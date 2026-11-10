@@ -1045,6 +1045,15 @@ def cmd_finalize(args):
            "--license", v.get("license", ""), "--sample-rate", "40000", "--encoder", "contentvec-768", "--i-have-the-rights"]
     if vrange:
         cmd += ["--range", str(vrange[0]), str(vrange[1])]
+    # her feature index: the features she was trained on, clustered (the plug-in pulls the input toward them)
+    index_path = os.path.join(outdir, "%s_index.npy" % pack_id)
+    features = os.path.join(exp, "3_feature768")
+    if os.path.isdir(features):
+        p = subprocess.run([sys.executable, os.path.join(REPO, "tools", "neural", "build_index.py"), "build",
+                            "--features", features, "--out", index_path], capture_output=True, text=True)
+        print((p.stdout + p.stderr)[-600:], flush=True)
+    if os.path.exists(index_path):
+        cmd += ["--index", index_path]
     subprocess.run(cmd, check=True)
     user = os.path.expanduser(cfg.get("voxaversa_user_dir", "~/.config/VoxaVersa"))
     inst = os.path.join(user, "Voices", pack_id)
@@ -1161,8 +1170,9 @@ def cmd_finalize(args):
                 os.remove(os.path.join(exp, f))
         for d in ("0_gt_wavs", "1_16k_wavs", "2a_f0", "2b-f0nsf", "3_feature768"):
             shutil.rmtree(os.path.join(exp, d), ignore_errors=True)
-        if os.path.exists(onnx_path):
-            os.remove(onnx_path)     # it is inside the .vxpack
+        for f in (onnx_path, index_path):     # they are inside the .vxpack
+            if os.path.exists(f):
+                os.remove(f)
     print("finalized", name, summary, flush=True)
 
 

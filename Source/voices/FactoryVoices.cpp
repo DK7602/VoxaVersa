@@ -247,6 +247,13 @@ namespace
         // round 39's dig-in rule; its strength in its sounds, below); Male Rap's grit is in its sounds too.
         if (male && juce::String (g.idPart) == "blues")
             t.aiGrowl = growlDepth (0.6f);
+        // Female Blues, picked by ear (her AI singer "sounded like the Oompa Loompas"): the blues ring at 800 Hz and the
+        // body boost made a woman's voice honky and hooty; her ring sits where a singer's does (2.9 kHz), no body boost.
+        if (! male && juce::String (g.idPart) == "blues")
+        {
+            t.ringHz = 2900.0f;
+            t.bodyDb = 0.0f;
+        }
         // Female pop and country keep their chest: with a thin low end they sounded like a soprano, not bright pop.
         if (! male && (juce::String (g.idPart) == "pop" || juce::String (g.idPart) == "country"))
         {

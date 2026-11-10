@@ -517,6 +517,21 @@ rate from the export's metadata when present), writes `voice.json` and creates `
 archive with `voice.json` at the root. Add `--encoder-file vec-768-layer-12.onnx` to bundle the encoder,
 `--sample-rate 40000` if it can't be detected, `--avatar face.png` for a picture.
 
+**Feature index** (strongly recommended for singing in another voice, e.g. a man into a woman's voice): build
+one from the singer's training features and add `--index`:
+
+```
+python3 tools/neural/build_index.py build --features rvc/logs/my_voice/3_feature768 --out my_voice_index.npy
+python3 tools/neural/package_voice.py ... --index my_voice_index.npy
+```
+
+(`--audio <recordings> --encoder contentvec-768.onnx` instead of `--features` computes the features with the
+plug-in's encoder.) The training queue (`train_queue.py`) does this by itself. For a singer already installed,
+`build_index.py update --pack my_voice.vxpack --index my_voice_index.npy --out update/my-voice.vxpack` writes an
+*update*: its `voice.json` and the index, without the model. Imported like any pack (named as the installed
+pack's folder), it keeps the model the installed singer has; a pack that doesn't load leaves the installed one
+as it was.
+
 You can also build the pack by hand: put `voice.json` (see below) and the files in a folder and zip its
 contents, renaming the archive to `.vxpack`.
 

@@ -615,6 +615,23 @@ void VoiceLibrary::rescanUserVoices (const juce::File& dir)
     sendChangeMessage();
 }
 
+/** The files a pack's voice.json names (its model, encoder, feature index, picture). */
+static juce::StringArray filesNamedBy (const juce::File& manifest)
+{
+    juce::StringArray names;
+    const auto json = juce::JSON::parse (manifest);
+    auto add = [&names] (const juce::var& v)
+    {
+        if (const auto s = v.toString().trim(); s.isNotEmpty() && ! s.containsAnyOf ("/\\") && s != "." && s != "..")
+            names.addIfNotAlreadyThere (s);
+    };
+    add (json.getProperty ("avatar", {}));
+    const auto model = json.getProperty ("model", {});
+    for (auto key : { "file", "encoderFile", "index" })
+        add (model.getProperty (key, {}));
+    return names;
+}
+
 static bool installPack (const juce::File& source, const juce::File& voicesDir, juce::String& error, juce::String& name,
                          juce::File& installedDir)
 {
@@ -624,15 +641,15 @@ static bool installPack (const juce::File& source, const juce::File& voicesDir, 
         return false;
     }
 
-    juce::File installed;
+    // Unpacked beside the installed singer first: a pack that doesn't load leaves the installed one as it was.
+    const auto installed = voicesDir.getChildFile (source.isDirectory() ? source.getFileName() : source.getFileNameWithoutExtension());
+    const auto staged = voicesDir.getNonexistentChildFile ("import", "");
 
     if (source.isDirectory())
     {
-        installed = voicesDir.getChildFile (source.getFileName());
-        if (installed.exists())
-            installed.deleteRecursively();
-        if (! source.copyDirectoryTo (installed))
+        if (! source.copyDirectoryTo (staged))
         {
+            staged.deleteRecursively();
             error = "Could not copy voice pack";
             return false;
         }
@@ -646,34 +663,56 @@ static bool installPack (const juce::File& source, const juce::File& voicesDir, 
             return false;
         }
 
-        installed = voicesDir.getChildFile (source.getFileNameWithoutExtension());
-        if (installed.exists())
-            installed.deleteRecursively();
-
-        if (auto result = zip.uncompressTo (installed, true); result.failed())
+        if (auto result = zip.uncompressTo (staged, true); result.failed())
         {
+            staged.deleteRecursively();
             error = result.getErrorMessage();
             return false;
         }
 
         // Archives often contain a single top-level folder.
-        if (! installed.getChildFile ("voice.json").existsAsFile())
+        if (! staged.getChildFile ("voice.json").existsAsFile())
         {
-            auto subdirs = installed.findChildFiles (juce::File::findDirectories, false);
+            auto subdirs = staged.findChildFiles (juce::File::findDirectories, false);
             if (subdirs.size() == 1 && subdirs[0].getChildFile ("voice.json").existsAsFile())
             {
                 auto tmp = voicesDir.getNonexistentChildFile ("import", "");
                 subdirs[0].moveFileTo (tmp);
-                installed.deleteRecursively();
-                tmp.moveFileTo (installed);
+                staged.deleteRecursively();
+                tmp.moveFileTo (staged);
             }
         }
     }
 
-    VoiceProfile p;
-    if (! VoiceLibrary::loadVoicePack (installed, p, error))
+    // An update of an installed singer may leave out files it already has (its model, ~90 MB): they are kept.
+    if (installed.isDirectory())
     {
-        installed.deleteRecursively();
+        for (const auto& file : filesNamedBy (staged.getChildFile ("voice.json")))
+        {
+            const auto had = installed.getChildFile (file);
+            if (! staged.getChildFile (file).existsAsFile() && had.existsAsFile())
+                had.copyFileTo (staged.getChildFile (file));
+        }
+    }
+
+    VoiceProfile p;
+    if (! VoiceLibrary::loadVoicePack (staged, p, error))
+    {
+        if (p.neuralModelFile != juce::File() && ! p.neuralModelFile.existsAsFile())
+            error = "an update for " + p.name + " (its model isn't in it): import " + p.name + " itself first";
+        staged.deleteRecursively();
+        return false;
+    }
+
+    if (installed.exists() && ! installed.deleteRecursively())
+    {
+        staged.deleteRecursively();
+        error = "Could not replace " + installed.getFullPathName();
+        return false;
+    }
+    if (! staged.moveFileTo (installed))
+    {
+        error = "Could not install to " + installed.getFullPathName();
         return false;
     }
 

@@ -133,7 +133,7 @@ cell explains itself; in short:
 | 5. Recordings | Upload a zip (or point to a file/folder on Drive); `prepare_dataset.py` cleans it and reports the usable minutes. | 1 - 3 min |
 | 6. Train | Slicing, RMVPE pitch, ContentVec features, then training from the pretrained base. Checkpoints go to Drive every 10 epochs. | 1.5 - 3 h |
 | 7. Export and listen | ONNX export of the voice (checked against PyTorch) and of the content encoder; a preview of one clip. | 2 min |
-| 8. Pack and download | `package_voice.py` writes `voice.json` (name, gender, genre, range from the dataset, ...) and the `.vxpack`. | seconds |
+| 8. Pack and download | `package_voice.py` writes `voice.json` (name, gender, genre, range from the dataset, ...) and the `.vxpack`. The training queue adds the singer's feature index (`build_index.py`, from her training features): with it the plug-in pulls the input toward her own sounds. | seconds |
 
 **Epochs.** One epoch = the whole dataset once. With the pretrained base, 200 - 400 epochs suit 10 - 30
 minutes of audio; tiny datasets need fewer (100 - 200), larger ones can go to 500+. Too many epochs on a

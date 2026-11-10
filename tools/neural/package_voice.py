@@ -146,6 +146,7 @@ def main():
     p.add_argument("--hop-size", type=int, help="generator samples per 10 ms frame (normally sample-rate / 100)")
     p.add_argument("--noise-scale", type=float, help="scale of the generator noise input (default 0.66666)")
     p.add_argument("--stream-context-ms", type=int, help="real-time left context per chunk (default 300)")
+    p.add_argument("--index", help="the singer's feature index (.npy from tools/neural/build_index.py)")
     p.add_argument("--no-validate", action="store_true", help="skip the ONNX validation")
     p.add_argument("--i-have-the-rights", action="store_true",
                    help="confirm that you own this voice or have the speaker's permission to use and share it")
@@ -155,7 +156,7 @@ def main():
         fail("voice packs may only be made from recordings you own or have explicit permission to use.\n"
              "Re-run with --i-have-the-rights to confirm this applies to '%s'." % args.name)
 
-    for path in (args.model, args.encoder_file, args.avatar):
+    for path in (args.model, args.encoder_file, args.avatar, args.index):
         if path and not os.path.isfile(path):
             fail("file not found: " + path)
 
@@ -190,6 +191,8 @@ def main():
         model_section["noiseScale"] = args.noise_scale
     if args.stream_context_ms:
         model_section["streamContextMs"] = args.stream_context_ms
+    if args.index:
+        model_section["index"] = os.path.basename(args.index)
 
     voice = {
         "name": args.name,
@@ -224,6 +227,8 @@ def main():
                 z.write(args.encoder_file, os.path.basename(args.encoder_file))
             if args.avatar:
                 z.write(args.avatar, voice["avatar"])
+            if args.index:
+                z.write(args.index, model_section["index"])
 
     kind = "unvalidated" if info is None else "RVC %s, %s, %d-d features" % (
         "v2" if channels == 768 else "v1" if channels == 256 else "?",

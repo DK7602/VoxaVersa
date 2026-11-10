@@ -147,6 +147,58 @@ public:
             // Nothing usable: a clear message, nothing installed.
             const auto r4 = library.importVoices (noise, work.getChildFile ("user4"));
             expect (! r4.succeeded(), r4.summary());
+
+            beginTest ("An update of an installed singer may leave out its model; a pack that doesn't load changes nothing");
+            {
+                // singer-a's feature index: voice.json naming it and the model already installed, no model
+                auto dir = work.getChildFile ("update-singer-a");
+                dir.createDirectory();
+                dir.getChildFile ("features.npy").replaceWithText ("index");
+                dir.getChildFile ("voice.json").replaceWithText (R"({ "name": "Singer A", "id": "singer-a", "gender": "female",
+                    "factoryVoices": ["female-pop"], "model": { "file": "model.onnx", "sampleRate": 40000, "index": "features.npy" } })");
+                auto update = work.getChildFile ("update/singer-a.vxpack");
+                update.getParentDirectory().createDirectory();
+                {
+                    juce::ZipFile::Builder zb;
+                    zb.addFile (dir.getChildFile ("voice.json"), 9, "voice.json");
+                    zb.addFile (dir.getChildFile ("features.npy"), 9, "features.npy");
+                    juce::FileOutputStream os (update);
+                    zb.writeToStream (os, nullptr);
+                }
+
+                const auto ru = library.importVoices (update, user);
+                expect (ru.succeeded() && ru.installed.size() == 1, ru.summary());
+                const auto installed = user.getChildFile ("Voices/singer-a");
+                expectEquals (installed.getChildFile ("model.onnx").loadFileAsString(), juce::String ("model singer-a"),
+                              "the installed model is kept");
+                expect (installed.getChildFile ("features.npy").existsAsFile());
+                expect (installed.getChildFile ("voice.json").loadFileAsString().contains ("features.npy"));
+                auto leftovers = user.getChildFile ("Voices").findChildFiles (juce::File::findDirectories, false, "import*");
+                expect (leftovers.isEmpty(), "staging folders left behind");
+
+                // the same update for a singer who isn't installed: says so, installs nothing
+                const auto fresh = work.getChildFile ("user5");
+                const auto rf = library.importVoices (update, fresh);
+                expect (! rf.succeeded() && rf.summary().contains ("import Singer A itself first"), rf.summary());
+                expect (! fresh.getChildFile ("Voices/singer-a").exists());
+
+                // a damaged pack over an installed singer leaves the singer as it was
+                auto broken = work.getChildFile ("broken/singer-a.vxpack");
+                broken.getParentDirectory().createDirectory();
+                {
+                    auto bad = work.getChildFile ("bad-voice.json");
+                    bad.replaceWithText ("{ not json");
+                    juce::ZipFile::Builder zb;
+                    zb.addFile (bad, 9, "voice.json");
+                    juce::FileOutputStream os (broken);
+                    zb.writeToStream (os, nullptr);
+                }
+                expect (! library.importVoices (broken, user).succeeded());
+                expect (installed.getChildFile ("model.onnx").existsAsFile() && installed.getChildFile ("features.npy").existsAsFile(),
+                        "the installed singer is untouched");
+                leftovers = user.getChildFile ("Voices").findChildFiles (juce::File::findDirectories, false, "import*");
+                expect (leftovers.isEmpty(), "staging folders left behind");
+            }
             library.rescanUserVoices (root.getChildFile ("none"));
         }
 
