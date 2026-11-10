@@ -41,6 +41,8 @@ WizardStyle=modern
 CloseApplications=yes
 CloseApplicationsFilter=*.exe,*.dll,*.vst3
 RestartApplications=no
+; A program the Restart Manager can't close (a DAW's plug-in scanner, a bridge) still holds a file: it is replaced
+; when Windows restarts instead of stopping Setup with "DeleteFile failed; code 5" (restartreplace below).
 UninstallDisplayIcon={app}\VoxaVersa.exe
 UninstallDisplayName=VoxaVersa
 #ifdef IconFile
@@ -59,9 +61,9 @@ Name: "app"; Description: "VoxaVersa standalone app"; Types: full custom
 Name: "desktopicon"; Description: "Create a desktop shortcut for the standalone app"; Components: app; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\VST3\VoxaVersa.vst3\*"; DestDir: "{commoncf64}\VST3\VoxaVersa.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\VST3\VoxaVersa Singer.vst3\*"; DestDir: "{commoncf64}\VST3\VoxaVersa Singer.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\Standalone\*"; DestDir: "{app}"; Components: app; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\VST3\VoxaVersa.vst3\*"; DestDir: "{commoncf64}\VST3\VoxaVersa.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
+Source: "{#SourceDir}\VST3\VoxaVersa Singer.vst3\*"; DestDir: "{commoncf64}\VST3\VoxaVersa Singer.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
+Source: "{#SourceDir}\Standalone\*"; DestDir: "{app}"; Components: app; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
 Source: "{#RedistDir}\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [InstallDelete]
